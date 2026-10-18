@@ -1,1 +1,34 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#f6f1e7"/><circle cx="256" cy="256" r="150" fill="#c8402f"/><text x="256" y="312" text-anchor="middle" font-family="Hiragino Mincho ProN, serif" font-weight="700" font-size="170" fill="#fff">旅</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#26285e"/>
+      <stop offset=".48" stop-color="#b8456a"/>
+      <stop offset=".78" stop-color="#f2805c"/>
+      <stop offset="1" stop-color="#f9b27a"/>
+    </linearGradient>
+    <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff3d6"/>
+      <stop offset="1" stop-color="#ffb26b"/>
+    </linearGradient>
+    <linearGradient id="mt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b2f66"/>
+      <stop offset="1" stop-color="#141634"/>
+    </linearGradient>
+    <clipPath id="sunclip"><circle cx="256" cy="236" r="128"/></clipPath>
+  </defs>
+  <rect width="512" height="512" fill="url(#sky)"/>
+  <g fill="#fff"><circle cx="92" cy="86" r="3" opacity=".8"/><circle cx="418" cy="64" r="2.5" opacity=".7"/><circle cx="452" cy="148" r="2" opacity=".6"/><circle cx="58" cy="176" r="2" opacity=".5"/><circle cx="356" cy="40" r="1.8" opacity=".6"/></g>
+  <!-- sole con strisce "retro" -->
+  <g clip-path="url(#sunclip)">
+    <rect x="120" y="100" width="272" height="280" fill="url(#sun)"/>
+    <g fill="#e2617a" opacity=".55">
+      <rect x="120" y="276" width="272" height="7"/>
+      <rect x="120" y="298" width="272" height="10"/>
+      <rect x="120" y="322" width="272" height="13"/>
+      <rect x="120" y="348" width="272" height="16"/>
+    </g>
+  </g>
+  <!-- Monte Fuji -->
+  <path d="M-10 512 L-10 470 L196 300 Q214 286 228 284 L284 284 Q298 286 316 300 L522 470 L522 512 Z" fill="url(#mt)"/>
+  <path d="M196 300 Q214 286 228 284 L284 284 Q298 286 316 300 L340 320 L318 314 L300 334 L282 312 L262 336 L244 312 L226 334 L208 314 L172 320 Z" fill="#ffffff"/>
+</svg>

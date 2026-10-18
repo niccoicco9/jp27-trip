@@ -772,8 +772,10 @@
   function navigate() {
     closeSheet(); $("#big").hidden = true;
     if (maybeImport()) return;
-    const go = () => { render(); if (!location.hash.startsWith("#mappa")) scrollTo(0, 0); };
-    document.startViewTransition && !matchMedia("(prefers-reduced-motion: reduce)").matches ? document.startViewTransition(go) : go();
+    // prima si torna in cima, poi si disegna: niente salti; fade leggero solo sul contenuto
+    if (!location.hash.startsWith("#mappa")) scrollTo(0, 0);
+    render();
+    view.classList.remove("enter"); void view.offsetWidth; view.classList.add("enter");
   }
   addEventListener("hashchange", navigate);
 
