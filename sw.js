@@ -1,5 +1,5 @@
 // Service worker: l'app funziona offline, mappa compresa (per le zone scaricate).
-const VERSION = "jp27-v13";
+const VERSION = "jp27-v14";
 const MAPPE = "jp27-mappe";   // zone offline, caratteri e icone della mappa: non si cancellano con gli aggiornamenti
 const CDN = "jp27-cdn";       // librerie, font e foto da siti esterni
 const SHELL = ["./", "index.html", "app.css", "app.js", "data.js", "photos.js", "content.js", "sync.js", "mappa-offline.js", "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-192.png", "icon-512.png", "favicon-32.png"];
@@ -55,7 +55,13 @@ self.addEventListener("fetch", e => {
     e.respondWith(caches.open(CDN).then(async c => {
       const hit = await c.match(e.request);
       if (hit) return hit;
-      const r = await fetch(e.request); if (r.ok || r.type === "opaque") c.put(e.request, r.clone()); return r;
+      try {
+        const r = await fetch(e.request); if (r.ok || r.type === "opaque") c.put(e.request, r.clone()); return r;
+      } catch (err) {
+        // offline: per le foto usa la miniatura salvata dello stesso file, se c'è
+        if (url.hostname.endsWith("wikimedia.org")) { const small = await c.match(url.href.replace(/\/\d+px-/, "/330px-")); if (small) return small; }
+        throw err;
+      }
     }));
   }
 });

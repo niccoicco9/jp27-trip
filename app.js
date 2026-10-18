@@ -45,10 +45,21 @@
   const credit = id => FOTO[id] ? `https://${FOTO[id].h}.wikipedia.org/wiki/File:${encodeURIComponent(FOTO[id].f)}` : "";
   function photo(id, w, cls = "") {
     const u = photoUrl(id, w), p = byId[id];
-    if (u) return `<div class="ph ${cls}" style="background-image:url('${u}')"></div>`;
+    if (u) return `<div class="ph ${cls}" data-bg="${u}"></div>`;
     const [ic, col] = cat(p);
     return `<div class="ph none ${cls}" style="background:linear-gradient(135deg, ${zona[p.z].colore}, ${col})">${icon(ic)}</div>`;
   }
+
+  // caricamento pigro delle foto: si scaricano solo quando stanno per comparire (risparmio dati)
+  const lazyIO = "IntersectionObserver" in window ? new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return;
+    const el = e.target; el.style.backgroundImage = `url('${el.dataset.bg}')`; el.removeAttribute("data-bg"); lazyIO.unobserve(el);
+  }), { rootMargin: "300px" }) : null;
+  function lazyScan() {
+    $$("[data-bg]").forEach(el => { if (el.dataset.lz) return; el.dataset.lz = 1; lazyIO ? lazyIO.observe(el) : (el.style.backgroundImage = `url('${el.dataset.bg}')`); });
+  }
+  let lazyRaf = 0;
+  new MutationObserver(() => { cancelAnimationFrame(lazyRaf); lazyRaf = requestAnimationFrame(lazyScan); }).observe(document.body, { childList: true, subtree: true });
 
   // ——— illustrazione (Fuji + torii), cambia di giorno/notte con il tema ———
   let artN = 0;
@@ -233,6 +244,21 @@
     grab.addEventListener("pointerup", end); grab.addEventListener("pointercancel", end);
   })();
 
+  // finestra di conferma nello stile dell'app (sopra anche le schede aperte); restituisce true/false
+  function ask({ title, text = "", ok = "Conferma", danger = false, icon: ic = danger ? "Trash2" : "Sparkles" }) {
+    return new Promise(res => {
+      const d = document.createElement("div"); d.className = "dlg";
+      d.innerHTML = `<div class="dlg-bg"></div><div class="dlg-card" role="alertdialog" aria-modal="true">
+        <span class="dlg-ic${danger ? " danger" : ""}">${icon(ic)}</span><b>${esc(title)}</b>${text ? `<p>${esc(text)}</p>` : ""}
+        <div class="dlg-btns"><button class="btn" data-a="0">Annulla</button><button class="btn ${danger ? "danger" : "primary"}" data-a="1">${esc(ok)}</button></div></div>`;
+      const close = v => { d.classList.add("out"); setTimeout(() => d.remove(), 160); document.removeEventListener("keydown", key); res(v); };
+      const key = e => { if (e.key === "Escape") close(false); };
+      d.addEventListener("click", e => { const b = e.target.closest("[data-a]"); if (b) close(b.dataset.a === "1"); else if (e.target.classList.contains("dlg-bg")) close(false); });
+      document.addEventListener("keydown", key);
+      document.body.appendChild(d); d.querySelector('[data-a="1"]').focus({ preventScroll: true });
+    });
+  }
+
   function showBig(jp, sub, speakIt) {
     const b = $("#big");
     b.innerHTML = `<div class="jp">${esc(jp)}</div>${sub ? `<div class="sub">${sub}</div>` : ""}<div class="btns" style="width:100%;max-width:360px"><button class="btn" data-say>${icon("Volume2")} Ascolta</button><button class="btn primary">Chiudi</button></div>`;
@@ -363,7 +389,7 @@
       </div></div>`;
     else {
       const d = getDay(today), first = d.i[0] && byId[d.i[0]];
-      hero = `<div class="hero">${first && photoUrl(first.id) ? `<div class="ph" style="background-image:url('${photoUrl(first.id, 960)}')"></div>` : art()}<div class="hero-in">
+      hero = `<div class="hero">${first && photoUrl(first.id) ? `<div class="ph" data-bg="${photoUrl(first.id, 960)}"></div>` : art()}<div class="hero-in">
         <span class="kicker">${hi}Giorno ${idx + 1} di ${DAYS.length} · ${fmtDay(today, { weekday: "long", day: "numeric", month: "long" })}</span>
         <div class="title">${esc(d.l || "Oggi")}</div>
         ${first ? `<p>Prima tappa: <b>${esc(first.n)}</b></p>` : ""}
@@ -377,7 +403,7 @@
       <div class="quick">${QUICK.map(([k, ic, c, t]) => `<a class="qa" href="#utility/${k}"><span class="ic" style="background:${c}">${icon(ic)}</span>${t}</a>`).join("")}</div>
       ${oggiPren(today, before, after)}
       ${ch.length ? `<div><div class="section-h" style="margin-top:4px"><h3>Il viaggio in capitoli</h3><a class="small" href="#giorni" style="font-weight:600">Tutti i giorni</a></div>
-      <div class="hscroll">${ch.map((c, k) => `<a class="chapter" href="#giorni/${DAYS[c.from]}" style="--c:${zona[c.z].colore}">${photoUrl(HERO_PLACE[c.z]) ? `<div class="ph" style="background-image:url('${photoUrl(HERO_PLACE[c.z], 330)}')"></div>` : `<div class="ph" style="background:${zona[c.z].colore}"></div>`}<span class="num">${k + 1}</span><b>${esc(zona[c.z].nome)}</b><small>${c.from === c.to ? `giorno ${c.from + 1}` : `giorni ${c.from + 1}–${c.to + 1}`} · ${short(DAYS[c.from])}</small></a>`).join("")}</div></div>` : ""}
+      <div class="hscroll">${ch.map((c, k) => `<a class="chapter" href="#giorni/${DAYS[c.from]}" style="--c:${zona[c.z].colore}">${photoUrl(HERO_PLACE[c.z]) ? `<div class="ph" data-bg="${photoUrl(HERO_PLACE[c.z], 330)}"></div>` : `<div class="ph" style="background:${zona[c.z].colore}"></div>`}<span class="num">${k + 1}</span><b>${esc(zona[c.z].nome)}</b><small>${c.from === c.to ? `giorno ${c.from + 1}` : `giorni ${c.from + 1}–${c.to + 1}`} · ${short(DAYS[c.from])}</small></a>`).join("")}</div></div>` : ""}
       <div class="card"><div class="between"><h3 style="margin:0">Meteo adesso</h3><span class="muted small" id="wtime"></span></div><div class="weather" id="weather" style="margin-top:12px"><div>…</div></div></div>
       <div class="card">
         <div class="between"><h3 style="margin:0">${icon("Ticket")} Da prenotare</h3><b class="small">${doneBook}/${toBook.length}</b></div>
@@ -432,7 +458,7 @@
 
     view.innerHTML = `
       <div class="daystrip" id="strip">${DAYS.map((x, k) => { const z = dayZone(x); return `<a class="dchip${x === d ? " on" : ""}${x === today ? " today" : ""}" href="#giorni/${x}" style="--c:${z ? zona[z].colore : "var(--line)"}" aria-label="Giorno ${k + 1}"><small>${fmtDay(x, { weekday: "short" }).replace(".", "")}</small><b>${fmtDay(x, { day: "numeric" })}</b><i></i></a>`; }).join("")}</div>
-      <div class="daycover" id="cover">${first ? `<div class="ph" style="background-image:url('${photoUrl(first.id, 960)}')"></div>` : art()}
+      <div class="daycover" id="cover">${first ? `<div class="ph" data-bg="${photoUrl(first.id, 960)}"></div>` : art()}
         <span class="dn">Giorno ${i + 1} / ${DAYS.length}</span>
         <div class="in"><div class="kicker">${fmtDay(d)}</div>${editMode ? `<input id="dlabel" value="${esc(day.l)}" placeholder="Dai un nome al giorno…" aria-label="Nome del giorno">` : `<div class="dtitle">${esc(day.l) || "Giorno libero"}</div>`}</div>
       </div>
@@ -477,9 +503,10 @@
     });
     $$("[data-rm]").forEach(b => b.onclick = () => { day.i.splice(+b.dataset.rm, 1); savePlan(); keepScroll(() => renderGiorni()); });
     $("#share")?.addEventListener("click", sharePlan);
-    $("#reset").onclick = () => openSheet(`<h2>Ripristinare la bozza?</h2><p>Il programma tornerà alla bozza proposta (arrivo a Tokyo, partenza da Osaka). Le modifiche fatte andranno perse${sync ? " per tutti e quattro" : ""}.</p><div class="btns"><button class="btn" data-close>Annulla</button><button class="btn primary" id="doreset">Ripristina</button></div>`, el => {
-      $("#doreset", el).onclick = () => { plan = clone(window.BOZZA || {}); savePlan(); closeSheet(); toast("Bozza ripristinata"); render(); };
-    });
+    $("#reset").onclick = async () => {
+      if (!(await ask({ title: "Ripristinare la bozza?", text: `Il programma torna alla bozza proposta (arrivo a Tokyo, partenza da Osaka). Le modifiche andranno perse${sync ? " per tutti e quattro" : ""}.`, ok: "Ripristina", danger: true, icon: "RotateCcw" }))) return;
+      plan = clone(window.BOZZA || {}); savePlan(); toast("Bozza ripristinata"); render();
+    };
     // swipe orizzontale sulla copertina per cambiare giorno
     let x0 = null;
     $("#cover").addEventListener("touchstart", e => { x0 = e.touches[0].clientX; }, { passive: true });
@@ -844,9 +871,25 @@
       () => toast("Non riesco a leggere la posizione"), { enableHighAccuracy: true, timeout: 10000 });
   }
 
+  // ——— foto offline: le miniature di tutti i luoghi (le salva il service worker) ———
+  const thumbUrls = () => Object.keys(FOTO).map(id => photoUrl(id, 330));
+  async function photosSaved() {
+    try { const c = await caches.open("jp27-cdn"); let n = 0; for (const u of thumbUrls()) if (await c.match(u)) n++; return n; } catch { return 0; }
+  }
+  async function savePhotos(onProgress) {
+    const urls = thumbUrls(); let done = 0;
+    const c = await caches.open("jp27-cdn");
+    for (let i = 0; i < urls.length; i += 6) {
+      await Promise.all(urls.slice(i, i + 6).map(async u => { if (!(await c.match(u))) { try { await fetch(u, { mode: "no-cors" }); } catch {} } done++; }));
+      onProgress?.(done / urls.length);
+    }
+    const ok = await photosSaved(); if (ok < urls.length * .9) throw new Error("foto");
+  }
+
   // ——— gestione mappe offline ———
   async function openOfflineMaps() {
     const st = await OfflineMap.status(), used = await OfflineMap.usedMB();
+    const nFoto = Object.keys(FOTO).length, fotoOk = (await photosSaved()) >= nFoto * .9;
     const busy = {};
     const row = z => `<div class="card zrow" data-zone="${z.id}"><div class="row"><span class="pic" style="background:${z.base ? "#6b5a45" : "#1f9488"}">${icon(z.base ? "Map" : "Mountain")}</span>
       <div class="grow"><b>${esc(z.nome)}</b><div class="small muted">${z.mb.toLocaleString("it-IT")} MB${z.base ? " · si scarica con la prima zona" : ""}</div></div>
@@ -854,8 +897,12 @@
       <div class="progress" hidden style="margin-top:10px"><i style="width:0"></i></div></div>`;
     openSheet(`<div class="ttl"><span class="pic" style="background:#1f9488">${icon("CloudOff")}</span><h2>Mappe offline</h2></div>
       <p class="lead">Scaricale ora col Wi-Fi: in Giappone la mappa funzionerà anche senza rete, con la vostra posizione GPS. Per navigare con i treni serve comunque la rete (Google Maps).</p>
-      ${OfflineMap.ZONE.some(z => !st[z.id]) ? `<button class="btn primary" id="zall" style="width:100%;margin-bottom:14px">${icon("Download")} Scarica tutte (${Math.round(OfflineMap.ZONE.filter(z => !st[z.id]).reduce((a, z) => a + z.mb, 0))} MB)</button>` : `<p class="small" style="color:var(--ok);margin-top:0">${icon("Check")} Tutte le zone sono disponibili offline</p>`}
+      ${OfflineMap.ZONE.some(z => !st[z.id]) || !fotoOk ? `<button class="btn primary" id="zall" style="width:100%;margin-bottom:14px">${icon("Download")} Scarica tutte (${Math.round(OfflineMap.ZONE.filter(z => !st[z.id]).reduce((a, z) => a + z.mb, 0) + (fotoOk ? 0 : 3))} MB)</button>` : `<p class="small" style="color:var(--ok);margin-top:0">${icon("Check")} Tutte le zone sono disponibili offline</p>`}
       ${OfflineMap.ZONE.map(row).join("")}
+      <div class="card zrow" id="zfoto"><div class="row"><span class="pic" style="background:#7b4fa0">${icon("Palette")}</span>
+        <div class="grow"><b>Foto dei luoghi</b><div class="small muted">${nFoto} miniature · circa 3 MB</div></div>
+        ${fotoOk ? `<span class="pill ok">${icon("Check")} offline</span>` : `<button class="btn small primary" id="fdl">${icon("Download")} Scarica</button>`}</div>
+        <div class="progress" hidden style="margin-top:10px"><i style="width:0"></i></div></div>
       <p class="small muted">${used != null ? `Spazio usato dall'app: circa ${used} MB. ` : ""}Su iPhone usa l'app dalla schermata Home, così iOS non cancella le mappe.</p>`, el => {
       $$("[data-zdl]", el).forEach(b => b.onclick = async () => {
         const z = OfflineMap.ZONE.find(x => x.id === b.dataset.zdl); if (busy[z.id]) return; busy[z.id] = true;
@@ -870,12 +917,18 @@
         const todo = OfflineMap.ZONE.filter(z => !st[z.id]);
         try {
           for (const [i, z] of todo.entries()) await OfflineMap.download(z, f => { b.textContent = `${z.nome}: ${Math.round(f * 100)}% (${i + 1}/${todo.length})`; });
+          if (!fotoOk) await savePhotos(f => { b.textContent = `Foto: ${Math.round(f * 100)}%`; });
           OfflineMap.reset(); toast("Tutte le mappe sono offline ✓"); openOfflineMaps();
         } catch { toast("Download interrotto: riprova col Wi-Fi"); openOfflineMaps(); }
       });
+      $("#fdl", el)?.addEventListener("click", async e => {
+        const b = e.currentTarget, bar = $("#zfoto .progress", el); bar.hidden = false; b.disabled = true;
+        try { await savePhotos(f => { $("i", bar).style.width = Math.round(f * 100) + "%"; b.textContent = Math.round(f * 100) + "%"; }); toast("Foto salvate per l'offline ✓"); openOfflineMaps(); }
+        catch { toast("Alcune foto non si sono scaricate: riprova col Wi-Fi"); openOfflineMaps(); }
+      });
       $$("[data-zdel]", el).forEach(b => b.onclick = async () => {
         const z = OfflineMap.ZONE.find(x => x.id === b.dataset.zdel);
-        if (!confirm(`Eliminare la mappa offline "${z.nome}" da questo telefono?`)) return;
+        if (!(await ask({ title: `Eliminare "${z.nome}"?`, text: "La mappa offline verrà tolta da questo telefono. Potrai riscaricarla quando vuoi.", ok: "Elimina", danger: true }))) return;
         await OfflineMap.remove(z); OfflineMap.reset(); openOfflineMaps();
       });
     });
@@ -1072,7 +1125,7 @@
         if (item.luogo && !booked.has(item.luogo)) { booked.add(item.luogo); savePlan(); }   // biglietto preso = "prenotato" spuntato
         closeSheet(); toast("Salvato ✓"); rerender();
       };
-      $("#p-del", el)?.addEventListener("click", () => { if (confirm("Eliminare questa prenotazione per tutti?")) { delItem("prenotazioni", p.id); closeSheet(); rerender(); } });
+      $("#p-del", el)?.addEventListener("click", async () => { if (await ask({ title: "Eliminare questa prenotazione?", text: "Sparirà anche dai telefoni degli altri.", ok: "Elimina", danger: true })) { delItem("prenotazioni", p.id); closeSheet(); rerender(); } });
     });
   }
 
@@ -1184,7 +1237,7 @@
         putItem("spese", { ...s, ...st, desc: $("#s-desc", el).value.trim(), importo, eur: Math.round(eur * 100) / 100, data: $("#s-data", el).value, ts: s.ts || Date.now() });
         closeSheet(); toast("Spesa salvata ✓"); rerender();
       };
-      $("#s-del", el)?.addEventListener("click", () => { if (confirm("Eliminare questa spesa per tutti?")) { delItem("spese", s.id); closeSheet(); rerender(); } });
+      $("#s-del", el)?.addEventListener("click", async () => { if (await ask({ title: "Eliminare questa spesa?", text: "Sparirà anche dai telefoni degli altri e il saldo verrà ricalcolato.", ok: "Elimina", danger: true })) { delItem("spese", s.id); closeSheet(); rerender(); } });
     });
   }
 
