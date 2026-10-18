@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 29;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 30;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -15,7 +15,34 @@
   const zoneOrder = Object.fromEntries(ZONE.map((z, i) => [z.id, i]));
   const clone = o => JSON.parse(JSON.stringify(o));
 
-  let plan = LS.get("plan", null) || clone(window.BOZZA || {});   // { "2027-02-20": { l, n, i: [...] } }
+  // dati letti dal telefono o arrivati dagli altri: si ripuliscono sempre, così una voce incompleta
+  // (versione vecchia dell'app, salvataggio interrotto) non può bloccare una pagina
+  const str = v => typeof v === "string" ? v : v == null ? "" : String(v);
+  function cleanPlan(p) {
+    const out = {};
+    for (const [d, v] of Object.entries(p && typeof p === "object" ? p : {})) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
+      const o = v && typeof v === "object" ? v : {};
+      out[d] = { ...o, l: str(o.l), n: str(o.n), i: Array.isArray(o.i) ? o.i.filter(x => typeof x === "string" && x) : [] };
+      if (o.t && typeof o.t !== "object") delete out[d].t;
+    }
+    return out;
+  }
+  function cleanList(name, items) {
+    const rate0 = (LS.get("rate", { r: 170 }) || {}).r || 170;
+    return (Array.isArray(items) ? items : []).filter(x => x && typeof x === "object" && x.id).map(x => {
+      if (name === "spese") {
+        const importo = +x.importo, valuta = x.valuta === "EUR" ? "EUR" : "JPY";
+        if (!(importo > 0)) return null;
+        const eur = +x.eur > 0 ? +x.eur : valuta === "EUR" ? importo : Math.round(importo / rate0 * 100) / 100;
+        const per = (Array.isArray(x.perChi) ? x.perChi : []).filter(n => T.viaggiatori.includes(n));
+        return { ...x, importo, valuta, eur, perChi: per.length ? per : [...T.viaggiatori], pagatoDa: T.viaggiatori.includes(x.pagatoDa) ? x.pagatoDa : T.viaggiatori[0], desc: str(x.desc), cat: str(x.cat) || "altro" };
+      }
+      if (name === "prenotazioni") return { ...x, tipo: ["hotel", "volo", "treno", "biglietto", "altro"].includes(x.tipo) ? x.tipo : "altro", titolo: str(x.titolo), dal: /^\d{4}-\d{2}-\d{2}$/.test(x.dal) ? x.dal : "", al: /^\d{4}-\d{2}-\d{2}$/.test(x.al) ? x.al : "", lat: isFinite(x.lat) && x.lat !== null ? +x.lat : null, lng: isFinite(x.lng) && x.lng !== null ? +x.lng : null };
+      return x;
+    }).filter(Boolean);
+  }
+  let plan = cleanPlan(LS.get("plan", null) || clone(window.BOZZA || {}));   // { "2027-02-20": { l, n, i: [...] } }
   let booked = new Set(LS.get("booked", []));
   let checks = new Set(LS.get("checks", []));
   let me = LS.get("me", "");
@@ -141,7 +168,7 @@
 
   // ——— salvataggio + sync ———
   // Spese e prenotazioni: una voce per documento, in cache locale per l'avvio offline.
-  const lists = { spese: LS.get("spese", []), prenotazioni: LS.get("prenotazioni", []), luoghi: LS.get("luoghi", []) };
+  const lists = { spese: cleanList("spese", LS.get("spese", [])), prenotazioni: cleanList("prenotazioni", LS.get("prenotazioni", [])), luoghi: cleanList("luoghi", LS.get("luoghi", [])) };
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   let code = LS.get("code", "");
   let pushT;
@@ -198,15 +225,17 @@
     if (!data) { if (first) { sync.pushMain({ plan, booked: [...booked], by: me || "?" }); synced = { plan: clone(plan), booked: [...booked] }; } return; }
     // tiene le modifiche locali non ancora inviate, prende tutto il resto dal server
     const mine = localChanges();
-    synced = { plan: clone(data.plan || {}), booked: [...(data.booked || [])] };
-    plan = { ...clone(data.plan || {}), ...clone(mine.days) };
-    booked = new Set([...(data.booked || []).filter(x => !mine.rem.includes(x)), ...mine.add]);
+    const remote = cleanPlan(data.plan);
+    synced = { plan: clone(remote), booked: [...(Array.isArray(data.booked) ? data.booked : [])] };
+    plan = { ...remote, ...clone(mine.days) };
+    booked = new Set([...(Array.isArray(data.booked) ? data.booked : []).filter(x => !mine.rem.includes(x)), ...mine.add]);
     if (Object.keys(mine.days).length || mine.add.length || mine.rem.length) { clearTimeout(pushT); pushT = setTimeout(pushChanges, 400); }
     lastEdit = { by: data.by, at: data.at?.toMillis?.() || Date.now() };
     LS.set("plan", plan); LS.set("booked", [...booked]); LS.set("lastEdit", lastEdit);
     remoteChanged();
   }
   function onList(name, items) {
+    items = cleanList(name, items);
     lists[name] = items; LS.set(name, items);
     if (name === "luoghi") mergeCustom();
     remoteChanged();
@@ -1108,7 +1137,7 @@
           e.src = pinUrl("p", byId[id], n); e.width = w; e.height = h; e.style.zIndex = n ? 100 - n : 1;
         }
         curVis = vis; curNums = nums; recluster();
-        for (const h of hotelsWithPos()) { hk[h.id] ||= new maplibregl.Marker({ element: markerEl(pinUrl("hotel")), anchor: "bottom" }).addTo(map); hk[h.id].setLngLat([h.lng, h.lat]); }
+        for (const h of hotelsWithPos()) { if (hk[h.id]) hk[h.id].setLngLat([h.lng, h.lat]); else hk[h.id] = new maplibregl.Marker({ element: markerEl(pinUrl("hotel")), anchor: "bottom" }).setLngLat([h.lng, h.lat]).addTo(map); }   // prima la posizione, poi sulla mappa
         popup?.remove();
       },
       route(pts) { routePts = pts; if (map.isStyleLoaded()) addRoute(); },
@@ -1417,7 +1446,7 @@
   const BOOK_DAYS = (() => { const out = [], a = new Date(T.inizio + "T00:00:00Z"), b = new Date(T.fine + "T00:00:00Z"); a.setUTCDate(a.getUTCDate() - 3); b.setUTCDate(b.getUTCDate() + 3); for (const d = a; d <= b; d.setUTCDate(d.getUTCDate() + 1)) out.push(d.toISOString().slice(0, 10)); return out; })();   // l'ultimo giorno si parte
   const hotelFor = d => lists.prenotazioni.find(p => p.tipo === "hotel" && p.dal <= d && d < (p.al || p.dal));
   const bookingsOn = d => lists.prenotazioni.filter(p => p.dal === d && p.tipo !== "hotel").sort((a, b) => (a.ora || "99").localeCompare(b.ora || "99"));
-  const nightsOf = p => Math.max(1, Math.round((new Date(p.al + "T00:00:00Z") - new Date(p.dal + "T00:00:00Z")) / 864e5));
+  const nightsOf = p => p.dal && p.al ? Math.max(1, Math.round((new Date(p.al + "T00:00:00Z") - new Date(p.dal + "T00:00:00Z")) / 864e5)) : 0;
   const addrQ = p => p.jp || p.indirizzo || p.titolo;
   const gmTo = s => `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(s)}&travelmode=transit`;
   const showTaxi = p => showBig(p.jp || p.indirizzo || p.titolo, `${esc(p.titolo)}<br><span class="jp" style="font-size:1.2rem;color:var(--ink)">ここに行ってください</span><br><small>"Mi porti qui, per favore"</small>`);
@@ -1426,7 +1455,7 @@
   function pcard(p) {
     const [ic, col, tn] = PTYPE[p.tipo] || PTYPE.altro;
     const when = p.tipo === "hotel"
-      ? `${short(p.dal)} → ${short(p.al || p.dal)} · ${nightsOf(p)} ${nightsOf(p) === 1 ? "notte" : "notti"}${p.ora ? ` · check-in ${esc(p.ora)}` : ""}`
+      ? (p.dal && p.al ? `${short(p.dal)} → ${short(p.al)} · ${nightsOf(p)} ${nightsOf(p) === 1 ? "notte" : "notti"}` : "date da definire") + (p.ora ? ` · check-in ${esc(p.ora)}` : "")
       : `${p.dal ? fmtDay(p.dal, { weekday: "short", day: "numeric", month: "short" }) : "data da definire"}${p.ora ? " · " + esc(p.ora) : ""}`;
     const route = p.da || p.a ? `<div class="small">${esc(p.da || "?")} → ${esc(p.a || "?")}</div>` : "";
     return `<div class="card pcard${p.id === freshId ? " fresh" : ""}" data-pren="${p.id}">
@@ -1465,7 +1494,7 @@
 
   function editPren(p) {
     const isNew = !p.id, t = p.tipo || "altro";
-    const [ic, col, tn] = PTYPE[t];
+    const [ic, col, tn] = PTYPE[t] || PTYPE.altro;
     const dayOpts = sel => `<option value="">Scegli il giorno</option>` + BOOK_DAYS.map(d => `<option value="${d}" ${d === sel ? "selected" : ""}>${fmtDay(d, { weekday: "short", day: "numeric", month: "short" })}${d < T.inizio ? " · prima del viaggio" : d > T.fine ? " · dopo il viaggio" : ""}</option>`).join("");
     const f = (id, label, val, attrs = "", ph = "") => `<label class="fl"><span>${label}</span><input id="${id}" value="${esc(val || "")}" ${attrs}${ph ? ` placeholder="${esc(ph)}"` : ""}></label>`;
     const titolo = t === "hotel" ? "Nuovo hotel" : t === "volo" ? "Nuovo volo" : t === "treno" ? "Nuovo treno" : t === "biglietto" ? "Nuovo biglietto" : "Nuova prenotazione";
