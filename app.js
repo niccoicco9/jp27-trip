@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 25;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 26;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -52,12 +52,20 @@
   }
 
   // caricamento pigro delle foto: si scaricano solo quando stanno per comparire (risparmio dati)
+  const seenPh = new Set();
+  function showPhoto(el) {
+    const u = el.dataset.bg; el.removeAttribute("data-bg");
+    const put = () => { el.style.backgroundImage = `url('${u}')`; el.classList.add("in"); };
+    if (seenPh.has(u)) { el.classList.add("now"); return put(); }   // già scaricata: niente dissolvenza, niente lampeggio
+    const img = new Image(); img.src = u;
+    (img.decode ? img.decode() : Promise.resolve()).catch(() => {}).then(() => { seenPh.add(u); put(); });
+  }
   const lazyIO = "IntersectionObserver" in window ? new IntersectionObserver(es => es.forEach(e => {
     if (!e.isIntersecting) return;
-    const el = e.target; el.style.backgroundImage = `url('${el.dataset.bg}')`; el.removeAttribute("data-bg"); lazyIO.unobserve(el);
+    lazyIO.unobserve(e.target); showPhoto(e.target);
   }), { rootMargin: "300px" }) : null;
   function lazyScan() {
-    $$("[data-bg]").forEach(el => { if (el.dataset.lz) return; el.dataset.lz = 1; lazyIO ? lazyIO.observe(el) : (el.style.backgroundImage = `url('${el.dataset.bg}')`); });
+    $$("[data-bg]").forEach(el => { if (el.dataset.lz) return; el.dataset.lz = 1; if (seenPh.has(el.dataset.bg) || !lazyIO) showPhoto(el); else lazyIO.observe(el); });
   }
   let lazyRaf = 0;
   new MutationObserver(() => { cancelAnimationFrame(lazyRaf); lazyRaf = requestAnimationFrame(lazyScan); }).observe(document.body, { childList: true, subtree: true });
@@ -160,6 +168,7 @@
   function putItem(name, item) {
     item = { ...item, id: item.id || uid(), by: me || "?" };
     const arr = lists[name], k = arr.findIndex(x => x.id === item.id);
+    if (k < 0) markFresh(item.id);
     k >= 0 ? (arr[k] = item) : arr.push(item);
     LS.set(name, arr); sync?.put(name, item);
     if (name === "luoghi") mergeCustom();
@@ -171,7 +180,7 @@
   }
   function remoteChanged() {
     const a = document.activeElement;
-    if (!(a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) && sheet.hidden) rerender(); else pendingRemote = true;
+    if (!(a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) && !sheetOpen()) rerender(); else pendingRemote = true;
   }
   function onRemote(data, first) {
     if (!data) { if (first) { sync.pushMain({ plan, booked: [...booked], by: me || "?" }); synced = { plan: clone(plan), booked: [...booked] }; } return; }
@@ -230,43 +239,107 @@
     return `${icon("TrainFront")} trasferimento · ~${Math.round(km)} km`;
   }
 
+  // ——— animazioni ———
+  const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let freshId = null, freshT;
+  function markFresh(id) { freshId = id; clearTimeout(freshT); freshT = setTimeout(() => (freshId = null), 1200); }
+  // richiude lo spazio di un elemento prima di toglierlo
+  function collapse(el) {
+    if (!el || reduceMotion()) return Promise.resolve();
+    const h = el.getBoundingClientRect().height;
+    el.style.height = h + "px"; el.style.overflow = "hidden"; void el.offsetHeight;
+    el.style.transition = "height .22s cubic-bezier(.32, .72, 0, 1), opacity .18s"; el.style.height = "0px"; el.style.opacity = "0";
+    return new Promise(r => setTimeout(r, 220));
+  }
+  // numeri che salgono fino al valore e barre che si riempiono (solo quando si entra in una pagina)
+  function playIntro(root = view) {
+    if (reduceMotion()) return;
+    $$("[data-count]", root).forEach(el => {
+      const to = +el.dataset.count, fmt = el.dataset.fmt, t0 = performance.now(), dur = 750;
+      const show = v => el.textContent = fmt === "eur" ? eurF(v) : fmt === "eur±" ? (to > 0 ? "+" : "") + eurF(v) : Math.round(v).toLocaleString("it-IT");
+      if (!to) return;
+      let done = false;
+      const step = () => { if (done) return; const k = Math.min(1, Math.max(0, (performance.now() - t0) / dur)), e = 1 - Math.pow(1 - k, 3); show(to * e); if (k < 1) requestAnimationFrame(step); else done = true; };
+      show(0); requestAnimationFrame(step);
+      setTimeout(() => { done = true; show(to); }, dur + 60);   // valore giusto garantito anche se i fotogrammi si fermano
+    });
+    $$(".progress i", root).forEach(el => { const w = el.style.width; el.style.transition = "none"; el.style.width = "0"; void el.offsetWidth; el.style.transition = ""; setTimeout(() => (el.style.width = w), 30); });
+  }
+
   // ——— ui helpers ———
   let toastT;
   function toast(msg, undo) {
     const t = $("#toast");
     t.innerHTML = `<span>${esc(msg)}</span>${undo ? `<button class="undo">${icon("Undo2")} Annulla</button>` : ""}`;
     t.classList.toggle("act", !!undo); t.hidden = false;
-    if (undo) t.querySelector(".undo").onclick = () => { clearTimeout(toastT); t.hidden = true; undo(); };
-    clearTimeout(toastT); toastT = setTimeout(() => (t.hidden = true), undo ? 5000 : 2200);
+    t.classList.remove("out");
+    if (undo || /✓/.test(msg)) buzz();
+    const hide = () => { if (t.hidden) return; t.classList.add("out"); toastT = setTimeout(() => { t.hidden = true; t.classList.remove("out"); }, reduceMotion() ? 0 : 200); };
+    if (undo) t.querySelector(".undo").onclick = () => { clearTimeout(toastT); hide(); buzz(); undo(); };
+    clearTimeout(toastT); toastT = setTimeout(hide, undo ? 5000 : 2200);
   }
   const sheet = $("#sheet"), sheetCard = $(".sheet-card");
   let sheetOnClose = null;
+  let sheetT = null;
+  const sheetOpen = () => !sheet.hidden && !sheet.classList.contains("closing");
   function openSheet(html, onMount, onClose) {
+    clearTimeout(sheetT); sheet.classList.remove("closing"); sheetCard.style.transition = "";
     $("#sheet-body").innerHTML = html; sheet.hidden = false; document.body.style.overflow = "hidden";
     sheetCard.scrollTop = 0; sheetCard.style.transform = "";
+    lazyScan();
     sheetOnClose = onClose || null;
     onMount?.($("#sheet-body"));
   }
-  function closeSheet() {
-    if (sheet.hidden) return;
-    sheet.hidden = true; document.body.style.overflow = "";
+  function closeSheet(instant) {
+    if (!sheetOpen()) return;
+    document.body.style.overflow = "";
+    if (instant || reduceMotion()) { sheet.hidden = true; sheetCard.style.transform = ""; }
+    else {
+      sheet.classList.add("closing");
+      sheetCard.style.transition = "transform .28s cubic-bezier(.32, .72, 0, 1)"; sheetCard.style.transform = "translateY(105%)";
+      sheetT = setTimeout(() => { sheet.hidden = true; sheet.classList.remove("closing"); sheetCard.style.transition = ""; sheetCard.style.transform = ""; }, 280);
+    }
     const f = sheetOnClose; sheetOnClose = null; f?.();
     if (pendingRemote) { pendingRemote = false; rerender(); }
   }
   document.addEventListener("focusout", () => setTimeout(() => {
     const a = document.activeElement;
-    if (pendingRemote && sheet.hidden && !(a && /INPUT|TEXTAREA|SELECT/.test(a.tagName))) { pendingRemote = false; rerender(); }
+    if (pendingRemote && !sheetOpen() && !(a && /INPUT|TEXTAREA|SELECT/.test(a.tagName))) { pendingRemote = false; rerender(); }
   }, 300));
   sheet.addEventListener("click", e => { if (e.target.closest("[data-close]")) closeSheet(); });
-  document.addEventListener("keydown", e => { if (e.key === "Escape") { closeSheet(); $("#big").hidden = true; } });
-  // trascina giù per chiudere
+  document.addEventListener("keydown", e => { if (e.key === "Escape") { closeSheet(); hideBig(); } });
+  // trascina giù per chiudere: dalla lineetta o da qualunque punto quando il contenuto è in cima;
+  // basta anche un colpetto veloce verso il basso
   (() => {
-    let y0 = null, dy = 0;
+    let y0 = null, dy = 0, t0 = 0, lastY = 0, lastT = 0, v = 0, mode = null;
+    const startAt = (y) => { y0 = y; dy = 0; t0 = lastT = performance.now(); lastY = y; v = 0; sheetCard.style.transition = "none"; };
+    const moveTo = y => {
+      const now = performance.now(); v = (y - lastY) / Math.max(1, now - lastT); lastY = y; lastT = now;
+      dy = Math.max(0, y - y0); sheetCard.style.transform = `translateY(${dy}px)`;
+      sheet.style.setProperty("--dim", String(Math.max(0, 1 - dy / 400)));
+    };
+    const finish = () => {
+      if (y0 == null) return; y0 = null; mode = null;
+      sheet.style.removeProperty("--dim");
+      if (dy > 110 || (v > .55 && dy > 16)) { buzz(); closeSheet(); return; }
+      sheetCard.style.transition = "transform .32s cubic-bezier(.32, .72, 0, 1)"; sheetCard.style.transform = "";
+    };
     const grab = $(".grab");
-    grab.addEventListener("pointerdown", e => { y0 = e.clientY; dy = 0; grab.setPointerCapture(e.pointerId); sheetCard.style.transition = "none"; });
-    grab.addEventListener("pointermove", e => { if (y0 == null) return; dy = Math.max(0, e.clientY - y0); sheetCard.style.transform = `translateY(${dy}px)`; });
-    const end = () => { if (y0 == null) return; y0 = null; sheetCard.style.transition = "transform .25s"; if (dy > 90) closeSheet(); sheetCard.style.transform = ""; };
-    grab.addEventListener("pointerup", end); grab.addEventListener("pointercancel", end);
+    grab.addEventListener("pointerdown", e => { startAt(e.clientY); grab.setPointerCapture(e.pointerId); });
+    grab.addEventListener("pointermove", e => { if (y0 != null) moveTo(e.clientY); });
+    grab.addEventListener("pointerup", finish); grab.addEventListener("pointercancel", finish);
+    sheetCard.addEventListener("touchstart", e => {
+      if (e.target.closest(".grab, input, textarea, select, .chips, .mcar, .hscroll")) { mode = "no"; return; }
+      mode = sheetCard.scrollTop <= 0 ? "maybe" : "no"; lastY = e.touches[0].clientY; y0 = null;
+    }, { passive: true });
+    sheetCard.addEventListener("touchmove", e => {
+      if (mode === "no" || !mode) return;
+      const y = e.touches[0].clientY;
+      if (mode === "maybe") { if (y - lastY > 4 && sheetCard.scrollTop <= 0) { mode = "drag"; startAt(y); } else if (lastY - y > 4) { mode = "no"; return; } else return; }
+      e.preventDefault(); moveTo(y);
+    }, { passive: false });
+    sheetCard.addEventListener("touchend", () => { if (mode === "drag") finish(); mode = null; });
+    sheetCard.addEventListener("touchcancel", () => { if (mode === "drag") finish(); mode = null; });
   })();
 
   // finestra di conferma nello stile dell'app (sopra anche le schede aperte); restituisce true/false
@@ -276,7 +349,7 @@
       d.innerHTML = `<div class="dlg-bg"></div><div class="dlg-card" role="alertdialog" aria-modal="true">
         <span class="dlg-ic${danger ? " danger" : ""}">${icon(ic)}</span><b>${esc(title)}</b>${text ? `<p>${esc(text)}</p>` : ""}
         <div class="dlg-btns"><button class="btn" data-a="0">Annulla</button><button class="btn ${danger ? "danger" : "primary"}" data-a="1">${esc(ok)}</button></div></div>`;
-      const close = v => { d.classList.add("out"); setTimeout(() => d.remove(), 160); document.removeEventListener("keydown", key); res(v); };
+      const close = v => { d.classList.add("out"); setTimeout(() => d.remove(), 180); document.removeEventListener("keydown", key); res(v); };
       const key = e => { if (e.key === "Escape") close(false); };
       d.addEventListener("click", e => { const b = e.target.closest("[data-a]"); if (b) close(b.dataset.a === "1"); else if (e.target.classList.contains("dlg-bg")) close(false); });
       document.addEventListener("keydown", key);
@@ -284,11 +357,17 @@
     });
   }
 
+  function hideBig() {
+    const b = $("#big"); if (b.hidden || b.classList.contains("out")) return;
+    if (reduceMotion()) { b.hidden = true; return; }
+    b.classList.add("out"); setTimeout(() => { b.hidden = true; b.classList.remove("out"); }, 180);
+  }
   function showBig(jp, sub, speakIt) {
     const b = $("#big");
     b.innerHTML = `<div class="jp">${esc(jp)}</div>${sub ? `<div class="sub">${sub}</div>` : ""}<div class="btns" style="width:100%;max-width:360px"><button class="btn" data-say>${icon("Volume2")} Ascolta</button><button class="btn primary">Chiudi</button></div>`;
     b.hidden = false;
-    b.onclick = e => { if (e.target.closest("[data-say]")) return speak(jp); b.hidden = true; };
+    b.classList.remove("out");
+    b.onclick = e => { if (e.target.closest("[data-say]")) return speak(jp); hideBig(); };
     if (speakIt) speak(jp);
   }
   function speak(text) {
@@ -317,7 +396,7 @@
   }
   function placeRow(p, opts = {}) {
     const [ic, col] = cat(p);
-    return `<div class="place${p.out ? " out" : ""}" data-place="${p.id}">
+    return `<div class="place${p.out ? " out" : ""}${p.id === freshId ? " fresh" : ""}" data-place="${p.id}">
       <div style="position:relative">${photo(p.id, 330)}${photoUrl(p.id) ? `<span class="cat-ic" style="background:${col}">${icon(ic)}</span>` : ""}</div>
       <div class="grow"><h4>${esc(p.n)}</h4><div class="jp">${esc(p.jp)}</div><div class="meta">${placeMeta(p, opts)}</div></div>
       ${opts.right || ""}
@@ -414,7 +493,7 @@
     let hero;
     if (before || after) hero = `<div class="hero">${art()}<div class="hero-in">
         <span class="kicker">${before ? hi + (daysTo === 1 ? "Manca" : "Mancano") : "Okaeri!"}</span>
-        ${before ? `<div class="big-n">${daysTo}</div><div class="title">${daysTo === 1 ? "giorno" : "giorni"} al Giappone</div>` : `<div class="title">Viaggio concluso.<br>Arigatō, Giappone!</div>`}
+        ${before ? `<div class="big-n" data-count="${daysTo}">${daysTo}</div><div class="title">${daysTo === 1 ? "giorno" : "giorni"} al Giappone</div>` : `<div class="title">Viaggio concluso.<br>Arigatō, Giappone!</div>`}
         <p>${fmtDay(T.inizio, { day: "numeric", month: "long" })} – ${fmtDay(T.fine, { day: "numeric", month: "long", year: "numeric" })} · Niccolò & Antonella · Miriam & Paolo</p>
       </div></div>`;
     else {
@@ -568,9 +647,9 @@
     const removeStop = k => {
       const dd = getDay(d), id = dd.i[k], tm = dd.t?.[id]; if (!id) return;
       dd.i.splice(k, 1); if (dd.t) delete dd.t[id]; savePlan(); keepScroll(() => renderGiorni());
-      toast(`${byId[id]?.n || "Tappa"}: tolta`, () => { const d2 = getDay(d); d2.i.splice(Math.min(k, d2.i.length), 0, id); if (tm) (d2.t ||= {})[id] = tm; savePlan(); keepScroll(() => renderGiorni()); });
+      toast(`${byId[id]?.n || "Tappa"}: tolta`, () => { const d2 = getDay(d); markFresh(id); d2.i.splice(Math.min(k, d2.i.length), 0, id); if (tm) (d2.t ||= {})[id] = tm; savePlan(); keepScroll(() => renderGiorni()); });
     };
-    $$("[data-rm]").forEach(b => b.onclick = () => removeStop(+b.dataset.rm));
+    $$("[data-rm]").forEach(b => b.onclick = () => collapse(b.closest("li")).then(() => removeStop(+b.dataset.rm)));
     $$("[data-time]").forEach(inp => inp.onchange = () => {
       const dd = getDay(d); dd.t ||= {};
       if (inp.value) dd.t[inp.dataset.time] = inp.value; else delete dd.t[inp.dataset.time];
@@ -611,7 +690,7 @@
       }, { passive: true });
       li.addEventListener("touchend", () => {
         card.style.transition = "";
-        if (on && dx < -110) { card.style.transform = "translateX(-110%)"; setTimeout(() => removeStop(k), 160); }
+        if (on && dx < -110) { card.style.transform = "translateX(-110%)"; setTimeout(() => collapse(li).then(() => removeStop(k)), 140); }
         else { card.style.transform = ""; li.classList.remove("swipe-go"); }
       });
     });
@@ -656,7 +735,8 @@
         if (e.target.closest("[data-newl]")) return editLuogo({ n: $("#pk-q", el).value.trim() }, d);
         const it = e.target.closest("[data-pick]"); if (!it) return;
         const day = getDay(d); const id = it.dataset.pick; const k = day.i.indexOf(id);
-        k >= 0 ? day.i.splice(k, 1) : day.i.push(id); savePlan(); draw(el);
+        if (k >= 0) day.i.splice(k, 1); else { day.i.push(id); markFresh(id); buzz(); }
+        savePlan(); draw(el);
       };
     }, () => { if (location.hash.startsWith("#giorni")) keepScroll(() => renderGiorni()); });
   }
@@ -688,6 +768,14 @@
   }
 
   // ——— LUOGHI ———
+  // liste lunghe: si disegnano subito le prime righe (quelle che si vedono), il resto al frame successivo
+  let progTok = 0;
+  function putProgressive(el, html) {
+    const tok = ++progTok, cut = html.split(/(?=<h3>|<div class="place)/);
+    if (cut.length <= 30) { el.innerHTML = html; lazyScan(); return; }
+    el.innerHTML = cut.slice(0, 26).join(""); lazyScan();
+    setTimeout(() => { if (tok !== progTok || !el.isConnected) return; el.insertAdjacentHTML("beforeend", cut.slice(26).join("")); lazyScan(); }, 40);
+  }
   let lf = { z: "all", q: "", out: false, pren: false, mine: false, near: null };
   function renderLuoghi() {
     view.innerHTML = `
@@ -710,7 +798,7 @@
         .sort((a, b) => (a.out ? 1 : 0) - (b.out ? 1 : 0) || (lf.near ? kmBetween(lf.near, a) - kmBetween(lf.near, b) : zoneOrder[a.z] - zoneOrder[b.z]));
       let last = null, html = "";
       if (lf.near) {
-        $("#llist").innerHTML = list.slice(0, 40).map(p => placeRow(p).replace('<div class="meta">', `<div class="meta"><span class="pill">${icon("Navigation")} ${fmtKm(kmBetween(lf.near, p))}</span>`)).join("") || `<p class="empty">Nessun risultato</p>`;
+        putProgressive($("#llist"), list.slice(0, 40).map(p => placeRow(p).replace('<div class="meta">', `<div class="meta"><span class="pill">${icon("Navigation")} ${fmtKm(kmBetween(lf.near, p))}</span>`)).join("") || `<p class="empty">Nessun risultato</p>`);
         return;
       }
       for (const p of list) {
@@ -718,7 +806,7 @@
         if (key !== last && lf.z === "all") html += `<h3>${p.out ? "Scartati" : `<span class="dot" style="background:${zona[p.z].colore};margin-right:6px"></span>${esc(zona[p.z].nome)}`}</h3>`;
         last = key; html += placeRow(p, { noZone: lf.z !== "all" || true });
       }
-      $("#llist").innerHTML = html || `<p class="empty">Nessun risultato</p>`;
+      putProgressive($("#llist"), html || `<p class="empty">Nessun risultato</p>`);
     };
     draw();
     $("#lq").oninput = e => { lf.q = e.target.value; draw(); };
@@ -1210,7 +1298,7 @@
       ? `${short(p.dal)} → ${short(p.al || p.dal)} · ${nightsOf(p)} ${nightsOf(p) === 1 ? "notte" : "notti"}${p.ora ? ` · check-in ${esc(p.ora)}` : ""}`
       : `${p.dal ? fmtDay(p.dal, { weekday: "short", day: "numeric", month: "short" }) : "data da definire"}${p.ora ? " · " + esc(p.ora) : ""}`;
     const route = p.da || p.a ? `<div class="small">${esc(p.da || "?")} → ${esc(p.a || "?")}</div>` : "";
-    return `<div class="card pcard" data-pren="${p.id}">
+    return `<div class="card pcard${p.id === freshId ? " fresh" : ""}" data-pren="${p.id}">
       <div class="row"><span class="pic" style="background:${col}">${icon(ic)}</span>
         <div class="grow"><b>${esc(p.titolo || tn)}</b><div class="muted small">${when}</div>${route}${p.indirizzo ? `<div class="small muted">${esc(p.indirizzo)}</div>` : ""}</div></div>
       ${p.codice ? `<div class="small" style="margin-top:8px">${icon("KeyRound")} Codice: <b class="copiabile">${esc(p.codice)}</b></div>` : ""}
@@ -1456,18 +1544,18 @@
     let lastD = null;
     view.innerHTML = `${back}<h2>Spese</h2><p class="lead">Chi ha pagato cosa, e alla fine chi deve quanto a chi.</p>
       <div class="hero" style="min-height:0">${art()}<div class="hero-in" style="min-height:190px">
-        <span class="kicker">Spesa totale del gruppo</span><div class="big-n" style="font-size:2.6rem">${eurF(total)}</div>
+        <span class="kicker">Spesa totale del gruppo</span><div class="big-n" style="font-size:2.6rem" data-count="${total}" data-fmt="eur">${eurF(total)}</div>
         <p>${debt ? `<b>${coupleName(debt[0])}</b> devono <b>${eurF(debt[2])}</b> a ${coupleName(debt[1])}` : "Siete in pari 🤝"}</p>
       </div></div>
       <div class="card"><div class="between"><h3 style="margin:0">Saldo per persona</h3>${debt ? `<button class="btn small" id="settle">${icon("HandCoins")} Segna rimborso</button>` : ""}</div>
-        ${T.viaggiatori.map(n => `<div class="row" style="padding:8px 0;border-top:1px solid var(--line)">${avatar(n)}<span class="grow">${n}</span><b style="color:${net[n] > .5 ? "var(--ok)" : net[n] < -.5 ? "var(--shu)" : "var(--muted)"}">${net[n] > 0 ? "+" : ""}${eurF(net[n])}</b></div>`).join("")}
+        ${T.viaggiatori.map(n => `<div class="row" style="padding:8px 0;border-top:1px solid var(--line)">${avatar(n)}<span class="grow">${n}</span><b style="color:${net[n] > .5 ? "var(--ok)" : net[n] < -.5 ? "var(--shu)" : "var(--muted)"}" data-count="${net[n]}" data-fmt="eur±">${net[n] > 0 ? "+" : ""}${eurF(net[n])}</b></div>`).join("")}
         <p class="small muted" style="margin:8px 0 0">+ deve ricevere · − deve dare. Gli importi in yen sono convertiti al cambio del giorno in cui li inserite.</p>
       </div>
       <button class="btn primary" id="adds" style="width:100%;margin-bottom:14px">${icon("Plus")} Aggiungi spesa</button>
       ${items.length ? items.map(s => {
         const [ic, cl] = SCAT[s.cat] || SCAT.altro;
         const head = s.data !== lastD ? `<h3>${s.data ? fmtDay(s.data, { weekday: "long", day: "numeric", month: "long" }) : "Senza data"}</h3>` : ""; lastD = s.data;
-        return `${head}<div class="card spesa" data-spesa="${s.id}"><div class="row">
+        return `${head}<div class="card spesa${s.id === freshId ? " fresh" : ""}" data-spesa="${s.id}"><div class="row">
           <span class="pic" style="background:${s.cat === "rimborso" ? "var(--ok)" : "#7b4fa0"}">${icon(ic)}</span>
           <div class="grow"><b>${esc(s.desc || cl)}</b><div class="small muted">${s.cat === "rimborso" ? `${esc(s.pagatoDa)} → ${esc(splitLabel(s.perChi))}` : `pagato da ${esc(s.pagatoDa)} · per ${esc(splitLabel(s.perChi))}`}</div></div>
           <div style="text-align:right"><b>${s.valuta === "JPY" ? Math.round(s.importo).toLocaleString("it-IT") + " ¥" : eurF(s.importo)}</b>${s.valuta === "JPY" ? `<div class="small muted">${eurF(s.eur)}</div>` : ""}</div>
@@ -1629,7 +1717,7 @@
     }
   }
   // feedback aptico: su iOS 18+ il toggle di un <input switch> fa vibrare il telefono
-  function buzz() { try { haptic.click(); } catch {} navigator.vibrate?.(8); }
+  function buzz() { if (navigator.userActivation && !navigator.userActivation.isActive) return; try { haptic.click(); } catch {} navigator.vibrate?.(8); }
 
   const drag = { on: false, pid: null, x0: 0, timer: 0, tapA: null };
   addEventListener("resize", () => syncInd(true));
@@ -1683,13 +1771,35 @@
     ({ oggi: renderOggi, giorni: () => renderGiorni(sub), luoghi: renderLuoghi, mappa: renderMappa, utility: () => renderUtility(sub) }[tab] || renderOggi)();
   }
   function rerender() { const [tab] = (location.hash.slice(1) || "oggi").split("/"); if (tab !== "mappa") keepScroll(render); }
+  // su iPhone :active (l'effetto pressione) funziona solo con un ascoltatore touchstart
+  document.addEventListener("touchstart", () => {}, { passive: true });
+  // vibrazione leggera quando si spunta qualcosa
+  document.addEventListener("change", e => { if (e.target.matches?.('input[type="checkbox"]') && !e.target.closest(".haptic")) buzz(); });
+  // ogni pagina ricorda dov'eri arrivato; entrare in una sottopagina scorre da destra, tornare da sinistra
+  const scrollMem = {};
+  let lastHash = location.hash || "#oggi";
+  function navKind(from, to) {
+    const [ta, sa] = from.slice(1).split("/"), [tb, sb] = to.slice(1).split("/");
+    if (tb === "mappa" || ta === "mappa") return "fade";
+    if (ta !== tb) return "tab";
+    if (tb === "giorni") { const a = DAYS.indexOf(sa || selDay), b = DAYS.indexOf(sb || selDay); return a === b ? "tab" : b > a ? "next" : "prev"; }
+    if (!sa && sb) return "push";
+    if (sa && !sb) return "pop";
+    return "tab";
+  }
+  function restoreScroll(y) { scrollTo(0, y); if (y && Math.abs(scrollY - y) > 2) [80, 250].forEach(ms => setTimeout(() => { if (scrollY < y) scrollTo(0, y); }, ms)); }
   function navigate() {
-    closeSheet(); $("#big").hidden = true;
+    closeSheet(true); hideBig();
     if (maybeImport()) return;
-    // prima si torna in cima, poi si disegna: niente salti; fade leggero solo sul contenuto
-    if (!location.hash.startsWith("#mappa")) scrollTo(0, 0);
+    const to = location.hash || "#oggi", kind = navKind(lastHash, to);
+    if (!lastHash.startsWith("#mappa")) scrollMem[lastHash] = scrollY;
+    lastHash = to;
+    if (!to.startsWith("#mappa")) scrollTo(0, 0);
     render();
-    view.classList.remove("enter"); void view.offsetWidth; view.classList.add("enter");
+    if (!to.startsWith("#mappa") && (kind === "tab" || kind === "pop")) restoreScroll(scrollMem[location.hash || "#oggi"] || 0);
+    view.classList.remove("enter", "nav-tab", "nav-push", "nav-pop", "nav-next", "nav-prev", "nav-fade"); void view.offsetWidth;
+    view.classList.add("enter", "nav-" + kind);
+    playIntro();
   }
   addEventListener("hashchange", navigate);
 

@@ -660,3 +660,48 @@ body.on-map .map-loading { padding-top: var(--head, 60px); }
 .ugroup { margin: 22px 0 10px; font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .ugroup:first-of-type { margin-top: 8px; }
 .tl.editing .place .meta { display: none; }
+
+/* ——— v26: animazioni e fluidità ——— */
+/* cambio pagina: tra le schede dissolvenza leggera, nelle sottopagine e tra i giorni scorrimento laterale.
+   Solo opacity/transform: niente ricalcolo del layout, fluido anche su iPhone meno recenti */
+main.enter.nav-tab { animation: nav-tab .26s var(--ease); }
+main.enter.nav-push { animation: nav-push .34s cubic-bezier(.32, .72, 0, 1); }
+main.enter.nav-pop { animation: nav-pop .34s cubic-bezier(.32, .72, 0, 1); }
+main.enter.nav-next { animation: nav-next .3s cubic-bezier(.32, .72, 0, 1); }
+main.enter.nav-prev { animation: nav-prev .3s cubic-bezier(.32, .72, 0, 1); }
+main.enter.nav-fade { animation: fade .2s ease-out; }
+@keyframes nav-tab { from { opacity: 0; transform: translateY(8px); } }
+@keyframes nav-push { from { opacity: 0; transform: translateX(42px); } }
+@keyframes nav-pop { from { opacity: 0; transform: translateX(-42px); } }
+@keyframes nav-next { from { opacity: 0; transform: translateX(34px); } }
+@keyframes nav-prev { from { opacity: 0; transform: translateX(-34px); } }
+
+/* scheda: lo sfondo si schiarisce mentre la trascini e sfuma quando si chiude */
+.sheet-bg { opacity: var(--dim, 1); transition: opacity .28s; }
+.sheet.closing .sheet-bg { opacity: 0; }
+.sheet.closing { pointer-events: none; }
+.sheet-card { will-change: transform; }
+
+/* testo grande, conferma e avvisi: escono come entrano */
+.big.out { animation: none; opacity: 0; transform: scale(.98); transition: opacity .18s, transform .18s; }
+.dlg.out .dlg-card { transform: scale(.94); transition: transform .18s; }
+.toast.out { opacity: 0; transform: translate(-50%, 8px); transition: opacity .2s, transform .2s; }
+
+/* foto: compaiono con una dissolvenza (quelle già viste restano ferme) */
+.ph[data-lz] { transition: opacity .4s ease-out; }
+.ph[data-lz]:not(.in) { opacity: 0; }
+.ph.now { transition: none; }
+
+/* voci appena aggiunte */
+.fresh { animation: fresh .5s cubic-bezier(.32, .72, 0, 1); }
+@keyframes fresh { 0% { opacity: 0; transform: translateY(-8px) scale(.97); } 60% { box-shadow: 0 0 0 3px var(--shu-soft); } }
+
+/* effetto pressione su tutto quello che si tocca */
+.ucard, .qa, .dchip, .chip, .mini, .prep, .mcard, .chapter, .lres button, .whos button, .who button, .addgrid button, .dayact > *, .iconbtn, .seg button, .card.pcard, .card.spesa, .nextstop .row {
+  transition: transform .14s var(--ease), background-color .2s, box-shadow .2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.ucard:active, .qa:active, .mini:active, .mcard:active, .chapter:active, .lres button:active, .whos button:active, .who button:active, .addgrid button:active, .dayact > :active:not(:disabled), .card.pcard:active, .card.spesa:active, .nextstop .row:active { transform: scale(.97); }
+.dchip:active, .chip:active, .iconbtn:active, .seg button:active { transform: scale(.92); }
+.prep:active, label.check:active { background-color: color-mix(in srgb, var(--ink) 5%, transparent); }
+.dchip.on:active { transform: translateY(-2px) scale(.94); }
