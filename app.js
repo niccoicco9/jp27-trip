@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 21;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 22;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -89,7 +89,7 @@
   const isDark = () => theme === "dark" || (theme !== "light" && mq.matches);
   function applyTheme() {
     if (theme) document.documentElement.dataset.theme = theme; else delete document.documentElement.dataset.theme;
-    $$('meta[name="theme-color"]').forEach(m => m.setAttribute("content", isDark() ? "#0e0d0c" : "#f5f1ea"));
+    $$('meta[name="theme-color"]').forEach(m => m.setAttribute("content", isDark() ? "#000000" : "#ffffff"));
     $("#theme").innerHTML = icon(theme === "dark" ? "Moon" : theme === "light" ? "Sun" : "SunMoon");
     $("#theme").title = "Tema: " + (theme === "dark" ? "scuro" : theme === "light" ? "chiaro" : "automatico");
     for (const e of Object.values(engines)) e.theme();

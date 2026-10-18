@@ -94,7 +94,11 @@ svg.i { width: 1.15em; height: 1.15em; flex: none; vertical-align: -.2em; }
 }
 /* Intestazione a tinta piena (niente effetto vetro): su iPhone il vetro faceva apparire
    titolo e orari sfocati mentre la pagina o la mappa scorrevano sotto. */
-.top { background: var(--bg); }
+.top { background: var(--head-bg, #fff); }
+/* stesso colore della barra di stato di iPhone (bianca / nera) e di Android (theme-color): nessuno stacco */
+:root { --head-bg: #ffffff; }
+:root[data-theme="dark"] { --head-bg: #000000; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --head-bg: #000000; } }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; text-decoration: none; color: inherit; }
 .brand h1 { font-size: 1.02rem; font-weight: 800; margin: 0; line-height: 1.15; }
 .brand p { margin: 0; font-size: .74rem; color: var(--muted); }
