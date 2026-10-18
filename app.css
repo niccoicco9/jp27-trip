@@ -184,10 +184,26 @@ main.enter { animation: fade .18s ease-out; }
 }
 .chip.on { background: var(--ink); color: var(--bg); border-color: transparent; }
 
-input[type=search], input[type=text], input[type=number], select, textarea {
-  width: 100%; font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; min-height: 46px; box-shadow: var(--shadow-s);
+/* tutti i campi: anche quelli senza type, ora, data e link */
+:where(input:not([type=checkbox]):not([type=radio]), select, textarea) {
+  display: block; width: 100%; min-width: 0; font: inherit; font-size: 16px; /* 16px: niente zoom automatico su iPhone */
+  color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  padding: 12px 14px; min-height: 48px; box-shadow: var(--shadow-s);
+  -webkit-appearance: none; appearance: none; text-align: left;
 }
-input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb, var(--shu) 45%, transparent); outline-offset: 1px; }
+:where(input, textarea)::placeholder { color: var(--muted); opacity: .8; }
+:where(textarea) { resize: vertical; line-height: 1.45; }
+:where(select) {
+  padding-right: 38px; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23857b6e' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 14px center;
+}
+:where(input[type=date], input[type=time]) { line-height: 22px; }
+input[type=date]::-webkit-date-and-time-value, input[type=time]::-webkit-date-and-time-value { text-align: left; min-height: 22px; }
+input::-webkit-calendar-picker-indicator { opacity: .55; cursor: pointer; }
+:root[data-theme="dark"] input::-webkit-calendar-picker-indicator { filter: invert(1); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) input::-webkit-calendar-picker-indicator { filter: invert(1); } }
+input:focus, select:focus, textarea:focus { outline: none; border-color: color-mix(in srgb, var(--shu) 60%, transparent); box-shadow: 0 0 0 3px var(--shu-soft); }
 .searchbox { position: relative; }
 .searchbox svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); }
 .searchbox input { padding-left: 42px; }
@@ -348,7 +364,7 @@ table.budget td:last-child { text-align: right; font-variant-numeric: tabular-nu
 .map-ui .chips { padding-bottom: 2px; }
 .map-ui .chip { background: var(--card); box-shadow: var(--shadow); }
 .map-ui .chip.on { background: var(--ink); }
-.map-ui select { min-height: 40px; padding: 8px 12px; font-size: .88rem; font-weight: 600; max-width: 280px; background: var(--card); box-shadow: var(--shadow); }
+.map-ui select { min-height: 40px; padding: 8px 38px 8px 12px; font-size: .88rem; font-weight: 600; max-width: 280px; background-color: var(--card); box-shadow: var(--shadow); }
 .locbtn { position: absolute; right: 16px; bottom: calc(var(--nav-h) + 28px + env(safe-area-inset-bottom)); z-index: 2; width: 50px; height: 50px; border-radius: 16px; border: 1px solid var(--line); background: var(--card); box-shadow: var(--shadow); display: grid; place-items: center; color: var(--ai); }
 .map-fallback { padding: 20px 16px; max-width: 720px; margin: 0 auto; }
 .gm-style .gm-style-iw-c { padding: 0 !important; border-radius: 16px !important; box-shadow: var(--shadow-l) !important; }
@@ -369,14 +385,18 @@ table.budget td:last-child { text-align: right; font-variant-numeric: tabular-nu
   border-radius: 26px 26px 0 0; padding: 0 0 calc(20px + env(safe-area-inset-bottom)); animation: up .35s var(--ease);
   max-width: 640px; margin: 0 auto; box-shadow: var(--shadow-l); overscroll-behavior: contain;
 }
-.sheet-body { padding: 0 18px; }
-.grab { position: sticky; top: 0; z-index: 3; height: 22px; display: grid; place-items: center; cursor: grab; touch-action: none; }
+.sheet-body { padding: 34px 18px 0; }
+.sheet-top { position: sticky; top: 0; height: 0; z-index: 5; }
+.grab { position: absolute; left: 0; right: 0; top: 0; height: 28px; display: grid; place-items: center; cursor: grab; touch-action: none; }
 .grab::before { content: ""; width: 40px; height: 5px; border-radius: 99px; background: var(--muted); opacity: .45; }
-.sheet-x { position: absolute; right: 14px; top: 14px; z-index: 4; width: 36px; height: 36px; border-radius: 50%; border: none; background: rgba(0,0,0,.35); color: #fff; display: grid; place-items: center; backdrop-filter: blur(8px); }
-.cover { height: 230px; margin: -22px 0 16px; border-radius: 26px 26px 0 0; }
+.sheet-x { position: absolute; right: 12px; top: 12px; width: 36px; height: 36px; border-radius: 50%; border: none; background: rgba(20, 14, 10, .45); color: #fff; display: grid; place-items: center; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+.cover { height: 240px; margin: -34px -18px 16px; border-radius: 26px 26px 0 0; }
 .cover .credit { position: absolute; bottom: 8px; right: 10px; font-size: .62rem; color: #fff; opacity: .8; background: rgba(0,0,0,.35); padding: 2px 7px; border-radius: 99px; text-decoration: none; }
-.sheet h2 { margin: 0 0 2px; }
-.sheet .jpname { font-size: 1.15rem; color: var(--muted); margin: 0 0 12px; }
+.sheet h2 { margin: 0 44px 14px 0; line-height: 1.15; }
+.sheet .ttl { display: flex; align-items: center; gap: 12px; margin: 0 44px 18px 0; }
+.sheet .ttl h2 { margin: 0; }
+.sheet .ttl + .lead { margin-top: -8px; }
+.sheet .jpname { font-size: 1.15rem; color: var(--muted); margin: -10px 0 12px; }
 .info { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; font-size: .88rem; margin: 14px 0 0; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px; }
 .info dt { color: var(--muted); font-weight: 600; }
 .info dd { margin: 0; }
@@ -433,3 +453,18 @@ a.mini:not(.hotel) b { font-size: .8rem; color: var(--shu); }
 .whos button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 2px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); font-size: .74rem; font-weight: 700; }
 .whos button.sel, .who button.sel { border-color: var(--shu); box-shadow: 0 0 0 2px var(--shu-soft); }
 .chip svg { width: 14px; height: 14px; }
+
+/* link nel testo dell'app: colore del tema, niente sottolineatura */
+.section-h a, .info a, .muted a, a.small { color: var(--shu); text-decoration: none; font-weight: 600; }
+/* azioni "aggiungi" delle prenotazioni */
+.addgrid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 0 0 16px; }
+.addgrid button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 2px; border-radius: 16px; border: 1px solid var(--line); background: var(--card); box-shadow: var(--shadow-s); font-size: .72rem; font-weight: 700; color: var(--ink-2); }
+.addgrid .pic { width: 36px; height: 36px; border-radius: 12px; position: relative; }
+.addgrid .pic::after { content: "+"; position: absolute; right: -5px; bottom: -5px; width: 17px; height: 17px; border-radius: 50%; background: var(--ink); color: var(--bg); font-size: 13px; font-weight: 800; line-height: 17px; text-align: center; box-shadow: 0 0 0 2px var(--card); }
+/* scelte multiple con la spunta (diviso tra) */
+.whos.multi button { position: relative; }
+.whos.multi button.sel::after { content: "✓"; position: absolute; top: 4px; right: 6px; width: 16px; height: 16px; border-radius: 50%; background: var(--shu); color: #fff; font-size: 10px; line-height: 16px; text-align: center; }
+.whos.multi button:not(.sel) { opacity: .55; }
+.seg.wide { display: flex; width: 100%; margin-bottom: 8px; }
+.seg.wide button { flex: 1; font-size: .8rem; font-weight: 700; min-height: 36px; white-space: nowrap; }
+input::-webkit-calendar-picker-indicator { opacity: .7; }

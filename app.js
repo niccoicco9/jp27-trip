@@ -267,7 +267,7 @@
         <a class="btn" href="${gmSearch(p)}" target="_blank" rel="noopener">${icon("MapPin")} Maps</a>
       </div>
       <div class="btns" style="margin-top:8px">
-        <button class="btn" id="showjp">${icon("Languages")} Mostra in giapponese</button>
+        <button class="btn" id="showjp">${icon("Languages")} In giapponese</button>
         <button class="btn" id="onmap">${icon("Map")} Sulla mappa</button>
       </div>
       <dl class="info">
@@ -455,7 +455,7 @@
     });
     $$("[data-rm]").forEach(b => b.onclick = () => { day.i.splice(+b.dataset.rm, 1); savePlan(); keepScroll(() => renderGiorni()); });
     $("#share")?.addEventListener("click", sharePlan);
-    $("#reset").onclick = () => openSheet(`<div style="height:12px"></div><h2>Ripristinare la bozza?</h2><p>Il programma tornerà alla bozza proposta (arrivo a Tokyo, partenza da Osaka). Le modifiche fatte andranno perse${sync ? " per tutti e quattro" : ""}.</p><div class="btns"><button class="btn" data-close>Annulla</button><button class="btn primary" id="doreset">Ripristina</button></div>`, el => {
+    $("#reset").onclick = () => openSheet(`<h2>Ripristinare la bozza?</h2><p>Il programma tornerà alla bozza proposta (arrivo a Tokyo, partenza da Osaka). Le modifiche fatte andranno perse${sync ? " per tutti e quattro" : ""}.</p><div class="btns"><button class="btn" data-close>Annulla</button><button class="btn primary" id="doreset">Ripristina</button></div>`, el => {
       $("#doreset", el).onclick = () => { plan = clone(window.BOZZA || {}); savePlan(); closeSheet(); toast("Bozza ripristinata"); render(); };
     });
     // swipe orizzontale sulla copertina per cambiare giorno
@@ -481,7 +481,6 @@
       }).join("") || `<p class="empty">Nessun luogo trovato</p>`;
     };
     openSheet(`
-      <div style="height:10px"></div>
       <h2>Giorno ${dayIndex(d) + 1}</h2><p class="lead" style="text-transform:capitalize">${fmtDay(d)} · tocca per aggiungere o togliere</p>
       <div class="searchbox">${icon("Search")}<input type="search" id="pk-q" placeholder="Cerca un luogo…" autocomplete="off"></div>
       <div class="chips" style="margin-top:10px">${[["all", "Tutte"], ...ZONE.map(z => [z.id, z.nome])].map(([id, n]) => `<button class="chip${id === fz ? " on" : ""}" data-pz="${id}">${id !== "all" ? `<span class="dot" style="background:${zona[id].colore}"></span>` : ""}${esc(n)}</button>`).join("")}</div>
@@ -516,7 +515,7 @@
     let data; try { data = JSON.parse(b64d(m[1])); } catch { toast("Link non valido"); location.hash = "#giorni"; return true; }
     const n = Object.values(data.p || {}).reduce((s, d) => s + (d.i?.length || 0), 0), g = Object.keys(data.p || {}).length, nb = data.b?.length || 0;
     history.replaceState(null, "", "#giorni"); render();
-    openSheet(`<div style="height:12px"></div><h2>Importa programma</h2><p>Questo link contiene un programma con <b>${n} ${n === 1 ? "tappa" : "tappe"}</b> in ${g} ${g === 1 ? "giorno" : "giorni"}${nb ? ` e ${nb} ${nb === 1 ? "prenotazione segnata" : "prenotazioni segnate"}` : ""}.</p><p class="muted small">Sostituirà il programma salvato su questo telefono.</p><div class="btns"><button class="btn" data-close>Annulla</button><button class="btn primary" id="imp">Importa</button></div>`, el => {
+    openSheet(`<h2>Importa programma</h2><p>Questo link contiene un programma con <b>${n} ${n === 1 ? "tappa" : "tappe"}</b> in ${g} ${g === 1 ? "giorno" : "giorni"}${nb ? ` e ${nb} ${nb === 1 ? "prenotazione segnata" : "prenotazioni segnate"}` : ""}.</p><p class="muted small">Sostituirà il programma salvato su questo telefono.</p><div class="btns"><button class="btn" data-close>Annulla</button><button class="btn primary" id="imp">Importa</button></div>`, el => {
       $("#imp", el).onclick = () => {
         plan = data.p || {}; if (data.b) booked = new Set(data.b);
         savePlan(); closeSheet(); toast("Programma importato ✓"); render();
@@ -705,7 +704,7 @@
     ["sos", "Siren", "#d4442f", "Emergenze", "Numeri e ambasciata"],
     ["budget", "Wallet", "#b8860b", "Budget", "Costi da Wanderlog"],
     ["checklist", "Luggage", "#c89b3c", "Checklist", "Valigia e documenti"],
-    ...Object.entries(GUIDE).map(([k, g]) => [k, g.icon, g.col, g.titolo, ""]),
+    ...Object.entries(GUIDE).map(([k, g]) => [k, g.icon, g.col, g.titolo, { trasporti: "Suica, Shinkansen, JR Pass", galateo: "Cosa fare e non fare", soldi: "Contanti, ATM, tax free", stagione: "Clima ed eventi", pratico: "Prese, eSIM, farmaci", installa: "Aggiungila alla Home" }[k] || ""]),
   ];
   function renderUtility(sub) {
     const back = `<a class="back" href="#utility">${icon("ChevronLeft")} Utility</a>`;
@@ -843,7 +842,8 @@
         <div class="nights">${NIGHTS.map((d, i) => { const h = hotelFor(d); return `<i title="${short(d)}${h ? " · " + esc(h.titolo) : ""}" class="${h ? "ok" : ""}"></i>`; }).join("")}</div>
         ${covered < NIGHTS.length ? `<p class="small muted" style="margin:8px 0 0">Mancano: ${NIGHTS.filter(d => !hotelFor(d)).map(short).join(", ")}</p>` : `<p class="small" style="margin:8px 0 0;color:var(--ok)">Tutte le notti sono coperte ✓</p>`}
       </div>
-      <div class="addrow">${Object.entries(PTYPE).map(([k, [ic, col, tn]]) => `<button class="chip" data-addp="${k}"><span class="dot" style="background:${col}"></span>${icon("Plus")} ${tn}</button>`).join("")}</div>
+      <div class="section-h" style="margin-top:6px"><h3>Aggiungi</h3></div>
+      <div class="addgrid">${Object.entries(PTYPE).map(([k, [ic, col, tn]]) => `<button data-addp="${k}"><span class="pic" style="background:${col}">${icon(ic)}</span>${tn}</button>`).join("")}</div>
       ${all.length ? all.map(pcard).join("") : `<p class="empty">Ancora nessuna prenotazione. Comincia dagli hotel e dai voli.</p>`}`;
     $$("[data-addp]").forEach(b => b.onclick = () => editPren({ tipo: b.dataset.addp }));
     bindPcards();
@@ -852,22 +852,23 @@
   function editPren(p) {
     const isNew = !p.id, t = p.tipo || "altro";
     const [ic, col, tn] = PTYPE[t];
-    const dayOpts = (sel, withEnd) => `<option value="">—</option>` + (withEnd ? DAYS : DAYS).map(d => `<option value="${d}" ${d === sel ? "selected" : ""}>${fmtDay(d, { weekday: "short", day: "numeric", month: "short" })}</option>`).join("");
-    const f = (id, label, val, attrs = "") => `<label class="fl"><span>${label}</span><input id="${id}" value="${esc(val || "")}" ${attrs}></label>`;
-    openSheet(`<div style="height:12px"></div>
-      <div class="row" style="margin-bottom:6px"><span class="pic" style="background:${col}">${icon(ic)}</span><h2 style="margin:0">${isNew ? "Nuovo" : "Modifica"}: ${tn.toLowerCase()}</h2></div>
-      ${f("p-tit", t === "hotel" ? "Nome dell'hotel" : t === "volo" ? "Volo (es. AZ 784)" : t === "treno" ? "Treno (es. Nozomi 21)" : "Cosa", p.titolo, 'autocomplete="off"')}
+    const dayOpts = sel => `<option value="">Scegli il giorno</option>` + DAYS.map(d => `<option value="${d}" ${d === sel ? "selected" : ""}>${fmtDay(d, { weekday: "short", day: "numeric", month: "short" })}</option>`).join("");
+    const f = (id, label, val, attrs = "", ph = "") => `<label class="fl"><span>${label}</span><input id="${id}" value="${esc(val || "")}" ${attrs}${ph ? ` placeholder="${esc(ph)}"` : ""}></label>`;
+    const titolo = t === "hotel" ? "Nuovo hotel" : t === "volo" ? "Nuovo volo" : t === "treno" ? "Nuovo treno" : t === "biglietto" ? "Nuovo biglietto" : "Nuova prenotazione";
+    openSheet(`
+      <div class="ttl"><span class="pic" style="background:${col}">${icon(ic)}</span><h2>${isNew ? titolo : "Modifica " + tn.toLowerCase()}</h2></div>
+      ${f("p-tit", t === "hotel" ? "Nome dell'hotel" : t === "volo" ? "Volo" : t === "treno" ? "Treno" : "Cosa", p.titolo, 'autocomplete="off"', t === "hotel" ? "es. Hotel Gracery Shinjuku" : t === "volo" ? "es. AZ 784" : t === "treno" ? "es. Nozomi 21, Tokyo → Kyoto" : t === "biglietto" ? "es. teamLab Planets" : "es. Cena kaiseki")}
       <div class="grid2">
         <label class="fl"><span>${t === "hotel" ? "Check-in" : "Giorno"}</span><select id="p-dal">${dayOpts(p.dal)}</select></label>
-        ${t === "hotel" ? `<label class="fl"><span>Check-out</span><select id="p-al">${dayOpts(p.al, true)}</select></label>` : f("p-ora", "Ora", p.ora, 'type="time"')}
+        ${t === "hotel" ? `<label class="fl"><span>Check-out</span><select id="p-al">${dayOpts(p.al)}</select></label>` : f("p-ora", "Ora", p.ora, 'type="time"')}
       </div>
       ${t === "hotel" ? f("p-ora", "Orario check-in", p.ora, 'type="time"') : ""}
-      ${t === "volo" || t === "treno" ? `<div class="grid2">${f("p-da", "Da", p.da)}${f("p-a", "A", p.a)}</div>` : ""}
-      ${t === "hotel" ? f("p-ind", "Indirizzo", p.indirizzo) + f("p-jp", "Indirizzo in giapponese (per il taxi)", p.jp) : ""}
-      ${t === "biglietto" ? `<label class="fl"><span>Luogo collegato</span><select id="p-luogo"><option value="">—</option>${LUOGHI.filter(x => !x.out).map(x => `<option value="${x.id}" ${x.id === p.luogo ? "selected" : ""}>${esc(x.n)}</option>`).join("")}</select></label>` : ""}
-      ${f("p-cod", "Codice di prenotazione", p.codice, 'autocomplete="off"')}
-      ${f("p-link", "Link (conferma, biglietto, app)", p.link, 'type="url" inputmode="url"')}
-      <label class="fl"><span>Note</span><textarea id="p-note" rows="2">${esc(p.note || "")}</textarea></label>
+      ${t === "volo" || t === "treno" ? `<div class="grid2">${f("p-da", "Da", p.da, "", t === "volo" ? "es. Roma FCO" : "es. Tokyo")}${f("p-a", "A", p.a, "", t === "volo" ? "es. Tokyo HND" : "es. Kyoto")}</div>` : ""}
+      ${t === "hotel" ? f("p-ind", "Indirizzo", p.indirizzo, "", "es. 1-19-1 Kabukicho, Shinjuku") + f("p-jp", "Indirizzo in giapponese (per il taxi)", p.jp, "", "Dalla conferma o da Google Maps") : ""}
+      ${t === "biglietto" ? `<label class="fl"><span>Luogo collegato</span><select id="p-luogo"><option value="">Nessuno</option>${LUOGHI.filter(x => !x.out).map(x => `<option value="${x.id}" ${x.id === p.luogo ? "selected" : ""}>${esc(x.n)}</option>`).join("")}</select></label>` : ""}
+      ${f("p-cod", "Codice di prenotazione", p.codice, 'autocomplete="off"', "es. ABC12345")}
+      ${f("p-link", "Link (conferma, biglietto, app)", p.link, 'type="url" inputmode="url"', "https://…")}
+      <label class="fl"><span>Note</span><textarea id="p-note" rows="2" placeholder="${t === "hotel" ? "Colazione inclusa, deposito bagagli…" : "Cosa portare, dove ci si trova…"}">${esc(p.note || "")}</textarea></label>
       <div class="btns">${isNew ? `<button class="btn" data-close>Annulla</button>` : `<button class="btn" id="p-del" style="color:var(--shu)">${icon("Trash2")} Elimina</button>`}<button class="btn primary" id="p-save">Salva</button></div>
     `, el => {
       const v = id => $("#" + id, el)?.value.trim() || "";
@@ -947,13 +948,13 @@
     const draw = el => {
       $$("[data-val]", el).forEach(b => b.classList.toggle("on", b.dataset.val === st.valuta));
       $$("[data-paid]", el).forEach(b => b.classList.toggle("sel", b.dataset.paid === st.pagatoDa));
-      $$("[data-per]", el).forEach(b => b.classList.toggle("on", st.perChi.includes(b.dataset.per)));
+      $$("[data-per]", el).forEach(b => b.classList.toggle("sel", st.perChi.includes(b.dataset.per)));
       $$("[data-grp]", el).forEach(b => { const g = b.dataset.grp === "all" ? T.viaggiatori : COPPIE[+b.dataset.grp]; b.classList.toggle("on", g.length === st.perChi.length && g.every(n => st.perChi.includes(n))); });
       $$("[data-cat]", el).forEach(b => b.classList.toggle("on", b.dataset.cat === st.cat));
       const imp = parseFloat($("#s-imp", el).value.replace(",", ".")) || 0;
       $("#s-conv", el).textContent = imp ? (st.valuta === "JPY" ? `≈ ${eurF(imp / rate())}` : `≈ ${Math.round(imp * rate()).toLocaleString("it-IT")} ¥`) + (st.perChi.length ? ` · ${eurF((st.valuta === "JPY" ? imp / rate() : imp) / st.perChi.length)} a testa` : "") : "";
     };
-    openSheet(`<div style="height:12px"></div><h2>${isNew ? (s.cat === "rimborso" ? "Rimborso" : "Nuova spesa") : "Modifica spesa"}</h2>
+    openSheet(`<div class="ttl"><span class="pic" style="background:${s.cat === "rimborso" ? "var(--ok)" : "#7b4fa0"}">${icon(s.cat === "rimborso" ? "HandCoins" : "Receipt")}</span><h2>${isNew ? (s.cat === "rimborso" ? "Rimborso" : "Nuova spesa") : "Modifica spesa"}</h2></div>
       <label class="fl"><span>Descrizione</span><input id="s-desc" value="${esc(s.desc || "")}" placeholder="es. Cena izakaya" autocomplete="off"></label>
       <div class="grid2" style="grid-template-columns:1fr auto;align-items:end">
         <label class="fl"><span>Importo</span><input id="s-imp" inputmode="decimal" value="${s.importo ?? ""}" placeholder="0" style="font-size:1.3rem;font-weight:800"></label>
@@ -962,8 +963,8 @@
       <p class="small muted" id="s-conv" style="margin:-4px 0 10px"></p>
       <div class="fl"><span>${s.cat === "rimborso" ? "Chi restituisce" : "Ha pagato"}</span><div class="whos">${T.viaggiatori.map(n => `<button data-paid="${n}">${avatar(n, 30)}${n}</button>`).join("")}</div></div>
       <div class="fl"><span>${s.cat === "rimborso" ? "A chi" : "Diviso tra"}</span>
-        <div class="chips" style="margin:0;padding:0 0 6px;flex-wrap:wrap"><button class="chip" data-grp="all">Tutti e 4</button><button class="chip" data-grp="0">${coupleName(COPPIE[0])}</button><button class="chip" data-grp="1">${coupleName(COPPIE[1])}</button></div>
-        <div class="chips" style="margin:0;padding:0;flex-wrap:wrap">${T.viaggiatori.map(n => `<button class="chip" data-per="${n}">${n}</button>`).join("")}</div></div>
+        <div class="seg wide"><button data-grp="all">Tutti e 4</button><button data-grp="0">${COPPIE[0].map(n => n[0]).join(" & ")}</button><button data-grp="1">${COPPIE[1].map(n => n[0]).join(" & ")}</button></div>
+        <div class="whos multi">${T.viaggiatori.map(n => `<button data-per="${n}">${avatar(n, 30)}${n}</button>`).join("")}</div></div>
       ${s.cat === "rimborso" ? "" : `<div class="fl"><span>Categoria</span><div class="chips" style="margin:0;padding:0;flex-wrap:wrap">${Object.entries(SCAT).filter(([k]) => k !== "rimborso").map(([k, [ic, n]]) => `<button class="chip" data-cat="${k}">${icon(ic)} ${n}</button>`).join("")}</div></div>`}
       <label class="fl"><span>Giorno</span><input type="date" id="s-data" value="${s.data || (today >= T.inizio && today <= T.fine ? today : today)}"></label>
       <div class="btns">${isNew ? `<button class="btn" data-close>Annulla</button>` : `<button class="btn" id="s-del" style="color:var(--shu)">${icon("Trash2")} Elimina</button>`}<button class="btn primary" id="s-save">Salva</button></div>
@@ -992,7 +993,7 @@
   // Accesso: codice segreto del viaggio (protegge i dati condivisi) + chi sei.
   function askWho(needCode = !code) {
     let pick = me;
-    openSheet(`<div style="height:12px"></div>
+    openSheet(`
       <h2>${needCode ? "Benvenuti a bordo ✈️" : "Chi sei?"}</h2>
       <p class="lead">${needCode ? "Inserisci il codice del viaggio che vi siete passati: protegge programma, prenotazioni e spese." : "Così sappiamo chi ha fatto le modifiche."}</p>
       ${needCode ? `<input type="text" id="tcode" placeholder="Codice del viaggio" autocomplete="off" autocapitalize="none" spellcheck="false" value="${esc(code)}" style="font-weight:700;letter-spacing:.04em">` : ""}
