@@ -18,7 +18,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preload" href="fonts/jakarta-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@800&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+  <!-- caratteri giapponesi e dei numeri grandi: caricati senza bloccare la prima schermata -->
+  <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@800&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@800&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet"></noscript>
   <link rel="stylesheet" href="app.css">
   <script>try { const t = JSON.parse(localStorage.getItem("jp27:theme") || '""'); if (t) document.documentElement.dataset.theme = t; } catch {}</script>
 </head>
@@ -44,7 +46,7 @@
   <div id="big" class="big" hidden></div>
   <div id="toast" class="toast" hidden></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <script src="icons.js"></script>
   <script src="data.js"></script>
   <script src="photos.js"></script>
   <script src="content.js"></script>

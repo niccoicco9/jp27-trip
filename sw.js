@@ -1,12 +1,14 @@
-// Service worker: l'app funziona offline, mappa compresa (per le zone scaricate).
-const VERSION = "jp27-v22";
+// Service worker: l'app si apre subito dai file salvati (anche con rete scarsa o assente) e si aggiorna
+// in sottofondo; ogni nuova versione (VERSION) viene scaricata intera e poi compare l'avviso "Aggiorna".
+const VERSION = "jp27-v23";
 const MAPPE = "jp27-mappe";   // zone offline, caratteri e icone della mappa: non si cancellano con gli aggiornamenti
 const CDN = "jp27-cdn";       // librerie, font e foto da siti esterni
-const SHELL = ["./", "index.html", "app.css", "app.js", "data.js", "photos.js", "content.js", "sync.js", "mappa-offline.js", "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-192.png", "icon-512.png", "favicon-32.png", "fonts/jakarta-latin.woff2", "fonts/jakarta-latin-ext.woff2"];
+const SHELL = ["./", "index.html", "app.css", "app.js", "data.js", "photos.js", "content.js", "sync.js", "mappa-offline.js", "icons.js", "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-192.png", "icon-512.png", "favicon-32.png", "fonts/jakarta-latin.woff2", "fonts/jakarta-latin-ext.woff2"];
 const KEEP = [VERSION, MAPPE, CDN];
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  // cache: "reload" = salta la cache HTTP del browser, così la nuova versione è davvero nuova
+  e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", e => {
@@ -40,13 +42,17 @@ self.addEventListener("fetch", e => {
     return;
   }
 
-  // file dell'app: rete prima (così gli aggiornamenti arrivano subito), cache se offline
+  // file dell'app: subito dalla copia salvata (l'app si apre anche con rete lenta o assente),
+  // intanto si controlla la rete in sottofondo e si aggiorna la copia
   if (url.origin === location.origin) {
-    e.respondWith(
-      fetch(e.request, { cache: "no-cache" }).then(r => {
-        const copy = r.clone(); caches.open(VERSION).then(c => c.put(e.request, copy)); return r;
-      }).catch(() => caches.match(e.request, { ignoreSearch: true }).then(r => r || caches.match("index.html")))
-    );
+    e.respondWith((async () => {
+      const cache = await caches.open(VERSION);
+      const nav = e.request.mode === "navigate";
+      const cached = (await cache.match(e.request, { ignoreSearch: true })) || (nav ? await cache.match("index.html") : null);
+      const network = fetch(e.request, { cache: "no-cache" }).then(r => { if (r.ok) cache.put(nav ? "index.html" : e.request, r.clone()); return r; });
+      if (cached) { e.waitUntil(network.catch(() => {})); return cached; }
+      try { return await network; } catch (err) { const idx = nav && await cache.match("index.html"); if (idx) return idx; throw err; }
+    })());
     return;
   }
 

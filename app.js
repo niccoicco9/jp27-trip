@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 22;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 23;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -181,11 +181,12 @@
     el.hidden = false; el.className = "sync-dot" + (s === "online" ? " on" : "");
     el.title = s === "online" ? "Dati condivisi: sincronizzati" : s === "offline" ? "Offline: le modifiche partiranno appena torna la rete" : "Errore di sincronizzazione";
   }
+  let syncStarting = false;
   function startSync() {
-    if (!window.FIREBASE || !code || sync) return;
-    import("./sync.js").then(m => { sync = m.start(window.FIREBASE, code, { main: onRemote, list: onList, status: setSync, recreate: () => sync.pushMain({ plan, booked: [...booked], by: me || "?" }) }); }).catch(err => setSync("error", err));
+    if (!window.FIREBASE || !code || sync || syncStarting) return;
+    syncStarting = true;
+    import("./sync.js").then(m => { sync = m.start(window.FIREBASE, code, { main: onRemote, list: onList, status: setSync, recreate: () => sync.pushMain({ plan, booked: [...booked], by: me || "?" }) }); }).catch(err => { syncStarting = false; setSync("error", err); });
   }
-  startSync();
 
   // ricerca tollerante: ignora accenti (ō → o), trattini, apostrofi e maiuscole; ogni parola deve comparire
   const fold = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[-'’·.]/g, "");
@@ -721,6 +722,7 @@
       focus(id, popup) { const p = byId[id]; map.panTo({ lat: p.lat, lng: p.lng }); if (map.getZoom() < 14) map.setZoom(15); if (popup) { iw.setContent(iwHtml(id)); iw.open({ map, anchor: mk[id] }); } },
       you(ll) { you ||= new google.maps.Marker({ map, zIndex: 999, icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: "#2e7bf6", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 3 } }); you.setPosition({ lat: ll[1], lng: ll[0] }); map.panTo({ lat: ll[1], lng: ll[0] }); map.setZoom(15); },
       theme() { map?.setOptions({ styles: isDark() ? MAP_DARK : MAP_LIGHT }); },
+      destroy() { Object.values(mk).concat(Object.values(hk), you ? [you] : []).forEach(m => m.setMap(null)); route?.setMap(null); google.maps.event.clearInstanceListeners(map); map = null; },
     };
   }
 
@@ -775,6 +777,7 @@
       },
       theme() { if (map) OfflineMap.setTheme(map, isDark()); },
       resize() { map?.resize(); },
+      destroy() { popup?.remove(); map?.remove(); map = null; },
     };
   }
 
@@ -796,7 +799,10 @@
     eng = engines[kind];
     const cur = $("#mapslot");
     $(".map-loading", cur)?.remove();
-    for (const e of Object.values(engines)) { if (e.el.parentNode !== cur) cur.appendChild(e.el); e.el.hidden = e !== eng; }
+    // l'altra mappa (se c'era) viene chiusa: libera memoria e batteria
+    for (const [k, e] of Object.entries(engines)) if (e !== eng) { try { e.destroy?.(); } catch {} e.el.remove(); delete engines[k]; }
+    if (eng.el.parentNode !== cur) cur.appendChild(eng.el);
+    eng.el.hidden = false;
     eng.resize?.();
     $("#mmode") && ($("#mmode").innerHTML = eng.kind === "offline" ? `${icon("CloudOff")} Offline` : `${icon("Map")} Google`);
     $("#mmode")?.classList.toggle("on", eng.kind === "offline");
@@ -1402,7 +1408,8 @@
   })();
 
   function render() {
-    const [tab, sub] = (location.hash.slice(1) || "oggi").split("/");
+    let [tab, sub] = (location.hash.slice(1) || "oggi").split("/");
+    if (!TABS.some(t => t[0] === tab)) { tab = "oggi"; sub = undefined; history.replaceState(null, "", "#oggi"); }   // indirizzo sconosciuto
     view.classList.remove("full");
     document.body.classList.toggle("on-map", tab === "mappa");
     document.documentElement.style.setProperty("--head", ($(".top")?.offsetHeight || 60) + "px");
@@ -1430,6 +1437,8 @@
   })();
   document.addEventListener("contextmenu", e => { if (!e.target.closest("input, textarea, select, .copiabile")) e.preventDefault(); });
   if (!maybeImport()) render();
+  // la sincronizzazione (Firebase, ~525 KB) parte dopo la prima schermata: l'app compare subito con i dati del telefono
+  (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => startSync(), { timeout: 800 });
   setTimeout(() => { if (navigator.onLine) OfflineMap.warmup?.().catch(() => {}); }, 5000);
   if (!me || (!code && window.FIREBASE && !LS.get("skipCode", false))) setTimeout(() => askWho(), 600);
 
