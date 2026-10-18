@@ -532,3 +532,14 @@ input::-webkit-calendar-picker-indicator { opacity: .7; }
 .btn.danger { background: #d4442f; border-color: transparent; color: #fff; box-shadow: 0 6px 16px rgba(212, 68, 47, .3); }
 .dlg.out { opacity: 0; transition: opacity .15s; }
 @keyframes pop { from { opacity: 0; transform: scale(.92); } }
+
+/* iPhone a tutto schermo: l'intestazione arriva sotto la barra di stato (ora, batteria).
+   iOS scrive ora e batteria in bianco: nel tema chiaro una leggera sfumatura scura le rende leggibili.
+   Su Android e nel browser safe-area-inset-top vale 0, quindi qui non cambia nulla. */
+.top::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; pointer-events: none;
+  height: env(safe-area-inset-top);   /* 0 su Android e nel browser */
+  background: linear-gradient(rgba(20, 14, 10, .5), rgba(20, 14, 10, .28) 70%, rgba(20, 14, 10, 0));
+}
+:root[data-theme="dark"] .top::before { display: none; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .top::before { display: none; } }
