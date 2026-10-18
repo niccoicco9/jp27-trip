@@ -580,3 +580,17 @@ body.on-map .locbtn { bottom: calc(var(--nav-h) + var(--navgap) + 16px); }
 body.on-map .locbtn.up { bottom: calc(var(--nav-h) + var(--navgap) + 176px); }
 body.on-map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib.maplibregl-compact { margin: 0 10px 8px 0; }
 body.on-map .map-loading { padding-top: var(--head, 60px); }
+
+/* luoghi aggiunti da voi */
+.btn.addl { width: 100%; margin: 0 0 14px; }
+.lres { display: grid; gap: 6px; margin-top: 8px; }
+.lres:empty { display: none; }
+.lres button { display: flex; align-items: flex-start; gap: 10px; text-align: left; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+.lres button svg { color: var(--shu); flex: none; margin-top: 2px; }
+.lres b { display: block; font-size: .92rem; }
+.lres small { display: block; color: var(--muted); font-size: .76rem; margin-top: 2px; }
+.lres p { margin: 4px 2px; }
+.lpos { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 10px 12px; border-radius: 14px; background: var(--card-2); color: var(--muted); font-size: .84rem; }
+.lpos.ok { color: var(--ink); background: color-mix(in srgb, var(--ok) 14%, var(--card)); }
+.lpos.ok > svg { color: var(--ok); }
+.lpos a { font-weight: 700; white-space: nowrap; }

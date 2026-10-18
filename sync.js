@@ -2,7 +2,7 @@
 // Tutto vive sotto viaggi/{codice}: il codice segreto non è nel codice pubblico,
 // e le regole di Firestore permettono l'accesso solo a quel percorso.
 // - documento principale: programma dei giorni + prenotazioni spuntate (merge per campo)
-// - sottoraccolte "spese" e "prenotazioni": un documento per voce, così più persone
+// - sottoraccolte "spese", "prenotazioni" e "luoghi": un documento per voce, così più persone
 //   possono aggiungere insieme senza sovrascriversi.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -10,7 +10,7 @@ import {
   FieldPath, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-export const LISTS = ["spese", "prenotazioni"];
+export const LISTS = ["spese", "prenotazioni", "luoghi"];
 
 export function start(config, code, h) {
   const app = initializeApp(config);
