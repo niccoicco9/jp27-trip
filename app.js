@@ -104,30 +104,58 @@
   }
 
   // ——— salvataggio + sync ———
+  // Spese e prenotazioni: una voce per documento, in cache locale per l'avvio offline.
+  const lists = { spese: LS.get("spese", []), prenotazioni: LS.get("prenotazioni", []) };
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  let code = LS.get("code", "");
   let pushT;
   function savePlan() {
     LS.set("plan", plan); LS.set("booked", [...booked]);
     lastEdit = { by: me || "?", at: Date.now() }; LS.set("lastEdit", lastEdit);
-    if (sync) { clearTimeout(pushT); pushT = setTimeout(() => sync.push({ plan, booked: [...booked], by: me || "?" }), 500); }
+    if (sync) { clearTimeout(pushT); pushT = setTimeout(() => sync.pushMain({ plan, booked: [...booked], by: me || "?" }), 500); }
   }
-  function onRemote(data, first) {
-    if (!data) { if (first) sync.push({ plan, booked: [...booked], by: me || "?" }); return; }
-    plan = data.plan || {}; booked = new Set(data.booked || []);
-    lastEdit = { by: data.by, at: data.at?.toMillis?.() || Date.now() };
-    LS.set("plan", plan); LS.set("booked", [...booked]); LS.set("lastEdit", lastEdit);
+  function putItem(name, item) {
+    item = { ...item, id: item.id || uid(), by: me || "?" };
+    const arr = lists[name], k = arr.findIndex(x => x.id === item.id);
+    k >= 0 ? (arr[k] = item) : arr.push(item);
+    LS.set(name, arr); sync?.put(name, item);
+    return item;
+  }
+  function delItem(name, id) {
+    lists[name] = lists[name].filter(x => x.id !== id); LS.set(name, lists[name]); sync?.del(name, id);
+  }
+  function remoteChanged() {
     const a = document.activeElement;
     if (!(a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) && sheet.hidden) rerender(); else pendingRemote = true;
+  }
+  function onRemote(data, first) {
+    if (!data) { if (first) sync.pushMain({ plan, booked: [...booked], by: me || "?" }); return; }
+    if (data.plan) plan = data.plan;
+    booked = new Set(data.booked || []);
+    lastEdit = { by: data.by, at: data.at?.toMillis?.() || Date.now() };
+    LS.set("plan", plan); LS.set("booked", [...booked]); LS.set("lastEdit", lastEdit);
+    remoteChanged();
+  }
+  function onList(name, items) {
+    lists[name] = items; LS.set(name, items);
+    remoteChanged();
   }
   function setSync(s, err) {
     syncStatus = s;
     if (err) console.warn("Sincronizzazione:", err.code || "", err.message || err);
+    if (err?.code === "permission-denied" && code) {   // codice sbagliato o regole non pubblicate
+      toast("Codice del viaggio non valido");
+      code = ""; LS.set("code", ""); setTimeout(() => askWho(true), 400);
+    }
     const el = $("#syncdot");
     el.hidden = false; el.className = "sync-dot" + (s === "online" ? " on" : "");
-    el.title = s === "online" ? "Programma condiviso: sincronizzato" : s === "offline" ? "Offline: le modifiche partiranno appena torna la rete" : "Errore di sincronizzazione";
+    el.title = s === "online" ? "Dati condivisi: sincronizzati" : s === "offline" ? "Offline: le modifiche partiranno appena torna la rete" : "Errore di sincronizzazione";
   }
-  if (window.FIREBASE) {
-    import("./sync.js").then(m => { sync = m.start(window.FIREBASE, window.SYNC_DOC, onRemote, setSync); }).catch(err => setSync("error", err));
+  function startSync() {
+    if (!window.FIREBASE || !code || sync) return;
+    import("./sync.js").then(m => { sync = m.start(window.FIREBASE, code, { main: onRemote, list: onList, status: setSync }); }).catch(err => setSync("error", err));
   }
+  startSync();
 
   // ——— link Google Maps ———
   const q = p => p.jp.replace(/（.*?）/g, "").trim() || p.n;
@@ -267,7 +295,7 @@
   });
 
   // ——— OGGI ———
-  const QUICK = [["frasi", "Languages", "#2b4c7e", "Frasi"], ["yen", "Banknote", "#4f8a3c", "¥ ↔ €"], ["sos", "Siren", "#d4442f", "SOS"], ["checklist", "Luggage", "#c89b3c", "Valigia"]];
+  const QUICK = [["prenotazioni", "BedDouble", "#2e6fb0", "Prenotaz."], ["spese", "HandCoins", "#7b4fa0", "Spese"], ["frasi", "Languages", "#2b4c7e", "Frasi"], ["yen", "Banknote", "#4f8a3c", "¥ ↔ €"]];
   const HERO_PLACE = { tokyo: "t33", vicino: "v1", kyoto: "k1", osaka: "o6", nara: "n2", fuji: "h3", kanazawa: "z1", altre: "a1" };
   function chapters() {
     const out = [];
@@ -277,6 +305,24 @@
       if (last && last.z === z) last.to = i; else out.push({ z, from: i, to: i, d });
     });
     return out;
+  }
+  // Hotel della notte + prenotazioni con orario, per Oggi e per ogni giorno
+  function dayPren(d) {
+    if (!code) return "";
+    const h = hotelFor(d), bs = bookingsOn(d), ci = lists.prenotazioni.filter(p => p.tipo === "hotel" && p.dal === d);
+    if (!h && !bs.length && d !== T.fine) return `<a class="mini" href="#utility/prenotazioni">${icon("BedDouble")} <span class="grow">Nessun hotel per questa notte</span><b>Aggiungi</b></a>`;
+    return `${h ? `<div class="mini hotel" data-pren="${h.id}">${icon("BedDouble")}<span class="grow"><small>${ci.includes(h) ? "Check-in" + (h.ora ? " " + esc(h.ora) : "") : "Notte"}</small><b>${esc(h.titolo)}</b></span>
+        <a class="btn small primary" href="${gmTo(addrQ(h))}" target="_blank" rel="noopener">${icon("Navigation")}</a><button class="btn small" data-taxi="${h.id}" aria-label="Mostra al tassista">${icon("CarTaxiFront")}</button></div>` : ""}
+      ${bs.map(p => { const [ic, col] = PTYPE[p.tipo] || PTYPE.altro; return `<div class="mini" data-pren="${p.id}"><span style="color:${col}">${icon(ic)}</span><span class="grow"><small>${p.ora ? esc(p.ora) : "Prenotato"}</small><b>${esc(p.titolo)}</b></span>${p.link ? `<a class="btn small" href="${esc(p.link)}" target="_blank" rel="noopener">${icon("Link")}</a>` : ""}</div>`; }).join("")}`;
+  }
+  function oggiPren(today, before, after) {
+    if (!code || after) return "";
+    if (!before) return `<div class="section-h" style="margin-top:0"><h3>Oggi e stanotte</h3><a class="small" href="#utility/prenotazioni" style="font-weight:600">Tutte</a></div>${dayPren(today)}`;
+    const next = [...lists.prenotazioni].filter(p => p.dal).sort((a, b) => a.dal.localeCompare(b.dal) || (a.ora || "").localeCompare(b.ora || "")).slice(0, 3);
+    const covered = NIGHTS.filter(hotelFor).length;
+    return `<a class="card mini-card" href="#utility/prenotazioni"><div class="between"><b>${icon("BedDouble")} Hotel prenotati</b><b>${covered}/${NIGHTS.length} notti</b></div>
+      <div class="nights" style="margin-top:8px">${NIGHTS.map(d => `<i class="${hotelFor(d) ? "ok" : ""}"></i>`).join("")}</div>
+      ${next.length ? `<div class="small muted" style="margin-top:8px">Prossime: ${next.map(p => `${esc(p.titolo)} (${short(p.dal)})`).join(" · ")}</div>` : `<div class="small muted" style="margin-top:8px">Aggiungi hotel, voli e biglietti →</div>`}</a>`;
   }
   function renderOggi() {
     const today = todayJP();
@@ -307,6 +353,7 @@
     view.innerHTML = `
       ${hero}
       <div class="quick">${QUICK.map(([k, ic, c, t]) => `<a class="qa" href="#utility/${k}"><span class="ic" style="background:${c}">${icon(ic)}</span>${t}</a>`).join("")}</div>
+      ${oggiPren(today, before, after)}
       ${ch.length ? `<div><div class="section-h" style="margin-top:4px"><h3>Il viaggio in capitoli</h3><a class="small" href="#giorni" style="font-weight:600">Tutti i giorni</a></div>
       <div class="hscroll">${ch.map((c, k) => `<a class="chapter" href="#giorni/${DAYS[c.from]}" style="--c:${zona[c.z].colore}">${photoUrl(HERO_PLACE[c.z]) ? `<div class="ph" style="background-image:url('${photoUrl(HERO_PLACE[c.z], 330)}')"></div>` : `<div class="ph" style="background:${zona[c.z].colore}"></div>`}<span class="num">${k + 1}</span><b>${esc(zona[c.z].nome)}</b><small>${c.from === c.to ? `giorno ${c.from + 1}` : `giorni ${c.from + 1}–${c.to + 1}`} · ${short(DAYS[c.from])}</small></a>`).join("")}</div></div>` : ""}
       <div class="card"><div class="between"><h3 style="margin:0">Meteo adesso</h3><span class="muted small" id="wtime"></span></div><div class="weather" id="weather" style="margin-top:12px"><div>…</div></div></div>
@@ -326,6 +373,7 @@
       cb.closest(".card").querySelector(".between b").textContent = `${n}/${toBook.length}`;
     });
     $("#more")?.addEventListener("click", e => { $$("[data-more]").forEach(x => (x.hidden = false)); e.currentTarget.remove(); });
+    bindPcards();
     loadWeather();
   }
 
@@ -368,6 +416,7 @@
       </div>
       ${editMode ? `<textarea id="dnote" rows="2" placeholder="Nota del giorno (orari, treni, cose da ricordare)…" style="margin-bottom:14px">${esc(day.n || "")}</textarea>`
         : day.n ? `<div class="daynote">${icon("Sparkles")}<span>${esc(day.n)}</span></div>` : ""}
+      ${dayPren(d)}
       <div class="btns" style="margin:0 0 6px">
         <button class="btn small" id="add">${icon("Plus")} Aggiungi</button>
         ${day.i.length ? `<a class="btn small" href="#mappa" id="dmap">${icon("Map")} Mappa</a>` : ""}
@@ -392,6 +441,7 @@
       </div>
     `;
     $("#strip .on")?.scrollIntoView({ inline: "center", block: "nearest" });
+    bindPcards();
     $("#dlabel")?.addEventListener("change", e => { day.l = e.target.value.trim(); savePlan(); });
     
     $("#dnote")?.addEventListener("change", e => { day.n = e.target.value.trim(); savePlan(); });
@@ -648,10 +698,12 @@
 
   // ——— UTILITY ———
   const UTIL = [
+    ["prenotazioni", "BedDouble", "#2e6fb0", "Prenotazioni", "Hotel, voli, biglietti"],
+    ["spese", "HandCoins", "#7b4fa0", "Spese", "Chi deve a chi"],
     ["yen", "Banknote", "#4f8a3c", "¥ ↔ €", "Convertitore"],
     ["frasi", "Languages", "#2b4c7e", "Frasi utili", "Con pronuncia audio"],
     ["sos", "Siren", "#d4442f", "Emergenze", "Numeri e ambasciata"],
-    ["budget", "Wallet", "#7b4fa0", "Budget", "Costi da Wanderlog"],
+    ["budget", "Wallet", "#b8860b", "Budget", "Costi da Wanderlog"],
     ["checklist", "Luggage", "#c89b3c", "Checklist", "Valigia e documenti"],
     ...Object.entries(GUIDE).map(([k, g]) => [k, g.icon, g.col, g.titolo, ""]),
   ];
@@ -676,6 +728,8 @@
       bindPhrases(); return;
     }
     if (sub === "budget") return renderBudget(back);
+    if (sub === "prenotazioni") return renderPren(back);
+    if (sub === "spese") return renderSpese(back);
     if (sub === "checklist") return renderChecklist(back);
     location.hash = "#utility";
   }
@@ -742,12 +796,222 @@
     });
   }
 
+  // ——— PRENOTAZIONI (hotel, voli, treni, biglietti) ———
+  const PTYPE = {
+    hotel: ["BedDouble", "#2e6fb0", "Hotel"], volo: ["Plane", "#7b4fa0", "Volo"], treno: ["TrainFront", "#1f9488", "Treno"],
+    biglietto: ["Ticket", "#d4442f", "Biglietto"], altro: ["Bookmark", "#6b5a45", "Altro"],
+  };
+  const NIGHTS = DAYS.slice(0, -1);   // l'ultimo giorno si parte
+  const hotelFor = d => lists.prenotazioni.find(p => p.tipo === "hotel" && p.dal <= d && d < (p.al || p.dal));
+  const bookingsOn = d => lists.prenotazioni.filter(p => p.dal === d && p.tipo !== "hotel").sort((a, b) => (a.ora || "99").localeCompare(b.ora || "99"));
+  const nightsOf = p => Math.max(1, Math.round((new Date(p.al + "T00:00:00Z") - new Date(p.dal + "T00:00:00Z")) / 864e5));
+  const addrQ = p => p.jp || p.indirizzo || p.titolo;
+  const gmTo = s => `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(s)}&travelmode=transit`;
+  const showTaxi = p => showBig(p.jp || p.indirizzo || p.titolo, `${esc(p.titolo)}<br><span class="jp" style="font-size:1.2rem;color:var(--ink)">ここに行ってください</span><br><small>"Mi porti qui, per favore"</small>`);
+  const needCodeBox = what => `<div class="card"><b>${icon("KeyRound")} Serve il codice del viaggio</b><p class="small muted">${what} sono condivise tra voi quattro e protette dal codice.</p><button class="btn primary small" id="needcode">Inserisci il codice</button></div>`;
+
+  function pcard(p) {
+    const [ic, col, tn] = PTYPE[p.tipo] || PTYPE.altro;
+    const when = p.tipo === "hotel"
+      ? `${short(p.dal)} → ${short(p.al || p.dal)} · ${nightsOf(p)} ${nightsOf(p) === 1 ? "notte" : "notti"}${p.ora ? ` · check-in ${esc(p.ora)}` : ""}`
+      : `${p.dal ? fmtDay(p.dal, { weekday: "short", day: "numeric", month: "short" }) : "data da definire"}${p.ora ? " · " + esc(p.ora) : ""}`;
+    const route = p.da || p.a ? `<div class="small">${esc(p.da || "?")} → ${esc(p.a || "?")}</div>` : "";
+    return `<div class="card pcard" data-pren="${p.id}">
+      <div class="row"><span class="pic" style="background:${col}">${icon(ic)}</span>
+        <div class="grow"><b>${esc(p.titolo || tn)}</b><div class="muted small">${when}</div>${route}${p.indirizzo ? `<div class="small muted">${esc(p.indirizzo)}</div>` : ""}</div></div>
+      ${p.codice ? `<div class="small" style="margin-top:8px">${icon("KeyRound")} Codice: <b style="user-select:all">${esc(p.codice)}</b></div>` : ""}
+      ${p.note ? `<div class="small muted" style="margin-top:4px">${esc(p.note)}</div>` : ""}
+      <div class="btns" style="margin-top:10px">
+        ${p.tipo === "hotel" ? `<a class="btn small primary" href="${gmTo(addrQ(p))}" target="_blank" rel="noopener">${icon("Navigation")} Portami</a><button class="btn small" data-taxi="${p.id}">${icon("CarTaxiFront")} Al tassista</button>` : ""}
+        ${p.link ? `<a class="btn small" href="${esc(p.link)}" target="_blank" rel="noopener">${icon("Link")} Apri</a>` : ""}
+      </div>
+    </div>`;
+  }
+  function bindPcards(root = view) {
+    $$("[data-taxi]", root).forEach(b => b.onclick = e => { e.stopPropagation(); showTaxi(lists.prenotazioni.find(x => x.id === b.dataset.taxi)); });
+    $$("[data-pren]", root).forEach(c => c.onclick = e => { if (!e.target.closest("a, button")) editPren(lists.prenotazioni.find(x => x.id === c.dataset.pren)); });
+    $("#needcode", root)?.addEventListener("click", () => askWho(true));
+  }
+
+  function renderPren(back) {
+    if (!code) { view.innerHTML = `${back}<h2>Prenotazioni</h2>${needCodeBox("Le prenotazioni")}`; bindPcards(); return; }
+    const all = [...lists.prenotazioni].sort((a, b) => (a.dal || "9").localeCompare(b.dal || "9") || (a.ora || "").localeCompare(b.ora || ""));
+    const covered = NIGHTS.filter(hotelFor).length;
+    view.innerHTML = `${back}<h2>Prenotazioni</h2><p class="lead">Hotel, voli, treni e biglietti, condivisi tra voi quattro.</p>
+      <div class="card">
+        <div class="between"><b>${icon("BedDouble")} Notti con hotel</b><b>${covered}/${NIGHTS.length}</b></div>
+        <div class="nights">${NIGHTS.map((d, i) => { const h = hotelFor(d); return `<i title="${short(d)}${h ? " · " + esc(h.titolo) : ""}" class="${h ? "ok" : ""}"></i>`; }).join("")}</div>
+        ${covered < NIGHTS.length ? `<p class="small muted" style="margin:8px 0 0">Mancano: ${NIGHTS.filter(d => !hotelFor(d)).map(short).join(", ")}</p>` : `<p class="small" style="margin:8px 0 0;color:var(--ok)">Tutte le notti sono coperte ✓</p>`}
+      </div>
+      <div class="addrow">${Object.entries(PTYPE).map(([k, [ic, col, tn]]) => `<button class="chip" data-addp="${k}"><span class="dot" style="background:${col}"></span>${icon("Plus")} ${tn}</button>`).join("")}</div>
+      ${all.length ? all.map(pcard).join("") : `<p class="empty">Ancora nessuna prenotazione. Comincia dagli hotel e dai voli.</p>`}`;
+    $$("[data-addp]").forEach(b => b.onclick = () => editPren({ tipo: b.dataset.addp }));
+    bindPcards();
+  }
+
+  function editPren(p) {
+    const isNew = !p.id, t = p.tipo || "altro";
+    const [ic, col, tn] = PTYPE[t];
+    const dayOpts = (sel, withEnd) => `<option value="">—</option>` + (withEnd ? DAYS : DAYS).map(d => `<option value="${d}" ${d === sel ? "selected" : ""}>${fmtDay(d, { weekday: "short", day: "numeric", month: "short" })}</option>`).join("");
+    const f = (id, label, val, attrs = "") => `<label class="fl"><span>${label}</span><input id="${id}" value="${esc(val || "")}" ${attrs}></label>`;
+    openSheet(`<div style="height:12px"></div>
+      <div class="row" style="margin-bottom:6px"><span class="pic" style="background:${col}">${icon(ic)}</span><h2 style="margin:0">${isNew ? "Nuovo" : "Modifica"}: ${tn.toLowerCase()}</h2></div>
+      ${f("p-tit", t === "hotel" ? "Nome dell'hotel" : t === "volo" ? "Volo (es. AZ 784)" : t === "treno" ? "Treno (es. Nozomi 21)" : "Cosa", p.titolo, 'autocomplete="off"')}
+      <div class="grid2">
+        <label class="fl"><span>${t === "hotel" ? "Check-in" : "Giorno"}</span><select id="p-dal">${dayOpts(p.dal)}</select></label>
+        ${t === "hotel" ? `<label class="fl"><span>Check-out</span><select id="p-al">${dayOpts(p.al, true)}</select></label>` : f("p-ora", "Ora", p.ora, 'type="time"')}
+      </div>
+      ${t === "hotel" ? f("p-ora", "Orario check-in", p.ora, 'type="time"') : ""}
+      ${t === "volo" || t === "treno" ? `<div class="grid2">${f("p-da", "Da", p.da)}${f("p-a", "A", p.a)}</div>` : ""}
+      ${t === "hotel" ? f("p-ind", "Indirizzo", p.indirizzo) + f("p-jp", "Indirizzo in giapponese (per il taxi)", p.jp) : ""}
+      ${t === "biglietto" ? `<label class="fl"><span>Luogo collegato</span><select id="p-luogo"><option value="">—</option>${LUOGHI.filter(x => !x.out).map(x => `<option value="${x.id}" ${x.id === p.luogo ? "selected" : ""}>${esc(x.n)}</option>`).join("")}</select></label>` : ""}
+      ${f("p-cod", "Codice di prenotazione", p.codice, 'autocomplete="off"')}
+      ${f("p-link", "Link (conferma, biglietto, app)", p.link, 'type="url" inputmode="url"')}
+      <label class="fl"><span>Note</span><textarea id="p-note" rows="2">${esc(p.note || "")}</textarea></label>
+      <div class="btns">${isNew ? `<button class="btn" data-close>Annulla</button>` : `<button class="btn" id="p-del" style="color:var(--shu)">${icon("Trash2")} Elimina</button>`}<button class="btn primary" id="p-save">Salva</button></div>
+    `, el => {
+      const v = id => $("#" + id, el)?.value.trim() || "";
+      $("#p-save", el).onclick = () => {
+        const item = { ...p, tipo: t, titolo: v("p-tit"), dal: v("p-dal"), ora: v("p-ora"), codice: v("p-cod"), link: v("p-link"), note: v("p-note") };
+        if (t === "hotel") Object.assign(item, { al: v("p-al"), indirizzo: v("p-ind"), jp: v("p-jp") });
+        if (t === "volo" || t === "treno") Object.assign(item, { da: v("p-da"), a: v("p-a") });
+        if (t === "biglietto") item.luogo = v("p-luogo");
+        if (!item.titolo) return toast("Scrivi almeno il nome");
+        if (t === "hotel" && (!item.dal || !item.al || item.al <= item.dal)) return toast("Controlla check-in e check-out");
+        putItem("prenotazioni", item);
+        if (item.luogo && !booked.has(item.luogo)) { booked.add(item.luogo); savePlan(); }   // biglietto preso = "prenotato" spuntato
+        closeSheet(); toast("Salvato ✓"); rerender();
+      };
+      $("#p-del", el)?.addEventListener("click", () => { if (confirm("Eliminare questa prenotazione per tutti?")) { delItem("prenotazioni", p.id); closeSheet(); rerender(); } });
+    });
+  }
+
+  // ——— SPESE condivise tra le due coppie ———
+  const COPPIE = [["Niccolò", "Antonella"], ["Miriam", "Paolo"]];
+  const coupleName = c => c.join(" & ");
+  const SCAT = { cibo: ["Utensils", "Cibo"], trasporti: ["TrainFront", "Trasporti"], alloggio: ["BedDouble", "Alloggio"], attivita: ["Ticket", "Attività"], shopping: ["ShoppingBag", "Shopping"], altro: ["Receipt", "Altro"], rimborso: ["HandCoins", "Rimborso"] };
+  const rate = () => LS.get("rate", { r: 170 }).r || 170;
+  const eurF = v => v.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+  const avatar = (n, s = 26) => `<span class="avatar" style="width:${s}px;height:${s}px;font-size:${s * .42}px;background:${AVATAR[n] || "#888"}">${n[0]}</span>`;
+  function balances() {
+    const net = Object.fromEntries(T.viaggiatori.map(n => [n, 0]));
+    let total = 0;
+    for (const s of lists.spese) {
+      const per = s.perChi?.length ? s.perChi : T.viaggiatori;
+      net[s.pagatoDa] = (net[s.pagatoDa] || 0) + s.eur;
+      for (const n of per) net[n] = (net[n] || 0) - s.eur / per.length;
+      if (s.cat !== "rimborso") total += s.eur;
+    }
+    const cn = COPPIE.map(c => c.reduce((a, n) => a + (net[n] || 0), 0));
+    return { net, total, cn };
+  }
+  function splitLabel(per) {
+    if (!per?.length || per.length === 4) return "tutti e 4";
+    const c = COPPIE.find(c => c.length === per.length && c.every(n => per.includes(n)));
+    return c ? coupleName(c) : per.join(", ");
+  }
+
+  function renderSpese(back) {
+    if (!code) { view.innerHTML = `${back}<h2>Spese</h2>${needCodeBox("Le spese")}`; bindPcards(); return; }
+    const { net, total, cn } = balances();
+    const debt = Math.abs(cn[0]) < .5 ? null : cn[0] > 0 ? [COPPIE[1], COPPIE[0], cn[0]] : [COPPIE[0], COPPIE[1], -cn[0]];
+    const items = [...lists.spese].sort((a, b) => (b.data || "").localeCompare(a.data || "") || (b.ts || 0) - (a.ts || 0));
+    let lastD = null;
+    view.innerHTML = `${back}<h2>Spese</h2><p class="lead">Chi ha pagato cosa, e alla fine chi deve quanto a chi.</p>
+      <div class="hero" style="min-height:0">${art()}<div class="hero-in" style="min-height:190px">
+        <span class="kicker">Spesa totale del gruppo</span><div class="big-n" style="font-size:2.6rem">${eurF(total)}</div>
+        <p>${debt ? `<b>${coupleName(debt[0])}</b> devono <b>${eurF(debt[2])}</b> a ${coupleName(debt[1])}` : "Siete in pari 🤝"}</p>
+      </div></div>
+      <div class="card"><div class="between"><h3 style="margin:0">Saldo per persona</h3>${debt ? `<button class="btn small" id="settle">${icon("HandCoins")} Segna rimborso</button>` : ""}</div>
+        ${T.viaggiatori.map(n => `<div class="row" style="padding:8px 0;border-top:1px solid var(--line)">${avatar(n)}<span class="grow">${n}</span><b style="color:${net[n] > .5 ? "var(--ok)" : net[n] < -.5 ? "var(--shu)" : "var(--muted)"}">${net[n] > 0 ? "+" : ""}${eurF(net[n])}</b></div>`).join("")}
+        <p class="small muted" style="margin:8px 0 0">+ deve ricevere · − deve dare. Gli importi in yen sono convertiti al cambio del giorno in cui li inserite.</p>
+      </div>
+      <button class="btn primary" id="adds" style="width:100%;margin-bottom:14px">${icon("Plus")} Aggiungi spesa</button>
+      ${items.length ? items.map(s => {
+        const [ic, cl] = SCAT[s.cat] || SCAT.altro;
+        const head = s.data !== lastD ? `<h3>${s.data ? fmtDay(s.data, { weekday: "long", day: "numeric", month: "long" }) : "Senza data"}</h3>` : ""; lastD = s.data;
+        return `${head}<div class="card spesa" data-spesa="${s.id}"><div class="row">
+          <span class="pic" style="background:${s.cat === "rimborso" ? "var(--ok)" : "#7b4fa0"}">${icon(ic)}</span>
+          <div class="grow"><b>${esc(s.desc || cl)}</b><div class="small muted">${s.cat === "rimborso" ? `${esc(s.pagatoDa)} → ${esc(splitLabel(s.perChi))}` : `pagato da ${esc(s.pagatoDa)} · per ${esc(splitLabel(s.perChi))}`}</div></div>
+          <div style="text-align:right"><b>${s.valuta === "JPY" ? Math.round(s.importo).toLocaleString("it-IT") + " ¥" : eurF(s.importo)}</b>${s.valuta === "JPY" ? `<div class="small muted">${eurF(s.eur)}</div>` : ""}</div>
+        </div></div>`;
+      }).join("") : `<p class="empty">Nessuna spesa ancora. La prima cena a Shinjuku? 🍜</p>`}`;
+    $("#adds").onclick = () => editSpesa({});
+    $("#settle")?.addEventListener("click", () => editSpesa({ cat: "rimborso", desc: "Rimborso", valuta: "EUR", importo: Math.round(debt[2] * 100) / 100, pagatoDa: me && debt[0].includes(me) ? me : debt[0][0], perChi: debt[1] }));
+    $$("[data-spesa]").forEach(c => c.onclick = () => editSpesa(lists.spese.find(x => x.id === c.dataset.spesa)));
+  }
+
+  function editSpesa(s) {
+    const isNew = !s.id, today = todayJP();
+    let st = { valuta: s.valuta || "JPY", pagatoDa: s.pagatoDa || me || T.viaggiatori[0], perChi: s.perChi?.length ? [...s.perChi] : [...T.viaggiatori], cat: s.cat || "cibo" };
+    const draw = el => {
+      $$("[data-val]", el).forEach(b => b.classList.toggle("on", b.dataset.val === st.valuta));
+      $$("[data-paid]", el).forEach(b => b.classList.toggle("sel", b.dataset.paid === st.pagatoDa));
+      $$("[data-per]", el).forEach(b => b.classList.toggle("on", st.perChi.includes(b.dataset.per)));
+      $$("[data-grp]", el).forEach(b => { const g = b.dataset.grp === "all" ? T.viaggiatori : COPPIE[+b.dataset.grp]; b.classList.toggle("on", g.length === st.perChi.length && g.every(n => st.perChi.includes(n))); });
+      $$("[data-cat]", el).forEach(b => b.classList.toggle("on", b.dataset.cat === st.cat));
+      const imp = parseFloat($("#s-imp", el).value.replace(",", ".")) || 0;
+      $("#s-conv", el).textContent = imp ? (st.valuta === "JPY" ? `≈ ${eurF(imp / rate())}` : `≈ ${Math.round(imp * rate()).toLocaleString("it-IT")} ¥`) + (st.perChi.length ? ` · ${eurF((st.valuta === "JPY" ? imp / rate() : imp) / st.perChi.length)} a testa` : "") : "";
+    };
+    openSheet(`<div style="height:12px"></div><h2>${isNew ? (s.cat === "rimborso" ? "Rimborso" : "Nuova spesa") : "Modifica spesa"}</h2>
+      <label class="fl"><span>Descrizione</span><input id="s-desc" value="${esc(s.desc || "")}" placeholder="es. Cena izakaya" autocomplete="off"></label>
+      <div class="grid2" style="grid-template-columns:1fr auto;align-items:end">
+        <label class="fl"><span>Importo</span><input id="s-imp" inputmode="decimal" value="${s.importo ?? ""}" placeholder="0" style="font-size:1.3rem;font-weight:800"></label>
+        <div class="seg" style="margin-bottom:12px"><button data-val="JPY">¥</button><button data-val="EUR">€</button></div>
+      </div>
+      <p class="small muted" id="s-conv" style="margin:-4px 0 10px"></p>
+      <div class="fl"><span>${s.cat === "rimborso" ? "Chi restituisce" : "Ha pagato"}</span><div class="whos">${T.viaggiatori.map(n => `<button data-paid="${n}">${avatar(n, 30)}${n}</button>`).join("")}</div></div>
+      <div class="fl"><span>${s.cat === "rimborso" ? "A chi" : "Diviso tra"}</span>
+        <div class="chips" style="margin:0;padding:0 0 6px;flex-wrap:wrap"><button class="chip" data-grp="all">Tutti e 4</button><button class="chip" data-grp="0">${coupleName(COPPIE[0])}</button><button class="chip" data-grp="1">${coupleName(COPPIE[1])}</button></div>
+        <div class="chips" style="margin:0;padding:0;flex-wrap:wrap">${T.viaggiatori.map(n => `<button class="chip" data-per="${n}">${n}</button>`).join("")}</div></div>
+      ${s.cat === "rimborso" ? "" : `<div class="fl"><span>Categoria</span><div class="chips" style="margin:0;padding:0;flex-wrap:wrap">${Object.entries(SCAT).filter(([k]) => k !== "rimborso").map(([k, [ic, n]]) => `<button class="chip" data-cat="${k}">${icon(ic)} ${n}</button>`).join("")}</div></div>`}
+      <label class="fl"><span>Giorno</span><input type="date" id="s-data" value="${s.data || (today >= T.inizio && today <= T.fine ? today : today)}"></label>
+      <div class="btns">${isNew ? `<button class="btn" data-close>Annulla</button>` : `<button class="btn" id="s-del" style="color:var(--shu)">${icon("Trash2")} Elimina</button>`}<button class="btn primary" id="s-save">Salva</button></div>
+    `, el => {
+      draw(el);
+      $("#s-imp", el).oninput = () => draw(el);
+      $$("[data-val]", el).forEach(b => b.onclick = () => { st.valuta = b.dataset.val; draw(el); });
+      $$("[data-paid]", el).forEach(b => b.onclick = () => { st.pagatoDa = b.dataset.paid; draw(el); });
+      $$("[data-per]", el).forEach(b => b.onclick = () => { const n = b.dataset.per; st.perChi = st.perChi.includes(n) ? st.perChi.filter(x => x !== n) : [...st.perChi, n]; draw(el); });
+      $$("[data-grp]", el).forEach(b => b.onclick = () => { st.perChi = [...(b.dataset.grp === "all" ? T.viaggiatori : COPPIE[+b.dataset.grp])]; draw(el); });
+      $$("[data-cat]", el).forEach(b => b.onclick = () => { st.cat = b.dataset.cat; draw(el); });
+      $("#s-save", el).onclick = () => {
+        const importo = parseFloat($("#s-imp", el).value.replace(",", "."));
+        if (!(importo > 0)) return toast("Inserisci l'importo");
+        if (!st.perChi.length) return toast("Scegli tra chi dividere");
+        const eur = st.valuta === "JPY" ? (s.valuta === "JPY" && s.importo === importo && s.eur ? s.eur : importo / rate()) : importo;
+        putItem("spese", { ...s, ...st, desc: $("#s-desc", el).value.trim(), importo, eur: Math.round(eur * 100) / 100, data: $("#s-data", el).value, ts: s.ts || Date.now() });
+        closeSheet(); toast("Spesa salvata ✓"); rerender();
+      };
+      $("#s-del", el)?.addEventListener("click", () => { if (confirm("Eliminare questa spesa per tutti?")) { delItem("spese", s.id); closeSheet(); rerender(); } });
+    });
+  }
+
   // ——— chi sei? ———
   const AVATAR = { "Niccolò": "#2b4c7e", "Antonella": "#c0577a", "Miriam": "#1f9488", "Paolo": "#d9822b" };
-  function askWho() {
-    openSheet(`<div style="height:12px"></div><h2>Chi sei?</h2><p class="lead">Così sappiamo chi ha modificato il programma.</p>
-      <div class="who">${T.viaggiatori.map(n => `<button data-who="${n}"><span class="avatar" style="background:${AVATAR[n] || "#888"}">${n[0]}</span>${n}</button>`).join("")}</div>`, el => {
-      $$("[data-who]", el).forEach(b => b.onclick = () => { me = b.dataset.who; LS.set("me", me); closeSheet(); toast(`Ciao ${me}! 👋`); render(); });
+  // Accesso: codice segreto del viaggio (protegge i dati condivisi) + chi sei.
+  function askWho(needCode = !code) {
+    let pick = me;
+    openSheet(`<div style="height:12px"></div>
+      <h2>${needCode ? "Benvenuti a bordo ✈️" : "Chi sei?"}</h2>
+      <p class="lead">${needCode ? "Inserisci il codice del viaggio che vi siete passati: protegge programma, prenotazioni e spese." : "Così sappiamo chi ha fatto le modifiche."}</p>
+      ${needCode ? `<input type="text" id="tcode" placeholder="Codice del viaggio" autocomplete="off" autocapitalize="none" spellcheck="false" value="${esc(code)}" style="font-weight:700;letter-spacing:.04em">` : ""}
+      <div class="who">${T.viaggiatori.map(n => `<button data-who="${n}" class="${n === me ? "sel" : ""}"><span class="avatar" style="background:${AVATAR[n] || "#888"}">${n[0]}</span>${n}</button>`).join("")}</div>
+      ${needCode ? `<div class="btns"><button class="btn ghost" data-close>Più tardi</button><button class="btn primary" id="enter">Entra</button></div>
+        <p class="muted small" style="margin-top:12px">Senza codice l'app funziona lo stesso, ma solo su questo telefono e senza spese e prenotazioni condivise.</p>` : ""}`, el => {
+      $$("[data-who]", el).forEach(b => b.onclick = () => {
+        pick = b.dataset.who; $$("[data-who]", el).forEach(x => x.classList.toggle("sel", x === b));
+        if (!needCode) { me = pick; LS.set("me", me); closeSheet(); toast(`Ciao ${me}! 👋`); render(); }
+      });
+      $("#enter", el)?.addEventListener("click", () => {
+        const c = $("#tcode", el).value.trim().toLowerCase();
+        if (!c) return toast("Scrivi il codice del viaggio");
+        if (!pick) return toast("Scegli chi sei");
+        me = pick; LS.set("me", me);
+        const changed = c !== code; code = c; LS.set("code", c);
+        closeSheet();
+        if (changed && sync) location.reload(); else { startSync(); toast(`Ciao ${me}! 👋`); render(); }
+      });
     });
   }
 
@@ -879,8 +1143,14 @@
   addEventListener("hashchange", navigate);
 
   applyTheme();
+  // cambio ¥/€ aggiornato all'avvio (serve anche alle spese), al massimo ogni 12 ore
+  (() => {
+    const st = LS.get("rate", null);
+    if (st?.d && Date.now() - new Date(st.d) < 12 * 3600e3) return;
+    fetch("https://api.frankfurter.dev/v1/latest?base=EUR&symbols=JPY").then(r => r.json()).then(j => { if (j?.rates?.JPY) LS.set("rate", { r: j.rates.JPY, d: j.date }); }).catch(() => {});
+  })();
   if (!maybeImport()) render();
-  if (!me) setTimeout(askWho, 600);
+  if (!me || (!code && window.FIREBASE)) setTimeout(() => askWho(), 600);
 
   if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => {});
 })();

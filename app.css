@@ -402,3 +402,34 @@ table.budget td:last-child { text-align: right; font-variant-numeric: tabular-nu
   .sheet-card { bottom: 24px; border-radius: 26px; }
   .weather { grid-template-columns: repeat(6, 1fr); }
 }
+
+/* ——— Prenotazioni e spese ——— */
+.pic { width: 40px; height: 40px; border-radius: 13px; display: grid; place-items: center; color: #fff; flex: none; }
+.pic svg { width: 20px; height: 20px; }
+.pcard, .spesa { cursor: pointer; }
+.spesa { padding: 12px 14px; margin-bottom: 8px; }
+.nights { display: grid; grid-template-columns: repeat(15, 1fr); gap: 3px; margin-top: 10px; }
+.nights i { height: 10px; border-radius: 3px; background: var(--card-2); border: 1px solid var(--line); }
+.nights i.ok { background: #2e6fb0; border-color: transparent; }
+.addrow { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.mini {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 8px; border-radius: 16px;
+  background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow-s); text-decoration: none; color: var(--ink); cursor: pointer;
+}
+.mini > svg { color: #2e6fb0; }
+.mini small { display: block; font-size: .7rem; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.mini b { display: block; font-size: .92rem; line-height: 1.25; }
+.mini .btn.small { min-height: 34px; padding: 6px 10px; }
+.mini.hotel { background: color-mix(in srgb, #2e6fb0 10%, var(--card)); }
+a.mini:not(.hotel) b { font-size: .8rem; color: var(--shu); }
+.mini-card { display: block; text-decoration: none; color: var(--ink); }
+.fl { display: block; margin-bottom: 12px; }
+.fl > span { display: block; font-size: .72rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 5px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.seg { display: inline-flex; padding: 4px; background: var(--card-2); border: 1px solid var(--line); border-radius: 14px; gap: 2px; }
+.seg button { border: none; background: transparent; min-width: 46px; min-height: 38px; border-radius: 10px; font-weight: 800; font-size: 1.05rem; color: var(--muted); }
+.seg button.on { background: var(--card); color: var(--ink); box-shadow: var(--shadow-s); }
+.whos { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.whos button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 2px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); font-size: .74rem; font-weight: 700; }
+.whos button.sel, .who button.sel { border-color: var(--shu); box-shadow: 0 0 0 2px var(--shu-soft); }
+.chip svg { width: 14px; height: 14px; }

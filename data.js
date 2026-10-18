@@ -248,4 +248,3 @@ window.FIREBASE = {
   messagingSenderId: "471616366612",
   appId: "1:471616366612:web:c20c574aac4f86e72c1f01",
 };
-window.SYNC_DOC = "giappone-2027-nap-mp";
