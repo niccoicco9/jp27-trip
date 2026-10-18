@@ -109,10 +109,24 @@
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   let code = LS.get("code", "");
   let pushT;
+  // ultimo stato confermato dal server: si inviano solo le differenze rispetto a questo
+  let synced = { plan: clone(plan), booked: [...booked] };
+  const same = (a, b) => JSON.stringify(a || null) === JSON.stringify(b || null);
+  function localChanges() {
+    const days = {};
+    for (const d of new Set([...Object.keys(plan), ...Object.keys(synced.plan)])) if (!same(plan[d], synced.plan[d])) days[d] = plan[d] || { l: "", n: "", i: [] };
+    return { days, add: [...booked].filter(x => !synced.booked.includes(x)), rem: synced.booked.filter(x => !booked.has(x)) };
+  }
+  function pushChanges() {
+    const ch = localChanges();
+    if (!Object.keys(ch.days).length && !ch.add.length && !ch.rem.length) return;
+    sync.patch({ ...ch, by: me || "?" });
+    synced = { plan: clone(plan), booked: [...booked] };
+  }
   function savePlan() {
     LS.set("plan", plan); LS.set("booked", [...booked]);
     lastEdit = { by: me || "?", at: Date.now() }; LS.set("lastEdit", lastEdit);
-    if (sync) { clearTimeout(pushT); pushT = setTimeout(() => sync.pushMain({ plan, booked: [...booked], by: me || "?" }), 500); }
+    if (sync) { clearTimeout(pushT); pushT = setTimeout(pushChanges, 400); }
   }
   function putItem(name, item) {
     item = { ...item, id: item.id || uid(), by: me || "?" };
@@ -129,9 +143,13 @@
     if (!(a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) && sheet.hidden) rerender(); else pendingRemote = true;
   }
   function onRemote(data, first) {
-    if (!data) { if (first) sync.pushMain({ plan, booked: [...booked], by: me || "?" }); return; }
-    if (data.plan) plan = data.plan;
-    booked = new Set(data.booked || []);
+    if (!data) { if (first) { sync.pushMain({ plan, booked: [...booked], by: me || "?" }); synced = { plan: clone(plan), booked: [...booked] }; } return; }
+    // tiene le modifiche locali non ancora inviate, prende tutto il resto dal server
+    const mine = localChanges();
+    synced = { plan: clone(data.plan || {}), booked: [...(data.booked || [])] };
+    plan = { ...clone(data.plan || {}), ...clone(mine.days) };
+    booked = new Set([...(data.booked || []).filter(x => !mine.rem.includes(x)), ...mine.add]);
+    if (Object.keys(mine.days).length || mine.add.length || mine.rem.length) { clearTimeout(pushT); pushT = setTimeout(pushChanges, 400); }
     lastEdit = { by: data.by, at: data.at?.toMillis?.() || Date.now() };
     LS.set("plan", plan); LS.set("booked", [...booked]); LS.set("lastEdit", lastEdit);
     remoteChanged();
@@ -153,9 +171,13 @@
   }
   function startSync() {
     if (!window.FIREBASE || !code || sync) return;
-    import("./sync.js").then(m => { sync = m.start(window.FIREBASE, code, { main: onRemote, list: onList, status: setSync }); }).catch(err => setSync("error", err));
+    import("./sync.js").then(m => { sync = m.start(window.FIREBASE, code, { main: onRemote, list: onList, status: setSync, recreate: () => sync.pushMain({ plan, booked: [...booked], by: me || "?" }) }); }).catch(err => setSync("error", err));
   }
   startSync();
+
+  // ricerca tollerante: ignora accenti (ō → o), trattini, apostrofi e maiuscole; ogni parola deve comparire
+  const fold = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[-'’·.]/g, "");
+  const matches = (text, q) => { const h = fold(text).replace(/\s+/g, ""); return fold(q).split(/\s+/).filter(Boolean).every(w => h.includes(w)); };
 
   // ——— link Google Maps ———
   const q = p => p.jp.replace(/（.*?）/g, "").trim() || p.n;
@@ -471,7 +493,7 @@
   function openPicker(d) {
     let fz = dayZone(d) || "all", fq = "";
     const draw = el => {
-      const list = LUOGHI.filter(p => !p.out && (fz === "all" || p.z === fz) && (!fq || (p.n + " " + p.jp).toLowerCase().includes(fq)));
+      const list = LUOGHI.filter(p => !p.out && (fz === "all" || p.z === fz) && (!fq || matches(p.n + " " + p.jp + " " + p.d, fq)));
       $("#pk-list", el).innerHTML = list.map(p => {
         const inDay = plan[d]?.i?.includes(p.id);
         const other = dayOf(p.id).filter(x => x !== d);
@@ -540,7 +562,7 @@
       <div id="llist"></div>`;
     const draw = () => {
       const qq = lf.q.toLowerCase().trim();
-      const list = LUOGHI.filter(p => (lf.out || !p.out) && (lf.z === "all" || p.z === lf.z) && (!lf.pren || p.pren) && (!qq || (p.n + " " + p.jp + " " + p.d + " " + (CAT[p.c]?.[2] || "")).toLowerCase().includes(qq)))
+      const list = LUOGHI.filter(p => (lf.out || !p.out) && (lf.z === "all" || p.z === lf.z) && (!lf.pren || p.pren) && (!qq || matches(p.n + " " + p.jp + " " + p.d + " " + (CAT[p.c]?.[2] || "") + " " + zona[p.z].nome, qq)))
         .sort((a, b) => (a.out ? 1 : 0) - (b.out ? 1 : 0) || zoneOrder[a.z] - zoneOrder[b.z]);
       let last = null, html = "";
       for (const p of list) {
@@ -876,7 +898,7 @@
     if (!sub) {
       view.innerHTML = `<h2>Utility</h2><p class="lead">Tutto quello che serve in viaggio, anche offline.</p>
         <div class="ugrid">${UTIL.map(([k, ic, c, t, s]) => `<a class="ucard" href="#utility/${k}"><span class="ic" style="background:${c}">${icon(ic)}</span><b>${t}</b>${s ? `<small>${s}</small>` : ""}</a>`).join("")}</div>
-        <div class="card row" style="margin-top:16px"><div class="grow"><b>Chi sei?</b><div class="muted small">${me ? `Stai usando l'app come ${esc(me)}` : "Scegli il tuo nome"}</div></div><button class="btn small" id="whoami">${icon("UserRound")} ${me ? "Cambia" : "Scegli"}</button></div>`;
+        <div class="card row" style="margin-top:16px"><div class="grow"><b>Accesso</b><div class="muted small">${me ? esc(me) : "Nome non scelto"} · ${code ? "dati condivisi attivi" : "codice del viaggio non inserito"}</div></div><button class="btn small${code ? "" : " primary"}" id="whoami">${icon(code ? "UserRound" : "KeyRound")} ${code ? "Cambia" : "Inserisci"}</button></div>`;
       $("#whoami").onclick = askWho;
       return;
     }
@@ -1189,9 +1211,10 @@
         me = pick; LS.set("me", me);
         const changed = c !== code; code = c; LS.set("code", c);
         closeSheet();
+        LS.set("skipCode", false);
         if (changed && sync) location.reload(); else { startSync(); toast(`Ciao ${me}! 👋`); render(); }
       });
-    });
+    }, () => { if (needCode && !code) { LS.set("skipCode", true); toast("Puoi inserire il codice quando vuoi da Utility"); } });
   }
 
   // ——— orologi ———
@@ -1329,7 +1352,22 @@
     fetch("https://api.frankfurter.dev/v1/latest?base=EUR&symbols=JPY").then(r => r.json()).then(j => { if (j?.rates?.JPY) LS.set("rate", { r: j.rates.JPY, d: j.date }); }).catch(() => {});
   })();
   if (!maybeImport()) render();
-  if (!me || (!code && window.FIREBASE)) setTimeout(() => askWho(), 600);
+  if (!me || (!code && window.FIREBASE && !LS.get("skipCode", false))) setTimeout(() => askWho(), 600);
 
-  if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => {});
+  // aggiornamenti: quando arriva una nuova versione compare un avviso con "Aggiorna"
+  if ("serviceWorker" in navigator && location.protocol !== "file:") {
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register("sw.js").then(reg => {
+      const check = () => reg.update().catch(() => {});
+      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") check(); });
+      setInterval(check, 30 * 60e3);
+    }).catch(() => {});
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!hadController || $("#upd")) return;
+      const b = document.createElement("div"); b.id = "upd"; b.className = "upd";
+      b.innerHTML = `${icon("Sparkles")}<span class="grow">Nuova versione disponibile</span><button class="btn small primary">Aggiorna</button>`;
+      b.querySelector("button").onclick = () => location.reload();
+      document.body.appendChild(b);
+    });
+  }
 })();

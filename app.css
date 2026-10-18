@@ -506,3 +506,12 @@ input::-webkit-calendar-picker-indicator { opacity: .7; }
 .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib.maplibregl-compact { min-height: 22px; margin: 0 8px 8px 0; background: color-mix(in srgb, var(--card) 80%, transparent); }
 :root[data-theme="dark"] .maplibregl-ctrl-attrib-button { filter: invert(1); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .maplibregl-ctrl-attrib-button { filter: invert(1); } }
+
+/* avviso di nuova versione */
+.upd {
+  position: fixed; left: 12px; right: 12px; max-width: 520px; margin: 0 auto; z-index: 40;
+  bottom: calc(var(--nav-h) + 22px + env(safe-area-inset-bottom));
+  display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border-radius: 18px;
+  background: var(--ink); color: var(--bg); box-shadow: var(--shadow-l); font-weight: 600; font-size: .9rem; animation: rise .35s var(--ease);
+}
+.upd svg { color: var(--gold); }
