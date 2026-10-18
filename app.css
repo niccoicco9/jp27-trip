@@ -89,6 +89,7 @@ main { max-width: 720px; margin: 0 auto; padding: 16px 16px 24px; }
 main.full { max-width: none; padding: 0; }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
 main.enter { animation: fade .18s ease-out; }
+/* niente backdrop-filter dentro main: con la dissolvenza Safari iOS lo applica in ritardo */
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 
 /* ——— Bottom nav (floating) ——— */
@@ -169,7 +170,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .hero .title { font-size: 1.5rem; font-weight: 800; line-height: 1.15; text-shadow: 0 1px 12px rgba(0,0,0,.3); }
 .hero p { margin: 4px 0 0; opacity: .95; font-size: .92rem; }
 .hero .btns { margin-top: 12px; }
-.hero .btn:not(.primary) { background: rgba(255,255,255,.18); color: #fff; border-color: rgba(255,255,255,.3); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: none; }
+.hero .btn:not(.primary) { background: rgba(20,14,10,.38); color: #fff; border-color: rgba(255,255,255,.3); box-shadow: none; }
 .hero .credit { position: absolute; top: 10px; right: 12px; font-size: .62rem; opacity: .75; color: #fff; text-decoration: none; }
 
 /* ——— Chapters (zone) ——— */
@@ -183,7 +184,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .chapter::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, transparent 35%, var(--c) 100%); opacity: .95; }
 .chapter b { font-size: 1rem; line-height: 1.15; }
 .chapter small { opacity: .9; font-size: .74rem; }
-.chapter .num { position: absolute; top: 10px; left: 12px; font-family: var(--serif); font-weight: 800; font-size: .8rem; background: rgba(0,0,0,.28); padding: 2px 8px; border-radius: 99px; backdrop-filter: blur(6px); }
+.chapter .num { position: absolute; top: 10px; left: 12px; font-family: var(--serif); font-weight: 800; font-size: .8rem; background: rgba(0,0,0,.5); padding: 2px 8px; border-radius: 99px; }
 
 /* ——— Quick actions ——— */
 .quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
@@ -237,7 +238,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 }
 .daycover input::placeholder { color: rgba(255,255,255,.7); }
 .daycover input:focus { outline: none; border-bottom: 2px solid rgba(255,255,255,.6); }
-.daycover .dn { position: absolute; top: 12px; left: 14px; font-family: var(--serif); font-weight: 800; background: rgba(0,0,0,.3); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); padding: 3px 10px; border-radius: 99px; font-size: .82rem; }
+.daycover .dn { position: absolute; top: 12px; left: 14px; font-family: var(--serif); font-weight: 800; background: rgba(0,0,0,.5); padding: 3px 10px; border-radius: 99px; font-size: .82rem; }
 .daynote { display: flex; gap: 10px; align-items: flex-start; background: var(--warn-bg); color: var(--warn-fg); border-radius: 16px; padding: 12px 14px; font-size: .88rem; margin-bottom: 14px; }
 .daynote svg { margin-top: 2px; }
 
@@ -305,9 +306,9 @@ table.budget td:last-child { text-align: right; font-variant-numeric: tabular-nu
 .map-ui { position: absolute; left: 0; right: 0; top: 0; z-index: 2; padding: 12px 16px 0; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
 .map-ui > * { pointer-events: auto; }
 .map-ui .chips { padding-bottom: 2px; }
-.map-ui .chip { background: var(--glass); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: var(--shadow); }
+.map-ui .chip { background: var(--card); box-shadow: var(--shadow); }
 .map-ui .chip.on { background: var(--ink); }
-.map-ui select { min-height: 40px; padding: 8px 12px; font-size: .88rem; font-weight: 600; max-width: 280px; background: var(--glass); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: var(--shadow); }
+.map-ui select { min-height: 40px; padding: 8px 12px; font-size: .88rem; font-weight: 600; max-width: 280px; background: var(--card); box-shadow: var(--shadow); }
 .locbtn { position: absolute; right: 16px; bottom: calc(var(--nav-h) + 28px + env(safe-area-inset-bottom)); z-index: 2; width: 50px; height: 50px; border-radius: 16px; border: 1px solid var(--line); background: var(--card); box-shadow: var(--shadow); display: grid; place-items: center; color: var(--ai); }
 .map-fallback { padding: 20px 16px; max-width: 720px; margin: 0 auto; }
 .gm-style .gm-style-iw-c { padding: 0 !important; border-radius: 16px !important; box-shadow: var(--shadow-l) !important; }
