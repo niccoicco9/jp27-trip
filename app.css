@@ -71,9 +71,11 @@ svg.i { width: 1.15em; height: 1.15em; flex: none; vertical-align: -.2em; }
 .top {
   position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px;
   padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
-  background: var(--glass); backdrop-filter: saturate(1.6) blur(18px); -webkit-backdrop-filter: saturate(1.6) blur(18px);
+  /* vetro più coprente (testo leggibile anche sopra foto chiare) e niente translateZ:
+     su iPhone, insieme al backdrop-filter, faceva disegnare il testo sfocato durante lo scorrimento */
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter: blur(20px) saturate(1.2); -webkit-backdrop-filter: blur(20px) saturate(1.2);
   border-bottom: 1px solid var(--line);
-  transform: translateZ(0); -webkit-transform: translateZ(0);
 }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; text-decoration: none; color: inherit; }
 .brand h1 { font-size: 1.02rem; font-weight: 800; margin: 0; line-height: 1.15; }
