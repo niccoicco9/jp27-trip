@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 26;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 27;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -897,9 +897,76 @@
   document.addEventListener("click", e => { const b = e.target.closest("[data-iw]"); if (b) openPlace(b.dataset.iw); });
   const hotelsWithPos = () => lists.prenotazioni.filter(p => p.tipo === "hotel" && p.lat && p.lng);
 
+  // ——— puntine vicine raggruppate in un pallino con il numero (si apre toccandolo) ———
+  const CLUSTER_PX = 46;
+  function worldXY(p, scale) { const s = Math.sin(p.lat * Math.PI / 180); return [(p.lng + 180) / 360 * scale, (.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * scale]; }
+  function clusterize(ids, zoom, tile) {
+    const scale = tile * 2 ** zoom, groups = [];
+    for (const id of ids) {
+      const [x, y] = worldXY(byId[id], scale);
+      const g = groups.find(c => (c.x - x) ** 2 + (c.y - y) ** 2 < CLUSTER_PX ** 2);
+      if (g) g.ids.push(id); else groups.push({ x, y, ids: [id] });
+    }
+    return groups.map(g => {
+      const ps = g.ids.map(id => byId[id]), c = {};
+      ps.forEach(p => (c[p.z] = (c[p.z] || 0) + 1));
+      return { ids: g.ids, lat: ps.reduce((a, p) => a + p.lat, 0) / ps.length, lng: ps.reduce((a, p) => a + p.lng, 0) / ps.length, col: zona[Object.entries(c).sort((a, b) => b[1] - a[1])[0][0]].colore };
+    });
+  }
+  const clusterCache = {};
+  function clusterIcon(n, col) {
+    const key = n + col;
+    if (!clusterCache[key]) {
+      const r = n < 10 ? 16 : n < 50 ? 19 : 22, sz = r * 2 + 10, c = sz / 2;
+      clusterCache[key] = { size: sz, url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${sz}" height="${sz}" viewBox="0 0 ${sz} ${sz}"><circle cx="${c}" cy="${c}" r="${r + 4}" fill="${col}" opacity=".28"/><circle cx="${c}" cy="${c}" r="${r}" fill="${col}" stroke="#fff" stroke-width="2.5"/><text x="${c}" y="${c + 4.6}" text-anchor="middle" font-family="Arial,sans-serif" font-weight="700" font-size="${n < 100 ? 13.5 : 12}" fill="#fff">${n}</text></svg>`) };
+    }
+    return clusterCache[key];
+  }
+  // quali puntine mostrare e quali pallini: niente raggruppamento con le tappe di un giorno o da molto vicino
+  function clusterPlan(vis, nums, zoom, tile, maxZ) {
+    const ids = [...vis].filter(id => byId[id]);
+    if (Object.keys(nums).length || zoom >= maxZ) return { groups: [], hidden: new Set() };
+    const groups = clusterize(ids, zoom, tile).filter(g => g.ids.length > 1), hidden = new Set();
+    groups.forEach(g => g.ids.forEach(id => hidden.add(id)));
+    return { groups, hidden };
+  }
+
+  // la scheda di un luogo deve stare tutta tra i filtri in alto e la barra (o le schede) in basso
+  function keepInView(el, panBy) {
+    if (!el) return;
+    const r = el.getBoundingClientRect(), top = ($(".map-ui")?.getBoundingClientRect().bottom || 0) + 12;
+    const car = $("#mcar"), bottom = (car && !car.hidden ? car.getBoundingClientRect().top : ($("#tabs")?.getBoundingClientRect().top || innerHeight)) - 12;
+    const dy = r.top < top ? r.top - top : r.bottom > bottom ? r.bottom - bottom : 0;
+    if (dy) panBy(Math.round(dy));
+  }
+
   // ——— motore Google ———
   function googleEngine(el) {
-    let map, iw, you, route; const mk = {}, hk = {};
+    let map, iw, you, route, curVis = new Set(), curNums = {}, lastZ = null, cl = []; const mk = {}, hk = {};
+    const recluster = () => {
+      if (!map) return;
+      const z = map.getZoom(); lastZ = z;
+      cl.forEach(m => m.setMap(null)); cl = [];
+      const { groups, hidden } = clusterPlan(curVis, curNums, z, 256, 16);
+      for (const [id, m] of Object.entries(mk)) m.setVisible(curVis.has(id) && !hidden.has(id));
+      for (const g of groups) {
+        const ic = clusterIcon(g.ids.length, g.col);
+        const m = new google.maps.Marker({ map, position: { lat: g.lat, lng: g.lng }, zIndex: 200 + g.ids.length, title: `${g.ids.length} luoghi`,
+          icon: { url: ic.url, scaledSize: new google.maps.Size(ic.size, ic.size), anchor: new google.maps.Point(ic.size / 2, ic.size / 2) } });
+        m.addListener("click", () => { iw.close(); zoomInto(g); });
+        cl.push(m);
+      }
+    };
+    const openIw = (id, anchor) => {
+      iw.setContent(iwHtml(id)); iw.open({ map, anchor });
+      google.maps.event.addListenerOnce(iw, "domready", () => setTimeout(() => keepInView(el.querySelector(".gm-style-iw-c"), dy => map.panBy(0, dy)), 60));
+    };
+    const zoomInto = g => {
+      const b = new google.maps.LatLngBounds(); g.ids.forEach(id => b.extend({ lat: byId[id].lat, lng: byId[id].lng }));
+      const span = Math.max(b.toSpan().lat(), b.toSpan().lng());
+      if (span < .002) { map.panTo({ lat: g.lat, lng: g.lng }); map.setZoom(Math.min(18, map.getZoom() + 3)); }
+      else map.fitBounds(b, { top: mapPadTop(), bottom: mapPadBottom(), left: 50, right: 50 });
+    };
     const icon = (url, n) => { const [w, h] = pinSize(n); return { url, scaledSize: new google.maps.Size(w, h), anchor: new google.maps.Point(w / 2, h - 1) }; };
     return {
       kind: "google",
@@ -913,6 +980,7 @@
         });
         iw = new InfoWindow({ headerDisabled: true });
         map.addListener("click", () => iw.close());
+        map.addListener("idle", () => { if (map.getZoom() !== lastZ) recluster(); });
         route = new google.maps.Polyline({ map, strokeOpacity: 0, icons: [{ icon: { path: "M 0,-1 0,1", strokeOpacity: 1, strokeColor: "#d4442f", scale: 3 }, offset: "0", repeat: "12px" }] });
       },
       show(vis, nums) {
@@ -920,12 +988,13 @@
         for (const p of LUOGHI) {
           if (p.out || mk[p.id]) continue;
           const m = new google.maps.Marker({ map, title: p.n });
-          m.addListener("click", () => { iw.setContent(iwHtml(p.id)); iw.open({ map, anchor: m }); });
+          m.addListener("click", () => openIw(p.id, m));
           mk[p.id] = m;
         }
         for (const id of Object.keys(mk)) if (!byId[id]) { mk[id].setMap(null); delete mk[id]; }
         for (const [id, m] of Object.entries(mk)) { const p = byId[id]; m.setPosition({ lat: p.lat, lng: p.lng }); m.setTitle(p.n); }
-        for (const [id, m] of Object.entries(mk)) { const n = nums[id] || 0; m.setVisible(vis.has(id)); m.setIcon(icon(pinUrl("p", byId[id], n), n)); m.setZIndex(n ? 100 - n : 1); }
+        for (const [id, m] of Object.entries(mk)) { const n = nums[id] || 0; m.setIcon(icon(pinUrl("p", byId[id], n), n)); m.setZIndex(n ? 100 - n : 1); }
+        curVis = vis; curNums = nums; recluster();
         for (const h of hotelsWithPos()) {
           hk[h.id] ||= new google.maps.Marker({ map, title: h.titolo, icon: icon(pinUrl("hotel")) });
           hk[h.id].setPosition({ lat: h.lat, lng: h.lng });
@@ -939,16 +1008,43 @@
         const b = new google.maps.LatLngBounds(); pts.forEach(([lng, lat]) => b.extend({ lat, lng }));
         map.fitBounds(b, { top: mapPadTop(), bottom: mapPadBottom(), left: 40, right: 60 });
       },
-      focus(id, popup) { const p = byId[id]; map.panTo({ lat: p.lat, lng: p.lng }); if (map.getZoom() < 14) map.setZoom(15); if (popup) { iw.setContent(iwHtml(id)); iw.open({ map, anchor: mk[id] }); } },
+      focus(id, popup) { const p = byId[id]; map.panTo({ lat: p.lat, lng: p.lng }); if (map.getZoom() < 16) map.setZoom(16); recluster(); if (popup) openIw(id, mk[id]); },
       you(ll) { you ||= new google.maps.Marker({ map, zIndex: 999, icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: "#2e7bf6", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 3 } }); you.setPosition({ lat: ll[1], lng: ll[0] }); map.panTo({ lat: ll[1], lng: ll[0] }); map.setZoom(15); },
       theme() { map?.setOptions({ styles: isDark() ? MAP_DARK : MAP_LIGHT }); },
-      destroy() { Object.values(mk).concat(Object.values(hk), you ? [you] : []).forEach(m => m.setMap(null)); route?.setMap(null); google.maps.event.clearInstanceListeners(map); map = null; },
+      destroy() { Object.values(mk).concat(Object.values(hk), cl, you ? [you] : []).forEach(m => m.setMap(null)); route?.setMap(null); google.maps.event.clearInstanceListeners(map); map = null; },
     };
   }
 
   // ——— motore offline (MapLibre) ———
   function offlineEngine(el) {
-    let map, popup, you; const mk = {}, hk = {}; let routePts = [];
+    let map, popup, you, curVis = new Set(), curNums = {}, cl = []; const mk = {}, hk = {}; let routePts = [];
+    const recluster = () => {
+      if (!map) return;
+      cl.forEach(m => m.remove()); cl = [];
+      const { groups, hidden } = clusterPlan(curVis, curNums, map.getZoom(), 512, 15);
+      for (const [id, m] of Object.entries(mk)) m.getElement().style.display = curVis.has(id) && !hidden.has(id) ? "" : "none";
+      for (const g of groups) {
+        const ic = clusterIcon(g.ids.length, g.col), e = document.createElement("img");
+        e.src = ic.url; e.width = e.height = ic.size; e.className = "ml-pin ml-cluster"; e.alt = `${g.ids.length} luoghi`; e.style.zIndex = 200 + g.ids.length;
+        e.addEventListener("click", ev => { ev.stopPropagation(); popup.remove(); zoomInto(g); });
+        cl.push(new maplibregl.Marker({ element: e, anchor: "center" }).setLngLat([g.lng, g.lat]).addTo(map));
+      }
+    };
+    const openPop = id => {
+      const q = byId[id]; popup.setLngLat([q.lng, q.lat]).setHTML(iwHtml(id)).addTo(map);
+      setTimeout(() => keepInView(popup.getElement(), dy => {
+        const target = map.unproject([el.clientWidth / 2, el.clientHeight / 2 + dy]);
+        map.easeTo({ center: target, duration: 250 });
+        setTimeout(() => { const n = map.getCenter(); if (Math.abs(n.lat - target.lat) + Math.abs(n.lng - target.lng) > 1e-6) map.jumpTo({ center: target }); }, 450);   // se l'animazione non è arrivata
+      }), 40);
+    };
+    const zoomInto = g => {
+      const pts = g.ids.map(id => [byId[id].lng, byId[id].lat]);
+      const b = pts.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]));
+      const span = Math.max(b.getNorth() - b.getSouth(), b.getEast() - b.getWest());
+      if (span < .002) map.easeTo({ center: [g.lng, g.lat], zoom: Math.min(18, map.getZoom() + 3) });
+      else { const h = el.clientHeight; map.fitBounds(b, { padding: h > 420 ? { top: mapPadTop(), bottom: mapPadBottom(), left: 50, right: 50 } : 30, maxZoom: 17 }); }
+    };
     const markerEl = (url, n) => { const [w, h] = pinSize(n); const i = document.createElement("img"); i.src = url; i.width = w; i.height = h; i.className = "ml-pin"; return i; };
     const addRoute = () => {
       if (!map.getSource("route")) {
@@ -964,21 +1060,23 @@
         await new Promise(r => { map.once("load", r); setTimeout(r, 6000); });   // senza rete può non arrivare mai: si va avanti comunque
         popup = new maplibregl.Popup({ offset: 34, closeButton: false, maxWidth: "240px", className: "ml-pop" });
         map.on("style.load", addRoute);
+        map.on("zoomend", recluster);
         addRoute();
       },
       show(vis, nums) {
         for (const p of LUOGHI) {
           if (p.out || mk[p.id]) continue;
           const id = p.id, m = new maplibregl.Marker({ element: markerEl(pinUrl("p", p)), anchor: "bottom" }).setLngLat([p.lng, p.lat]).addTo(map);
-          m.getElement().addEventListener("click", ev => { ev.stopPropagation(); const q = byId[id]; popup.setLngLat([q.lng, q.lat]).setHTML(iwHtml(id)).addTo(map); });
+          m.getElement().addEventListener("click", ev => { ev.stopPropagation(); openPop(id); });
           mk[id] = m;
         }
         for (const id of Object.keys(mk)) if (!byId[id]) { mk[id].remove(); delete mk[id]; }
         for (const [id, m] of Object.entries(mk)) m.setLngLat([byId[id].lng, byId[id].lat]);
         for (const [id, m] of Object.entries(mk)) {
           const n = nums[id] || 0, e = m.getElement(), [w, h] = pinSize(n);
-          e.style.display = vis.has(id) ? "" : "none"; e.src = pinUrl("p", byId[id], n); e.width = w; e.height = h; e.style.zIndex = n ? 100 - n : 1;
+          e.src = pinUrl("p", byId[id], n); e.width = w; e.height = h; e.style.zIndex = n ? 100 - n : 1;
         }
+        curVis = vis; curNums = nums; recluster();
         for (const h of hotelsWithPos()) { hk[h.id] ||= new maplibregl.Marker({ element: markerEl(pinUrl("hotel")), anchor: "bottom" }).addTo(map); hk[h.id].setLngLat([h.lng, h.lat]); }
         popup?.remove();
       },
@@ -992,7 +1090,7 @@
         const pad = h > 420 && w > 200 ? { top: mapPadTop(), bottom: mapPadBottom(), left: 40, right: 60 } : 20;
         try { map.fitBounds(b, { padding: pad, duration: 0, maxZoom: 15 }); } catch { map.jumpTo({ center: b.getCenter(), zoom: 9 }); }
       },
-      focus(id, pop) { const p = byId[id]; map.easeTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 15) }); if (pop) popup.setLngLat([p.lng, p.lat]).setHTML(iwHtml(id)).addTo(map); },
+      focus(id, pop) { const p = byId[id]; map.easeTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 15.5) }); if (pop) setTimeout(() => openPop(id), 350); },
       you(ll) {
         if (!you) { const d = document.createElement("div"); d.className = "ml-you"; you = new maplibregl.Marker({ element: d }).addTo(map); }
         you.setLngLat(ll); map.easeTo({ center: ll, zoom: 15 });

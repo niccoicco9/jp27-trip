@@ -705,3 +705,9 @@ main.enter.nav-fade { animation: fade .2s ease-out; }
 .dchip:active, .chip:active, .iconbtn:active, .seg button:active { transform: scale(.92); }
 .prep:active, label.check:active { background-color: color-mix(in srgb, var(--ink) 5%, transparent); }
 .dchip.on:active { transform: translateY(-2px) scale(.94); }
+
+/* ——— v27: mappa ordinata ——— */
+/* la scheda del luogo sta sempre sopra le puntine */
+.maplibregl-popup { z-index: 1000; }
+.ml-cluster { filter: drop-shadow(0 2px 4px rgba(0,0,0,.3)); transition: transform .15s var(--ease); }
+.ml-cluster:active { transform: scale(.9); }
