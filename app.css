@@ -711,3 +711,19 @@ main.enter.nav-fade { animation: fade .2s ease-out; }
 .maplibregl-popup { z-index: 1000; }
 .ml-cluster { filter: drop-shadow(0 2px 4px rgba(0,0,0,.3)); transition: transform .15s var(--ease); }
 .ml-cluster:active { transform: scale(.9); }
+
+/* ——— v28 ——— */
+/* è un'app: niente zoom con due dita sulla pagina (la mappa gestisce il suo) */
+html, body { touch-action: pan-x pan-y; }
+/* campi con caratteri da 16px: su iPhone toccandoli la pagina non si ingrandisce */
+.tl .ttime, .map-ui select, #mday { font-size: 16px; }
+/* "Ascolta" più facile da toccare */
+.phrase .iconbtn { width: 44px; height: 44px; border-radius: 12px; }
+/* saldo tra coppie */
+.avpair { display: inline-flex; }
+.avpair .avatar + .avatar { margin-left: -8px; box-shadow: 0 0 0 2px var(--card); }
+.perperson { margin-top: 10px; }
+.perperson summary { cursor: pointer; font-size: .85rem; font-weight: 700; color: var(--shu); padding: 8px 0; list-style: none; }
+.perperson summary::-webkit-details-marker { display: none; }
+.perperson summary::after { content: " ›"; }
+.perperson[open] summary::after { content: " ⌄"; }

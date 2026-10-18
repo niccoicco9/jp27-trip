@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 27;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 28;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -117,6 +117,18 @@
   const todayJP = () => fakeToday || new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo" }).format(new Date());
   const nowJP = () => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Tokyo", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date());
   const kmBetween = (a, b) => { const r = x => x * Math.PI / 180; return 2 * 6371 * Math.asin(Math.sqrt(Math.sin(r(b.lat - a.lat) / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lng - a.lng) / 2) ** 2)); };
+  // importi scritti all'italiana: "1.500" = millecinquecento, "1.500,50" e "12,5" con la virgola decimale
+  function parseNum(t) {
+    t = String(t || "").trim().replace(/[\s¥€'’]/g, "");
+    if (!t) return NaN;
+    if (t.includes(",") && t.includes(".")) t = t.lastIndexOf(",") > t.lastIndexOf(".") ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
+    else if (t.includes(",")) t = t.replace(",", ".");
+    else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
+    return parseFloat(t);
+  }
+  // il luogo è chiuso quel giorno? ("lun", "mar e mer"…)
+  const closedOn = (p, d) => { if (!p?.chiuso || !d) return false; const wd = fmtDay(d, { weekday: "short" }).replace(".", "").toLowerCase(); return new RegExp(`(^|[^a-zà-ù])${wd}([^a-zà-ù]|$)`).test(p.chiuso.toLowerCase()); };
+  const closedPill = p => `<span class="pill warn">${icon("Clock")} chiuso di ${esc(p.chiuso)}!</span>`;
   const fmtKm = km => km < .05 ? "qui" : km < 1 ? `${Math.round(km * 1000 / 10) * 10} m` : `${km.toFixed(km < 10 ? 1 : 0).replace(".", ",")} km`;
   const dayIndex = iso => DAYS.indexOf(iso);
   const getDay = iso => (plan[iso] ||= { l: "", n: "", i: [] });
@@ -441,7 +453,7 @@
       $("#onmap", el).onclick = () => { mapFocus = id; location.hash = "#mappa"; };
       $("#addday", el).onchange = e => {
         const d = e.target.value; if (!d) return;
-        getDay(d).i.push(id); savePlan(); toast(`Aggiunto al giorno ${dayIndex(d) + 1}`); openPlace(id);
+        getDay(d).i.push(id); savePlan(); toast(closedOn(p, d) ? `Attenzione: quel giorno è chiuso (${p.chiuso})` : `Aggiunto al giorno ${dayIndex(d) + 1}`); openPlace(id);
       };
     }, rerender);
   }
@@ -548,7 +560,7 @@
     if (code) {
       const covered = NIGHTS.filter(hotelFor).length, voli = lists.prenotazioni.filter(p => p.tipo === "volo").length;
       rows.push(row("a", 'href="#utility/prenotazioni"', "BedDouble", "#2e6fb0", "Hotel", `${covered}/${NIGHTS.length} notti`, covered, NIGHTS.length));
-      rows.push(row("a", 'href="#utility/prenotazioni"', "Plane", "#7b4fa0", "Voli", voli ? `${voli} inseriti` : "da inserire", Math.min(voli, 2), 2));
+      rows.push(row("a", 'href="#utility/prenotazioni"', "Plane", "#7b4fa0", "Voli", voli ? `${voli} ${voli === 1 ? "inserito" : "inseriti"}` : "da inserire", Math.min(voli, 2), 2));
     }
     rows.push(row("a", 'href="#utility/checklist"', "Luggage", "#c89b3c", "Valigia e documenti", `${checks.size}/${tot}`, checks.size, tot));
     rows.push(row("a", 'href="#utility/mappe"', "CloudOff", "#1f9488", "Mappe offline", "…", 0, 1, "prep-maps"));
@@ -620,7 +632,7 @@
         const p = byId[id]; if (!p) return "";
         const next = byId[day.i[k + 1]], tm = day.t?.[id];
         const right = editMode ? `<div class="edit"><input type="time" class="ttime" data-time="${id}" value="${esc(tm || "")}" aria-label="Orario"><button class="iconbtn danger" data-rm="${k}" aria-label="Rimuovi">${icon("Trash2")}</button></div>` : "";
-        const row = placeRow(p, { noDays: true, compact: true, noZone: true, right }).replace('<div class="meta">', `<div class="meta">${tm ? `<span class="pill">${icon("Clock")} ${esc(tm)}</span>` : ""}`);
+        const row = placeRow(p, { noDays: true, compact: true, noZone: true, right }).replace('<div class="meta">', `<div class="meta">${closedOn(p, d) ? closedPill(p) : ""}${tm ? `<span class="pill">${icon("Clock")} ${esc(tm)}</span>` : ""}`);
         return `<li>${editMode ? `<span class="n grip" data-grip="${k}" style="background:${zona[p.z].colore}" aria-label="Trascina per spostare">${icon("GripVertical")}</span>` : `<span class="n" style="background:${zona[p.z].colore}">${k + 1}</span>`}<div class="sw">${editMode ? "" : `<div class="swipebg">${icon("Trash2")} Togli</div>`}${row}</div>${next ? `<div class="hop">${hop(p, next)}</div>` : ""}</li>`;
       }).join("")}</ul>` : `<div class="empty" style="margin-top:14px">Nessuna tappa per questo giorno.<br><button class="btn small primary" id="add2" style="margin-top:10px">${icon("Plus")} Aggiungi tappe</button></div>`}
       <div class="btns" style="margin-top:20px">
@@ -718,7 +730,7 @@
         const other = dayOf(p.id).filter(x => x !== d);
         return placeRow(p, { noDays: true, compact: true, noZone: fz !== "all", right: `<span class="iconbtn" style="${inDay ? "background:var(--ok);color:#fff" : ""}">${icon(inDay ? "Check" : "Plus")}</span>` })
           .replace('class="place', `data-pick="${p.id}" class="place`).replace(/data-place="[^"]+"/, "")
-          .replace('<div class="meta">', `<div class="meta">${other.length ? `<span class="pill">già il ${other.map(short).join(", ")}</span>` : ""}`);
+          .replace('<div class="meta">', `<div class="meta">${closedOn(p, d) ? closedPill(p) : ""}${other.length ? `<span class="pill">già il ${other.map(short).join(", ")}</span>` : ""}`);
       }).join("") + `<button class="btn addl" data-newl style="width:100%;margin-top:6px">${icon("Plus")} ${fq ? `Non c'è? Aggiungi «${esc($("#pk-q", el).value.trim())}»` : "Aggiungi un luogo che non è in lista"}</button>`;
     };
     openSheet(`
@@ -735,7 +747,7 @@
         if (e.target.closest("[data-newl]")) return editLuogo({ n: $("#pk-q", el).value.trim() }, d);
         const it = e.target.closest("[data-pick]"); if (!it) return;
         const day = getDay(d); const id = it.dataset.pick; const k = day.i.indexOf(id);
-        if (k >= 0) day.i.splice(k, 1); else { day.i.push(id); markFresh(id); buzz(); }
+        if (k >= 0) day.i.splice(k, 1); else { day.i.push(id); markFresh(id); buzz(); if (closedOn(byId[id], d)) toast(`Attenzione: ${byId[id].n} è chiuso di ${byId[id].chiuso}`); }
         savePlan(); draw(el);
       };
     }, () => { if (location.hash.startsWith("#giorni")) keepScroll(() => renderGiorni()); });
@@ -1381,7 +1393,9 @@
     hotel: ["BedDouble", "#2e6fb0", "Hotel"], volo: ["Plane", "#7b4fa0", "Volo"], treno: ["TrainFront", "#1f9488", "Treno"],
     biglietto: ["Ticket", "#d4442f", "Biglietto"], altro: ["Bookmark", "#6b5a45", "Altro"],
   };
-  const NIGHTS = DAYS.slice(0, -1);   // l'ultimo giorno si parte
+  const NIGHTS = DAYS.slice(0, -1);
+  // per le prenotazioni (voli soprattutto) si possono scegliere anche 3 giorni prima e dopo il viaggio
+  const BOOK_DAYS = (() => { const out = [], a = new Date(T.inizio + "T00:00:00Z"), b = new Date(T.fine + "T00:00:00Z"); a.setUTCDate(a.getUTCDate() - 3); b.setUTCDate(b.getUTCDate() + 3); for (const d = a; d <= b; d.setUTCDate(d.getUTCDate() + 1)) out.push(d.toISOString().slice(0, 10)); return out; })();   // l'ultimo giorno si parte
   const hotelFor = d => lists.prenotazioni.find(p => p.tipo === "hotel" && p.dal <= d && d < (p.al || p.dal));
   const bookingsOn = d => lists.prenotazioni.filter(p => p.dal === d && p.tipo !== "hotel").sort((a, b) => (a.ora || "99").localeCompare(b.ora || "99"));
   const nightsOf = p => Math.max(1, Math.round((new Date(p.al + "T00:00:00Z") - new Date(p.dal + "T00:00:00Z")) / 864e5));
@@ -1433,7 +1447,7 @@
   function editPren(p) {
     const isNew = !p.id, t = p.tipo || "altro";
     const [ic, col, tn] = PTYPE[t];
-    const dayOpts = sel => `<option value="">Scegli il giorno</option>` + DAYS.map(d => `<option value="${d}" ${d === sel ? "selected" : ""}>${fmtDay(d, { weekday: "short", day: "numeric", month: "short" })}</option>`).join("");
+    const dayOpts = sel => `<option value="">Scegli il giorno</option>` + BOOK_DAYS.map(d => `<option value="${d}" ${d === sel ? "selected" : ""}>${fmtDay(d, { weekday: "short", day: "numeric", month: "short" })}${d < T.inizio ? " · prima del viaggio" : d > T.fine ? " · dopo il viaggio" : ""}</option>`).join("");
     const f = (id, label, val, attrs = "", ph = "") => `<label class="fl"><span>${label}</span><input id="${id}" value="${esc(val || "")}" ${attrs}${ph ? ` placeholder="${esc(ph)}"` : ""}></label>`;
     const titolo = t === "hotel" ? "Nuovo hotel" : t === "volo" ? "Nuovo volo" : t === "treno" ? "Nuovo treno" : t === "biglietto" ? "Nuovo biglietto" : "Nuova prenotazione";
     openSheet(`
@@ -1586,7 +1600,7 @@
         const n = v("l-n");
         if (!n) return toast("Scrivi il nome del luogo");
         if (!st.lat) return toast("Scegli dove si trova");
-        const eur = parseFloat(v("l-eur").replace(",", "."));
+        const eur = parseNum(v("l-eur"));
         const item = { id: p.id || "u" + uid(), n, jp: v("l-jp"), d: v("l-d"), c: st.c, z: st.z || guessZone(st.lat, st.lng), lat: +(+st.lat).toFixed(6), lng: +(+st.lng).toFixed(6), addr: st.where, chi: p.chi || me || "", dur: v("l-dur"), pren: $("#l-pren", el).checked, eur: eur > 0 ? eur : null, ts: p.ts || Date.now() };
         if (!item.pren) booked.delete(item.id);
         const saved = putItem("luoghi", item);
@@ -1636,7 +1650,7 @@
 
   function renderSpese(back) {
     if (!code) { view.innerHTML = `${back}<h2>Spese</h2>${needCodeBox("Le spese")}`; bindPcards(); return; }
-    const { net, total, cn } = balances();
+    const { net, total, cn } = balances();   // cn: saldo di ogni coppia
     const debt = Math.abs(cn[0]) < .5 ? null : cn[0] > 0 ? [COPPIE[1], COPPIE[0], cn[0]] : [COPPIE[0], COPPIE[1], -cn[0]];
     const items = [...lists.spese].sort((a, b) => (b.data || "").localeCompare(a.data || "") || (b.ts || 0) - (a.ts || 0));
     let lastD = null;
@@ -1645,9 +1659,13 @@
         <span class="kicker">Spesa totale del gruppo</span><div class="big-n" style="font-size:2.6rem" data-count="${total}" data-fmt="eur">${eurF(total)}</div>
         <p>${debt ? `<b>${coupleName(debt[0])}</b> devono <b>${eurF(debt[2])}</b> a ${coupleName(debt[1])}` : "Siete in pari 🤝"}</p>
       </div></div>
-      <div class="card"><div class="between"><h3 style="margin:0">Saldo per persona</h3>${debt ? `<button class="btn small" id="settle">${icon("HandCoins")} Segna rimborso</button>` : ""}</div>
-        ${T.viaggiatori.map(n => `<div class="row" style="padding:8px 0;border-top:1px solid var(--line)">${avatar(n)}<span class="grow">${n}</span><b style="color:${net[n] > .5 ? "var(--ok)" : net[n] < -.5 ? "var(--shu)" : "var(--muted)"}" data-count="${net[n]}" data-fmt="eur±">${net[n] > 0 ? "+" : ""}${eurF(net[n])}</b></div>`).join("")}
+      <div class="card"><div class="between"><h3 style="margin:0">Saldo tra le coppie</h3>${debt ? `<button class="btn small" id="settle">${icon("HandCoins")} Segna rimborso</button>` : ""}</div>
+        ${COPPIE.map((c, k) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--line)"><span class="avpair">${c.map(n => avatar(n, 28)).join("")}</span><span class="grow"><b>${coupleName(c)}</b></span><b style="font-size:1.05rem;color:${cn[k] > .5 ? "var(--ok)" : cn[k] < -.5 ? "var(--shu)" : "var(--muted)"}" data-count="${cn[k]}" data-fmt="eur±">${cn[k] > 0 ? "+" : ""}${eurF(cn[k])}</b></div>`).join("")}
         <p class="small muted" style="margin:8px 0 0">+ deve ricevere · − deve dare. Gli importi in yen sono convertiti al cambio del giorno in cui li inserite.</p>
+        <details class="perperson"><summary>Dettaglio per persona</summary>
+          ${T.viaggiatori.map(n => `<div class="row" style="padding:8px 0;border-top:1px solid var(--line)">${avatar(n)}<span class="grow">${n}</span><span class="small" style="color:${net[n] > .5 ? "var(--ok)" : net[n] < -.5 ? "var(--shu)" : "var(--muted)"}">${net[n] > 0 ? "+" : ""}${eurF(net[n])}</span></div>`).join("")}
+          <p class="small muted" style="margin:6px 0 0">Conta chi ha anticipato dentro la coppia: tra voi due fate come preferite.</p>
+        </details>
       </div>
       <button class="btn primary" id="adds" style="width:100%;margin-bottom:14px">${icon("Plus")} Aggiungi spesa</button>
       ${items.length ? items.map(s => {
@@ -1673,7 +1691,7 @@
       $$("[data-per]", el).forEach(b => b.classList.toggle("sel", st.perChi.includes(b.dataset.per)));
       $$("[data-grp]", el).forEach(b => { const g = b.dataset.grp === "all" ? T.viaggiatori : COPPIE[+b.dataset.grp]; b.classList.toggle("on", g.length === st.perChi.length && g.every(n => st.perChi.includes(n))); });
       $$("[data-cat]", el).forEach(b => b.classList.toggle("on", b.dataset.cat === st.cat));
-      const imp = parseFloat($("#s-imp", el).value.replace(",", ".")) || 0;
+      const imp = parseNum($("#s-imp", el).value) || 0;
       $("#s-conv", el).textContent = imp ? (st.valuta === "JPY" ? `≈ ${eurF(imp / rate())}` : `≈ ${Math.round(imp * rate()).toLocaleString("it-IT")} ¥`) + (st.perChi.length ? ` · ${eurF((st.valuta === "JPY" ? imp / rate() : imp) / st.perChi.length)} a testa` : "") : "";
     };
     openSheet(`<div class="ttl"><span class="pic" style="background:${s.cat === "rimborso" ? "var(--ok)" : "#7b4fa0"}">${icon(s.cat === "rimborso" ? "HandCoins" : "Receipt")}</span><h2>${isNew ? (s.cat === "rimborso" ? "Rimborso" : "Nuova spesa") : "Modifica spesa"}</h2></div>
@@ -1699,7 +1717,7 @@
       $$("[data-grp]", el).forEach(b => b.onclick = () => { st.perChi = [...(b.dataset.grp === "all" ? T.viaggiatori : COPPIE[+b.dataset.grp])]; draw(el); });
       $$("[data-cat]", el).forEach(b => b.onclick = () => { st.cat = b.dataset.cat; draw(el); });
       $("#s-save", el).onclick = () => {
-        const importo = parseFloat($("#s-imp", el).value.replace(",", "."));
+        const importo = parseNum($("#s-imp", el).value);
         if (!(importo > 0)) return toast("Inserisci l'importo");
         if (!st.perChi.length) return toast("Scegli tra chi dividere");
         const eur = st.valuta === "JPY" ? (s.valuta === "JPY" && s.importo === importo && s.eur ? s.eur : importo / rate()) : importo;
@@ -1869,6 +1887,11 @@
     ({ oggi: renderOggi, giorni: () => renderGiorni(sub), luoghi: renderLuoghi, mappa: renderMappa, utility: () => renderUtility(sub) }[tab] || renderOggi)();
   }
   function rerender() { const [tab] = (location.hash.slice(1) || "oggi").split("/"); if (tab !== "mappa") keepScroll(render); }
+  // è un'app: niente zoom della pagina con due dita (iOS ignora user-scalable=no, serve bloccarlo a mano).
+  // La mappa resta libera: ha il suo zoom
+  const onMap = e => !!e.target?.closest?.(".mapwrap, .mapel");
+  for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, e => { if (!onMap(e)) e.preventDefault(); }, { passive: false });
+  document.addEventListener("touchmove", e => { if (e.touches.length > 1 && !onMap(e)) e.preventDefault(); }, { passive: false });
   // su iPhone :active (l'effetto pressione) funziona solo con un ascoltatore touchstart
   document.addEventListener("touchstart", () => {}, { passive: true });
   // vibrazione leggera quando si spunta qualcosa
