@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 24;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 25;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -105,7 +105,11 @@
   const DAYS = [];
   for (let d = new Date(T.inizio + "T00:00:00Z"); d <= new Date(T.fine + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + 1)) DAYS.push(d.toISOString().slice(0, 10));
   const fmtDay = (iso, opts = { weekday: "long", day: "numeric", month: "long" }) => new Date(iso + "T00:00:00Z").toLocaleDateString("it-IT", { timeZone: "UTC", ...opts });
-  const todayJP = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo" }).format(new Date());
+  const fakeToday = new URLSearchParams(location.search).get("oggi");
+  const todayJP = () => fakeToday || new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo" }).format(new Date());
+  const nowJP = () => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Tokyo", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date());
+  const kmBetween = (a, b) => { const r = x => x * Math.PI / 180; return 2 * 6371 * Math.asin(Math.sqrt(Math.sin(r(b.lat - a.lat) / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lng - a.lng) / 2) ** 2)); };
+  const fmtKm = km => km < .05 ? "qui" : km < 1 ? `${Math.round(km * 1000 / 10) * 10} m` : `${km.toFixed(km < 10 ? 1 : 0).replace(".", ",")} km`;
   const dayIndex = iso => DAYS.indexOf(iso);
   const getDay = iso => (plan[iso] ||= { l: "", n: "", i: [] });
   const dayOf = id => DAYS.filter(d => plan[d]?.i?.includes(id));
@@ -228,9 +232,12 @@
 
   // ——— ui helpers ———
   let toastT;
-  function toast(msg) {
-    const t = $("#toast"); t.textContent = msg; t.hidden = false;
-    clearTimeout(toastT); toastT = setTimeout(() => (t.hidden = true), 2200);
+  function toast(msg, undo) {
+    const t = $("#toast");
+    t.innerHTML = `<span>${esc(msg)}</span>${undo ? `<button class="undo">${icon("Undo2")} Annulla</button>` : ""}`;
+    t.classList.toggle("act", !!undo); t.hidden = false;
+    if (undo) t.querySelector(".undo").onclick = () => { clearTimeout(toastT); t.hidden = true; undo(); };
+    clearTimeout(toastT); toastT = setTimeout(() => (t.hidden = true), undo ? 5000 : 2200);
   }
   const sheet = $("#sheet"), sheetCard = $(".sheet-card");
   let sheetOnClose = null;
@@ -386,7 +393,7 @@
       ${bs.map(p => { const [ic, col] = PTYPE[p.tipo] || PTYPE.altro; return `<div class="mini" data-pren="${p.id}"><span style="color:${col}">${icon(ic)}</span><span class="grow"><small>${p.ora ? esc(p.ora) : "Prenotato"}</small><b>${esc(p.titolo)}</b></span>${p.link ? `<a class="btn small" href="${esc(p.link)}" target="_blank" rel="noopener">${icon("Link")}</a>` : ""}</div>`; }).join("")}`;
   }
   function oggiPren(today, before, after) {
-    if (!code || after) return "";
+    if (!code || after || before) return "";
     if (!before) return `<div class="section-h" style="margin-top:0"><h3>Oggi e stanotte</h3><a class="small" href="#utility/prenotazioni" style="font-weight:600">Tutte</a></div>${dayPren(today)}`;
     const next = [...lists.prenotazioni].filter(p => p.dal).sort((a, b) => a.dal.localeCompare(b.dal) || (a.ora || "").localeCompare(b.ora || "")).slice(0, 3);
     const covered = NIGHTS.filter(hotelFor).length;
@@ -399,7 +406,8 @@
     const idx = dayIndex(today);
     const before = today < T.inizio, after = today > T.fine;
     const daysTo = Math.ceil((new Date(T.inizio + "T00:00:00Z") - new Date(today + "T00:00:00Z")) / 864e5);
-    const toBook = LUOGHI.filter(p => p.pren && !p.out).sort((a, b) => (dayOf(b.id).length > 0) - (dayOf(a.id).length > 0) || zoneOrder[a.z] - zoneOrder[b.z]);
+    const firstDay = id => dayOf(id)[0] || "9999";
+    const toBook = LUOGHI.filter(p => p.pren && !p.out).sort((a, b) => firstDay(a.id).localeCompare(firstDay(b.id)) || zoneOrder[a.z] - zoneOrder[b.z]);
     const doneBook = toBook.filter(p => booked.has(p.id)).length;
     const hi = me ? `Ciao ${esc(me)}! ` : "";
 
@@ -410,11 +418,11 @@
         <p>${fmtDay(T.inizio, { day: "numeric", month: "long" })} – ${fmtDay(T.fine, { day: "numeric", month: "long", year: "numeric" })} · Niccolò & Antonella · Miriam & Paolo</p>
       </div></div>`;
     else {
-      const d = getDay(today), first = d.i[0] && byId[d.i[0]];
+      const d = getDay(today), first = d.i[0] && byId[d.i[0]], nst = d.i.filter(id => byId[id]).length;
       hero = `<div class="hero">${first && photoUrl(first.id) ? `<div class="ph" data-bg="${photoUrl(first.id, 960)}"></div>` : art()}<div class="hero-in">
         <span class="kicker">${hi}Giorno ${idx + 1} di ${DAYS.length} · ${fmtDay(today, { weekday: "long", day: "numeric", month: "long" })}</span>
         <div class="title">${esc(d.l || "Oggi")}</div>
-        ${first ? `<p>Prima tappa: <b>${esc(first.n)}</b></p>` : ""}
+        ${nst ? `<p>${nst} ${nst === 1 ? "tappa" : "tappe"} in programma</p>` : ""}
         <div class="btns"><a class="btn primary" href="#giorni/${today}">${icon("CalendarDays")} Programma</a>${first ? `<a class="btn" href="${gmDir(first)}" target="_blank" rel="noopener">${icon("Navigation")} Portami</a>` : ""}</div>
       </div></div>`;
     }
@@ -423,15 +431,17 @@
     view.innerHTML = `
       ${hero}
       <div class="quick">${QUICK.map(([k, ic, c, t]) => `<a class="qa" href="#utility/${k}"><span class="ic" style="background:${c}">${icon(ic)}</span>${t}</a>`).join("")}</div>
+      ${before ? prepCard(toBook, doneBook) : ""}
+      ${!before && !after ? nextStopCard(today) : ""}
       ${oggiPren(today, before, after)}
       ${ch.length ? `<div><div class="section-h" style="margin-top:4px"><h3>Il viaggio in capitoli</h3><a class="small" href="#giorni" style="font-weight:600">Tutti i giorni</a></div>
       <div class="hscroll">${ch.map((c, k) => `<a class="chapter" href="#giorni/${DAYS[c.from]}" style="--c:${zona[c.z].colore}">${photoUrl(HERO_PLACE[c.z]) ? `<div class="ph" data-bg="${photoUrl(HERO_PLACE[c.z], 330)}"></div>` : `<div class="ph" style="background:${zona[c.z].colore}"></div>`}<span class="num">${k + 1}</span><b>${esc(zona[c.z].nome)}</b><small>${c.from === c.to ? `giorno ${c.from + 1}` : `giorni ${c.from + 1}–${c.to + 1}`} · ${short(DAYS[c.from])}</small></a>`).join("")}</div></div>` : ""}
-      <div class="card"><div class="between"><h3 style="margin:0">Meteo adesso</h3><span class="muted small" id="wtime"></span></div><div class="weather" id="weather" style="margin-top:12px"><div>…</div></div></div>
+      ${!before && !after ? `<div class="card"><div class="between"><h3 style="margin:0" id="wtitle">Meteo</h3><span class="muted small" id="wtime"></span></div><div class="weather" id="weather" style="margin-top:12px"><div>…</div></div></div>` : ""}
       <div class="card">
         <div class="between"><h3 style="margin:0">${icon("Ticket")} Da prenotare</h3><b class="small">${doneBook}/${toBook.length}</b></div>
         <div class="progress" style="margin:10px 0 4px"><i style="width:${toBook.length ? doneBook / toBook.length * 100 : 0}%"></i></div>
-        <p class="muted small" style="margin:6px 0 4px">Wanderlog consiglia di prenotarli in anticipo. In cima trovi quelli già in programma.</p>
-        <div id="booklist">${toBook.map((p, k) => `<label class="check${booked.has(p.id) ? " done" : ""}"${k >= 6 ? " data-more hidden" : ""}><input type="checkbox" data-book="${p.id}" ${booked.has(p.id) ? "checked" : ""}><span class="grow">${esc(p.n)} <span class="muted small">· ${esc(zona[p.z].nome)}${dayOf(p.id).length ? " · " + dayOf(p.id).map(short).join(", ") : ""}</span></span></label>`).join("")}</div>
+        <p class="muted small" style="margin:6px 0 4px">Wanderlog consiglia di prenotarli in anticipo. In ordine di data: prima quelli già in programma.</p>
+        <div id="booklist">${toBook.map((p, k) => `<label class="check${booked.has(p.id) ? " done" : ""}"${k >= 6 ? " data-more hidden" : ""}><input type="checkbox" data-book="${p.id}" ${booked.has(p.id) ? "checked" : ""}><span class="grow">${esc(p.n)} <span class="muted small">· ${esc(zona[p.z].nome)}${dayOf(p.id).length ? " · " + dayOf(p.id).map(short).join(", ") : ""}</span></span><a class="iconbtn" href="${bookUrl(p)}" target="_blank" rel="noopener" aria-label="Cerca i biglietti">${icon("ExternalLink")}</a></label>`).join("")}</div>
         ${toBook.length > 6 ? `<button class="btn small ghost" id="more" style="width:100%;margin-top:6px">Mostra tutti (${toBook.length})</button>` : ""}
       </div>
     `;
@@ -443,32 +453,65 @@
       cb.closest(".card").querySelector(".between b").textContent = `${n}/${toBook.length}`;
     });
     $("#more")?.addEventListener("click", e => { $$("[data-more]").forEach(x => (x.hidden = false)); e.currentTarget.remove(); });
+    $("[data-goto]")?.addEventListener("click", e => { $("#" + e.currentTarget.dataset.goto)?.closest(".card")?.scrollIntoView({ behavior: "smooth", block: "start" }); });
+    if (before) window.OfflineMap?.status?.().then(st => { const n = Object.values(st).filter(Boolean).length, el = $("#prep-maps"); if (el) { el.querySelector("small").textContent = `${n}/${OfflineMap.ZONE.length} zone`; el.querySelector(".progress i").style.width = n / OfflineMap.ZONE.length * 100 + "%"; } }).catch(() => {});
     bindPcards();
-    loadWeather();
+    if (!before && !after) loadWeather(today);
+  }
+
+  const bookUrl = p => `https://www.google.com/search?q=${encodeURIComponent(p.n + " official tickets booking")}`;
+  // prima di partire: a che punto siete con i preparativi
+  function prepCard(toBook, doneBook) {
+    const bar = (n, tot) => `<div class="progress"><i style="width:${tot ? Math.min(1, n / tot) * 100 : 0}%"></i></div>`;
+    const row = (tag, attr, ic, col, label, val, n, tot, id = "") => `<${tag} class="prep" ${attr}${id ? ` id="${id}"` : ""}><span class="pic" style="background:${col}">${icon(ic)}</span><span class="grow"><span class="between"><b>${label}</b><small>${val}</small></span>${bar(n, tot)}</span>${icon("ChevronRight")}</${tag}>`;
+    const tot = CHECKLIST.reduce((s, [, it]) => s + it.length, 0);
+    const rows = [row("button", 'data-goto="booklist"', "Ticket", "#d4442f", "Biglietti da prenotare", `${doneBook}/${toBook.length}`, doneBook, toBook.length)];
+    if (code) {
+      const covered = NIGHTS.filter(hotelFor).length, voli = lists.prenotazioni.filter(p => p.tipo === "volo").length;
+      rows.push(row("a", 'href="#utility/prenotazioni"', "BedDouble", "#2e6fb0", "Hotel", `${covered}/${NIGHTS.length} notti`, covered, NIGHTS.length));
+      rows.push(row("a", 'href="#utility/prenotazioni"', "Plane", "#7b4fa0", "Voli", voli ? `${voli} inseriti` : "da inserire", Math.min(voli, 2), 2));
+    }
+    rows.push(row("a", 'href="#utility/checklist"', "Luggage", "#c89b3c", "Valigia e documenti", `${checks.size}/${tot}`, checks.size, tot));
+    rows.push(row("a", 'href="#utility/mappe"', "CloudOff", "#1f9488", "Mappe offline", "…", 0, 1, "prep-maps"));
+    return `<div class="card"><h3 style="margin:0 0 6px">Prima di partire</h3>${rows.join("")}${code ? "" : `<p class="small muted" style="margin:8px 0 0">Con il codice del viaggio vedrete qui anche hotel e voli.</p>`}</div>`;
+  }
+  // in viaggio: la prossima tappa di oggi (in base agli orari, se li avete messi)
+  function nextStopCard(today) {
+    const d = plan[today], ids = (d?.i || []).filter(id => byId[id]); if (!ids.length) return "";
+    const t = d.t || {}, now = nowJP();
+    let cur = -1; ids.forEach((id, j) => { if (t[id] && t[id] <= now) cur = j; });
+    const k = Math.min(cur + 1, ids.length);
+    if (k >= ids.length) return `<a class="card mini-card" href="#giorni/${today}"><b>${icon("Check")} Tappe di oggi finite</b><div class="small muted">Buona serata! Domani: ${esc(plan[DAYS[dayIndex(today) + 1]]?.l || "giorno libero")}</div></a>`;
+    const p = byId[ids[k]], after = ids.slice(k + 1, k + 3).map(id => byId[id].n);
+    return `<div class="card nextstop"><div class="between"><h3 style="margin:0">${k === 0 && cur < 0 ? "Prima tappa" : "Prossima tappa"}</h3>${t[p.id] ? `<span class="pill">${icon("Clock")} ${esc(t[p.id])}</span>` : `<span class="small muted">${k + 1} di ${ids.length}</span>`}</div>
+      <div class="row" data-place="${p.id}" style="margin-top:10px">${photo(p.id, 330, "ns-ph")}<div class="grow"><b>${esc(p.n)}</b>${p.jp ? `<div class="small muted jp">${esc(p.jp)}</div>` : ""}${after.length ? `<div class="small muted" style="margin-top:4px">Poi: ${after.map(esc).join(" · ")}</div>` : ""}</div></div>
+      <div class="btns" style="margin-top:10px"><a class="btn primary" href="${gmDir(p)}" target="_blank" rel="noopener">${icon("Navigation")} Portami qui</a><a class="btn" href="#giorni/${today}">${icon("CalendarDays")} Tutte</a></div></div>`;
   }
 
   const CITTA_METEO = [["Tokyo", 35.68, 139.76], ["Kyoto", 35.01, 135.77], ["Osaka", 34.69, 135.50], ["Nara", 34.68, 135.83], ["Fuji", 35.50, 138.76], ["Kanazawa", 36.56, 136.66]];
   const WMO = c => c === 0 ? "☀️" : c <= 2 ? "🌤️" : c === 3 ? "☁️" : c <= 48 ? "🌫️" : c <= 67 ? "🌧️" : c <= 77 ? "❄️" : c <= 82 ? "🌦️" : c <= 86 ? "🌨️" : "⛈️";
-  async function loadWeather() {
+  const ZCOORD = { tokyo: ["Tokyo", 35.68, 139.76], vicino: ["Kamakura", 35.32, 139.55], kyoto: ["Kyoto", 35.01, 135.77], osaka: ["Osaka", 34.69, 135.50], nara: ["Nara", 34.68, 135.83], fuji: ["Hakone", 35.23, 139.03], kanazawa: ["Kanazawa", 36.56, 136.66], altre: ["Tokyo", 35.68, 139.76] };
+  async function loadWeather(today) {
+    const [city, lat, lng] = ZCOORD[dayZone(today) || "tokyo"];
+    const key = city + today;
     const paint = w => {
       const el = $("#weather"); if (!el || !w) return;
-      el.innerHTML = w.list.map(([n, t, c]) => `<div>${n}<b>${WMO(c)} ${Math.round(t)}°</b></div>`).join("");
+      $("#wtitle").textContent = "Meteo a " + city;
+      el.innerHTML = `<div>Adesso<b>${WMO(w.cur[1])} ${Math.round(w.cur[0])}°</b></div>` + w.days.map(([n, c, mx, mn, pr]) => `<div>${n}<b>${WMO(c)} ${Math.round(mx)}°</b><small>min ${Math.round(mn)}° · pioggia ${pr ?? 0}%</small></div>`).join("");
       $("#wtime").textContent = "agg. " + new Date(w.at).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
     };
-    const cached = LS.get("weather", null);
-    paint(cached);
-    if (cached && Date.now() - cached.at < 20 * 60e3) return;
+    const cached = LS.get("weather2", null);
+    if (cached?.key === key) { paint(cached); if (Date.now() - cached.at < 20 * 60e3) return; }
     try {
-      const u = `https://api.open-meteo.com/v1/forecast?latitude=${CITTA_METEO.map(c => c[1]).join(",")}&longitude=${CITTA_METEO.map(c => c[2]).join(",")}&current=temperature_2m,weather_code&timezone=Asia%2FTokyo`;
-      const j = await (await fetch(u)).json();
-      const arr = Array.isArray(j) ? j : [j];
-      const w = { at: Date.now(), list: arr.map((x, i) => [CITTA_METEO[i][0], x.current.temperature_2m, x.current.weather_code]) };
-      LS.set("weather", w); paint(w);
-    } catch { if (!cached) { const el = $("#weather"); if (el) el.innerHTML = `<div style="grid-column:1/-1">Meteo non disponibile offline</div>`; } }
+      const j = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=2&timezone=Asia%2FTokyo`)).json();
+      const w = { key, at: Date.now(), cur: [j.current.temperature_2m, j.current.weather_code], days: j.daily.time.map((_, i) => [i ? "Domani" : "Oggi", j.daily.weather_code[i], j.daily.temperature_2m_max[i], j.daily.temperature_2m_min[i], j.daily.precipitation_probability_max[i]]) };
+      LS.set("weather2", w); paint(w);
+    } catch { if (cached?.key !== key) { const el = $("#weather"); if (el) el.innerHTML = `<div style="grid-column:1/-1">Meteo non disponibile offline</div>`; } }
   }
 
   // ——— GIORNI ———
   let selDay = LS.get("selDay", null), editMode = false;
+  const ZSHORT = { tokyo: "Tokyo", vicino: "Dintorni", kyoto: "Kyoto", osaka: "Osaka", nara: "Nara", fuji: "Fuji", kanazawa: "Kanaz.", altre: "Altro" };
   function renderGiorni(sub) {
     const today = todayJP();
     if (sub && DAYS.includes(sub)) selDay = sub;
@@ -479,7 +522,7 @@
     const editedBy = lastEdit?.by && lastEdit.by !== "?" ? ` · ultima modifica di ${esc(lastEdit.by)}` : "";
 
     view.innerHTML = `
-      <div class="daystrip" id="strip">${DAYS.map((x, k) => { const z = dayZone(x); return `<a class="dchip${x === d ? " on" : ""}${x === today ? " today" : ""}" href="#giorni/${x}" style="--c:${z ? zona[z].colore : "var(--line)"}" aria-label="Giorno ${k + 1}"><small>${fmtDay(x, { weekday: "short" }).replace(".", "")}</small><b>${fmtDay(x, { day: "numeric" })}</b><i></i></a>`; }).join("")}</div>
+      <div class="daystrip" id="strip">${DAYS.map((x, k) => { const z = dayZone(x), prev = k ? dayZone(DAYS[k - 1]) : null, move = z && prev && z !== prev; return `<a class="dchip${x === d ? " on" : ""}${x === today ? " today" : ""}" href="#giorni/${x}" style="--c:${z ? zona[z].colore : "var(--muted)"}" aria-label="Giorno ${k + 1}${z ? ", " + zona[z].nome : ""}${move ? ", trasferimento" : ""}"><small>${fmtDay(x, { weekday: "short" }).replace(".", "")}</small><b>${fmtDay(x, { day: "numeric" })}</b><em>${move ? icon("TrainFront") : ""}${z ? ZSHORT[z] : "libero"}</em></a>`; }).join("")}</div>
       <div class="daycover" id="cover">${first ? `<div class="ph" data-bg="${photoUrl(first.id, 960)}"></div>` : art()}
         <span class="dn">Giorno ${i + 1} / ${DAYS.length}</span>
         <div class="in"><div class="kicker">${fmtDay(d)}</div>${editMode ? `<input id="dlabel" value="${esc(day.l)}" placeholder="Dai un nome al giorno…" aria-label="Nome del giorno">` : `<div class="dtitle">${esc(day.l) || "Giorno libero"}</div>`}</div>
@@ -487,17 +530,19 @@
       ${editMode ? `<textarea id="dnote" rows="2" placeholder="Nota del giorno (orari, treni, cose da ricordare)…" style="margin-bottom:14px">${esc(day.n || "")}</textarea>`
         : day.n ? `<div class="daynote">${icon("Sparkles")}<span>${esc(day.n)}</span></div>` : ""}
       ${dayPren(d)}
-      <div class="btns" style="margin:0 0 6px">
-        <button class="btn small" id="add">${icon("Plus")} Aggiungi</button>
-        ${day.i.length ? `<a class="btn small" href="#mappa" id="dmap">${icon("Map")} Mappa</a>` : ""}
-        ${day.i.length > 1 ? `<a class="btn small" href="${gmRoute(day.i)}" target="_blank" rel="noopener">${icon("Route")} Percorso</a>` : ""}
-        <button class="btn small${editMode ? " dark" : ""}" id="edit">${icon(editMode ? "Check" : "Pencil")} ${editMode ? "Fatto" : "Modifica"}</button>
+      <div class="dayact">
+        <button id="add">${icon("Plus")}<span>Aggiungi</span></button>
+        ${day.i.length ? `<a href="#mappa" id="dmap">${icon("Map")}<span>Mappa</span></a>` : `<button disabled>${icon("Map")}<span>Mappa</span></button>`}
+        ${day.i.length > 1 ? `<a href="${gmRoute(day.i)}" target="_blank" rel="noopener">${icon("Route")}<span>Percorso</span></a>` : `<button disabled>${icon("Route")}<span>Percorso</span></button>`}
+        <button id="edit" class="${editMode ? "on" : ""}" ${day.i.length || editMode ? "" : "disabled"}>${icon(editMode ? "Check" : "Pencil")}<span>${editMode ? "Fatto" : "Modifica"}</span></button>
       </div>
-      ${day.i.length ? `<ul class="tl">${day.i.map((id, k) => {
+      ${editMode && day.i.length ? `<p class="small muted" style="margin:0 0 6px">Trascina il numero per cambiare l'ordine · metti un orario alle tappe</p>` : ""}
+      ${day.i.length ? `<ul class="tl${editMode ? " editing" : ""}">${day.i.map((id, k) => {
         const p = byId[id]; if (!p) return "";
-        const next = byId[day.i[k + 1]];
-        const right = editMode ? `<div class="edit"><button class="iconbtn" data-mv="${k}|-1" aria-label="Su" ${k === 0 ? "disabled" : ""}>${icon("ArrowUp")}</button><button class="iconbtn" data-mv="${k}|1" aria-label="Giù" ${k === day.i.length - 1 ? "disabled" : ""}>${icon("ArrowDown")}</button><button class="iconbtn danger" data-rm="${k}" aria-label="Rimuovi">${icon("Trash2")}</button></div>` : "";
-        return `<li><span class="n" style="background:${zona[p.z].colore}">${k + 1}</span>${placeRow(p, { noDays: true, compact: true, noZone: true, right })}${next ? `<div class="hop">${hop(p, next)}</div>` : ""}</li>`;
+        const next = byId[day.i[k + 1]], tm = day.t?.[id];
+        const right = editMode ? `<div class="edit"><input type="time" class="ttime" data-time="${id}" value="${esc(tm || "")}" aria-label="Orario"><button class="iconbtn danger" data-rm="${k}" aria-label="Rimuovi">${icon("Trash2")}</button></div>` : "";
+        const row = placeRow(p, { noDays: true, compact: true, noZone: true, right }).replace('<div class="meta">', `<div class="meta">${tm ? `<span class="pill">${icon("Clock")} ${esc(tm)}</span>` : ""}`);
+        return `<li>${editMode ? `<span class="n grip" data-grip="${k}" style="background:${zona[p.z].colore}" aria-label="Trascina per spostare">${icon("GripVertical")}</span>` : `<span class="n" style="background:${zona[p.z].colore}">${k + 1}</span>`}<div class="sw">${editMode ? "" : `<div class="swipebg">${icon("Trash2")} Togli</div>`}${row}</div>${next ? `<div class="hop">${hop(p, next)}</div>` : ""}</li>`;
       }).join("")}</ul>` : `<div class="empty" style="margin-top:14px">Nessuna tappa per questo giorno.<br><button class="btn small primary" id="add2" style="margin-top:10px">${icon("Plus")} Aggiungi tappe</button></div>`}
       <div class="btns" style="margin-top:20px">
         ${i > 0 ? `<a class="btn" href="#giorni/${DAYS[i - 1]}">‹ Giorno ${i}</a>` : ""}
@@ -519,11 +564,57 @@
     $("#add2")?.addEventListener("click", () => openPicker(d));
     $("#dmap")?.addEventListener("click", () => { mapFilter = { z: "all", d }; });
     $("#edit").onclick = () => { editMode = !editMode; keepScroll(() => renderGiorni()); };
-    $$("[data-mv]").forEach(b => b.onclick = () => {
-      const [k, dir] = b.dataset.mv.split("|").map(Number); const a = day.i;
-      [a[k], a[k + dir]] = [a[k + dir], a[k]]; savePlan(); keepScroll(() => renderGiorni());
+    // togli una tappa (con "Annulla")
+    const removeStop = k => {
+      const dd = getDay(d), id = dd.i[k], tm = dd.t?.[id]; if (!id) return;
+      dd.i.splice(k, 1); if (dd.t) delete dd.t[id]; savePlan(); keepScroll(() => renderGiorni());
+      toast(`${byId[id]?.n || "Tappa"}: tolta`, () => { const d2 = getDay(d); d2.i.splice(Math.min(k, d2.i.length), 0, id); if (tm) (d2.t ||= {})[id] = tm; savePlan(); keepScroll(() => renderGiorni()); });
+    };
+    $$("[data-rm]").forEach(b => b.onclick = () => removeStop(+b.dataset.rm));
+    $$("[data-time]").forEach(inp => inp.onchange = () => {
+      const dd = getDay(d); dd.t ||= {};
+      if (inp.value) dd.t[inp.dataset.time] = inp.value; else delete dd.t[inp.dataset.time];
+      if (!Object.keys(dd.t).length) delete dd.t;
+      savePlan();
     });
-    $$("[data-rm]").forEach(b => b.onclick = () => { day.i.splice(+b.dataset.rm, 1); savePlan(); keepScroll(() => renderGiorni()); });
+    // trascina il numero per riordinare
+    $$("[data-grip]").forEach(g => g.addEventListener("pointerdown", e => {
+      e.preventDefault();
+      const li = g.closest("li"), items = [...li.parentElement.children], from = items.indexOf(li);
+      const rects = items.map(x => x.getBoundingClientRect()), y0 = e.clientY, h = rects[from].height;
+      let to = from;
+      g.setPointerCapture(e.pointerId); li.classList.add("dragging"); buzz();
+      const move = ev => {
+        const dy = ev.clientY - y0, mid = rects[from].top + h / 2 + dy;
+        li.style.transform = `translateY(${dy}px)`;
+        to = rects.filter((r, j) => j !== from && r.top + r.height / 2 < mid).length;
+        items.forEach((x, j) => { if (j === from) return; x.style.transform = from < to && j > from && j <= to ? `translateY(${-h}px)` : to < from && j >= to && j < from ? `translateY(${h}px)` : ""; });
+      };
+      const up = () => {
+        g.removeEventListener("pointermove", move); g.removeEventListener("pointerup", up); g.removeEventListener("pointercancel", up);
+        items.forEach(x => (x.style.transform = "")); li.classList.remove("dragging");
+        if (to !== from) { const dd = getDay(d), [id] = dd.i.splice(from, 1); dd.i.splice(to, 0, id); savePlan(); buzz(); }
+        keepScroll(() => renderGiorni());
+      };
+      g.addEventListener("pointermove", move); g.addEventListener("pointerup", up); g.addEventListener("pointercancel", up);
+    }));
+    // scorri una tappa verso sinistra per toglierla
+    if (!editMode) $$(".tl li").forEach((li, k) => {
+      const card = $(".place", li); if (!card) return;
+      let x0 = 0, y0 = 0, dx = 0, on = null;
+      li.addEventListener("touchstart", e => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; on = null; card.style.transition = "none"; }, { passive: true });
+      li.addEventListener("touchmove", e => {
+        const mx = e.touches[0].clientX - x0, my = e.touches[0].clientY - y0;
+        if (on === null && (Math.abs(mx) > 10 || Math.abs(my) > 10)) on = Math.abs(mx) > Math.abs(my) * 1.3 && mx < 0;
+        if (!on) return;
+        dx = Math.min(0, mx); card.style.transform = `translateX(${dx}px)`; li.classList.toggle("swipe-go", dx < -110);
+      }, { passive: true });
+      li.addEventListener("touchend", () => {
+        card.style.transition = "";
+        if (on && dx < -110) { card.style.transform = "translateX(-110%)"; setTimeout(() => removeStop(k), 160); }
+        else { card.style.transform = ""; li.classList.remove("swipe-go"); }
+      });
+    });
     $("#share")?.addEventListener("click", sharePlan);
     $("#reset").onclick = async () => {
       if (!(await ask({ title: "Ripristinare la bozza?", text: `Il programma torna alla bozza proposta (arrivo a Tokyo, partenza da Osaka). Le modifiche andranno perse${sync ? " per tutti e quattro" : ""}.`, ok: "Ripristina", danger: true, icon: "RotateCcw" }))) return;
@@ -597,16 +688,17 @@
   }
 
   // ——— LUOGHI ———
-  let lf = { z: "all", q: "", out: false, pren: false, mine: false };
+  let lf = { z: "all", q: "", out: false, pren: false, mine: false, near: null };
   function renderLuoghi() {
     view.innerHTML = `
-      <h2>Luoghi</h2><p class="lead">${LUOGHI.filter(p => !p.out && !p.mine).length} posti dalla vostra lista Wanderlog${lists.luoghi.length ? ` · ${LUOGHI.length - BASE_N} aggiunti da voi` : ""}</p>
-      <button class="btn primary addl" id="addl">${icon("Plus")} Aggiungi un luogo</button>
+      <div class="between"><h2>Luoghi</h2><button class="btn small primary" id="addl">${icon("Plus")} Aggiungi</button></div><p class="lead">${LUOGHI.filter(p => !p.out && !p.mine).length} posti dalla vostra lista Wanderlog${lists.luoghi.length ? ` · ${LUOGHI.length - BASE_N} aggiunti da voi` : ""}</p>
+
       <div class="searchbox">${icon("Search")}<input type="search" id="lq" placeholder="Cerca templi, quartieri, cibo…" value="${esc(lf.q)}" autocomplete="off"></div>
       <div class="chips" style="margin-top:12px">
         ${[["all", "Tutte"], ...ZONE.map(z => [z.id, z.nome])].map(([id, n]) => `<button class="chip${lf.z === id ? " on" : ""}" data-z="${id}">${id !== "all" ? `<span class="dot" style="background:${zona[id].colore}"></span>` : ""}${esc(n)}</button>`).join("")}
       </div>
       <div class="chips" style="padding-top:0">
+        <button class="chip${lf.near ? " on" : ""}" id="fnear">${icon("LocateFixed")} Vicino a me</button>
         <button class="chip${lf.pren ? " on" : ""}" id="fpren">${icon("Ticket")} Da prenotare</button>
         ${LUOGHI.length > BASE_N ? `<button class="chip${lf.mine ? " on" : ""}" id="fmine">${icon("UserRound")} Aggiunti da voi</button>` : ""}
         <button class="chip${lf.out ? " on" : ""}" id="fout">Mostra scartati</button>
@@ -615,8 +707,12 @@
     const draw = () => {
       const qq = lf.q.toLowerCase().trim();
       const list = LUOGHI.filter(p => (lf.out || !p.out) && (lf.z === "all" || p.z === lf.z) && (!lf.pren || p.pren) && (!lf.mine || p.mine) && (!qq || matches(p.n + " " + p.jp + " " + p.d + " " + (CAT[p.c]?.[2] || "") + " " + zona[p.z].nome, qq)))
-        .sort((a, b) => (a.out ? 1 : 0) - (b.out ? 1 : 0) || zoneOrder[a.z] - zoneOrder[b.z]);
+        .sort((a, b) => (a.out ? 1 : 0) - (b.out ? 1 : 0) || (lf.near ? kmBetween(lf.near, a) - kmBetween(lf.near, b) : zoneOrder[a.z] - zoneOrder[b.z]));
       let last = null, html = "";
+      if (lf.near) {
+        $("#llist").innerHTML = list.slice(0, 40).map(p => placeRow(p).replace('<div class="meta">', `<div class="meta"><span class="pill">${icon("Navigation")} ${fmtKm(kmBetween(lf.near, p))}</span>`)).join("") || `<p class="empty">Nessun risultato</p>`;
+        return;
+      }
       for (const p of list) {
         const key = p.out ? "out" : p.z;
         if (key !== last && lf.z === "all") html += `<h3>${p.out ? "Scartati" : `<span class="dot" style="background:${zona[p.z].colore};margin-right:6px"></span>${esc(zona[p.z].nome)}`}</h3>`;
@@ -631,6 +727,14 @@
     $("#fout").onclick = e => { lf.out = !lf.out; e.currentTarget.classList.toggle("on", lf.out); draw(); };
     $("#fmine")?.addEventListener("click", e => { lf.mine = !lf.mine; e.currentTarget.classList.toggle("on", lf.mine); draw(); });
     $("#addl").onclick = () => editLuogo({});
+    $("#fnear").onclick = e => {
+      const b = e.currentTarget;
+      if (lf.near) { lf.near = null; b.classList.remove("on"); return draw(); }
+      if (!navigator.geolocation) return toast("Posizione non disponibile");
+      toast("Cerco la tua posizione…");
+      navigator.geolocation.getCurrentPosition(pos => { lf.near = { lat: pos.coords.latitude, lng: pos.coords.longitude }; b.classList.add("on"); draw(); },
+        () => toast("Non riesco a leggere la posizione"), { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+    };
   }
 
   // ——— MAPPA ———
@@ -992,12 +1096,14 @@
     ["checklist", "Luggage", "#c89b3c", "Checklist", "Valigia e documenti"],
     ...Object.entries(GUIDE).map(([k, g]) => [k, g.icon, g.col, g.titolo, { trasporti: "Suica, Shinkansen, JR Pass", galateo: "Cosa fare e non fare", soldi: "Contanti, ATM, tax free", stagione: "Clima ed eventi", pratico: "Prese, eSIM, farmaci", installa: "Aggiungila alla Home" }[k] || ""]),
   ];
+  const UGROUPS = [["In viaggio", ["prenotazioni", "spese", "yen", "frasi", "sos", "mappe"]], ["Prima di partire", ["checklist", "budget", "pratico", "installa"]], ["Guide", ["trasporti", "soldi", "galateo", "stagione"]]];
   function renderUtility(sub) {
     const back = `<a class="back" href="#utility">${icon("ChevronLeft")} Utility</a>`;
     if (!sub) {
       view.innerHTML = `<h2>Utility</h2><p class="lead">Tutto quello che serve in viaggio, anche offline.</p>
-        <div class="ugrid">${UTIL.map(([k, ic, c, t, s]) => `<a class="ucard" href="#utility/${k}"><span class="ic" style="background:${c}">${icon(ic)}</span><b>${t}</b>${s ? `<small>${s}</small>` : ""}</a>`).join("")}</div>
-        <div class="card row" style="margin-top:16px"><div class="grow"><b>Accesso</b><div class="muted small">${me ? esc(me) : "Nome non scelto"} · ${code ? "dati condivisi attivi" : "codice del viaggio non inserito"}</div></div><button class="btn small${code ? "" : " primary"}" id="whoami">${icon(code ? "UserRound" : "KeyRound")} ${code ? "Cambia" : "Inserisci"}</button></div>`;
+        ${UGROUPS.map(([g, keys]) => `<h3 class="ugroup">${g}</h3><div class="ugrid">${UTIL.filter(u => keys.includes(u[0]) || (g === "Guide" && !UGROUPS.some(([, ks]) => ks.includes(u[0])))).map(([k, ic, c, t, s]) => `<a class="ucard" href="#utility/${k}"><span class="ic" style="background:${c}">${icon(ic)}</span><b>${t}</b>${s ? `<small>${s}</small>` : ""}</a>`).join("")}</div>`).join("")}
+        <h3 class="ugroup">Impostazioni</h3>
+        <div class="card row"><div class="grow"><b>Accesso</b><div class="muted small">${me ? esc(me) : "Nome non scelto"} · ${code ? "dati condivisi attivi" : "codice del viaggio non inserito"}</div></div><button class="btn small${code ? "" : " primary"}" id="whoami">${icon(code ? "UserRound" : "KeyRound")} ${code ? "Cambia" : "Inserisci"}</button></div>`;
       $("#whoami").onclick = askWho;
       view.insertAdjacentHTML("beforeend", `<div class="card row"><div class="grow"><b>Versione ${APP_VERSION}</b><div class="muted small">Se qualcosa non sembra aggiornato, scarica di nuovo l'app (le mappe offline restano).</div></div><button class="btn small" id="forceupd">${icon("RotateCcw")} Aggiorna adesso</button></div>`);
       $("#forceupd").onclick = forceUpdate;
@@ -1173,7 +1279,7 @@
         if (item.luogo && !booked.has(item.luogo)) { booked.add(item.luogo); savePlan(); }   // biglietto preso = "prenotato" spuntato
         closeSheet(); toast("Salvato ✓"); rerender();
       };
-      $("#p-del", el)?.addEventListener("click", async () => { if (await ask({ title: "Eliminare questa prenotazione?", text: "Sparirà anche dai telefoni degli altri.", ok: "Elimina", danger: true })) { delItem("prenotazioni", p.id); closeSheet(); rerender(); } });
+      $("#p-del", el)?.addEventListener("click", () => { const old = { ...p }; delItem("prenotazioni", p.id); closeSheet(); rerender(); toast("Prenotazione eliminata", () => { putItem("prenotazioni", old); rerender(); }); });
     });
   }
 
@@ -1302,12 +1408,17 @@
         if (day) { const dd = getDay(day); if (!dd.i.includes(saved.id)) dd.i.push(saved.id); savePlan(); openPicker(day); }
         else { closeSheet(); rerender(); if (isNew) setTimeout(() => openPlace(saved.id), 50); }
       };
-      $("#l-del", el)?.addEventListener("click", async () => {
-        const ds = dayOf(p.id);
-        if (!(await ask({ title: "Eliminare questo luogo?", text: (ds.length ? `Verrà tolto anche dal programma (${ds.map(short).join(", ")}). ` : "") + "Sparirà anche dai telefoni degli altri.", ok: "Elimina", danger: true }))) return;
-        for (const d of ds) plan[d].i = plan[d].i.filter(x => x !== p.id);
+      $("#l-del", el)?.addEventListener("click", () => {
+        const old = { ...p }, wasBooked = booked.has(p.id), pos = dayOf(p.id).map(d => [d, plan[d].i.indexOf(p.id)]);
+        for (const [d] of pos) plan[d].i = plan[d].i.filter(x => x !== p.id);
         booked.delete(p.id); savePlan();
-        delItem("luoghi", p.id); closeSheet(); rerender(); toast("Luogo eliminato");
+        delItem("luoghi", p.id); closeSheet(); rerender();
+        toast("Luogo eliminato", () => {
+          putItem("luoghi", old);
+          for (const [d, k] of pos) getDay(d).i.splice(k, 0, p.id);
+          if (wasBooked) booked.add(p.id);
+          savePlan(); rerender();
+        });
       });
     });
   }
@@ -1409,7 +1520,7 @@
         putItem("spese", { ...s, ...st, desc: $("#s-desc", el).value.trim(), importo, eur: Math.round(eur * 100) / 100, data: $("#s-data", el).value, ts: s.ts || Date.now() });
         closeSheet(); toast("Spesa salvata ✓"); rerender();
       };
-      $("#s-del", el)?.addEventListener("click", async () => { if (await ask({ title: "Eliminare questa spesa?", text: "Sparirà anche dai telefoni degli altri e il saldo verrà ricalcolato.", ok: "Elimina", danger: true })) { delItem("spese", s.id); closeSheet(); rerender(); } });
+      $("#s-del", el)?.addEventListener("click", () => { const old = { ...s }; delItem("spese", s.id); closeSheet(); rerender(); toast("Spesa eliminata", () => { putItem("spese", old); rerender(); }); });
     });
   }
 
