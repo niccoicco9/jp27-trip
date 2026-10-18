@@ -7,6 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
+  const APP_VERSION = 21;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -962,6 +963,8 @@
         <div class="ugrid">${UTIL.map(([k, ic, c, t, s]) => `<a class="ucard" href="#utility/${k}"><span class="ic" style="background:${c}">${icon(ic)}</span><b>${t}</b>${s ? `<small>${s}</small>` : ""}</a>`).join("")}</div>
         <div class="card row" style="margin-top:16px"><div class="grow"><b>Accesso</b><div class="muted small">${me ? esc(me) : "Nome non scelto"} · ${code ? "dati condivisi attivi" : "codice del viaggio non inserito"}</div></div><button class="btn small${code ? "" : " primary"}" id="whoami">${icon(code ? "UserRound" : "KeyRound")} ${code ? "Cambia" : "Inserisci"}</button></div>`;
       $("#whoami").onclick = askWho;
+      view.insertAdjacentHTML("beforeend", `<div class="card row"><div class="grow"><b>Versione ${APP_VERSION}</b><div class="muted small">Se qualcosa non sembra aggiornato, scarica di nuovo l'app (le mappe offline restano).</div></div><button class="btn small" id="forceupd">${icon("RotateCcw")} Aggiorna adesso</button></div>`);
+      $("#forceupd").onclick = forceUpdate;
       return;
     }
     const g = GUIDE[sub];
@@ -1248,6 +1251,16 @@
       };
       $("#s-del", el)?.addEventListener("click", async () => { if (await ask({ title: "Eliminare questa spesa?", text: "Sparirà anche dai telefoni degli altri e il saldo verrà ricalcolato.", ok: "Elimina", danger: true })) { delItem("spese", s.id); closeSheet(); rerender(); } });
     });
+  }
+
+  // aggiornamento forzato: scarta la versione salvata dell'app (non le mappe né le foto) e ricarica
+  async function forceUpdate() {
+    toast("Scarico la versione nuova…");
+    try {
+      for (const k of await caches.keys()) if (k !== "jp27-mappe" && k !== "jp27-cdn") await caches.delete(k);
+      for (const r of await navigator.serviceWorker?.getRegistrations?.() || []) await r.unregister();
+    } catch {}
+    location.replace(location.pathname + "?v=" + Date.now() + location.hash);
   }
 
   // ——— chi sei? ———
