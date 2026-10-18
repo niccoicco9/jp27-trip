@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 30;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 31;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -156,6 +156,8 @@
   // il luogo è chiuso quel giorno? ("lun", "mar e mer"…)
   const closedOn = (p, d) => { if (!p?.chiuso || !d) return false; const wd = fmtDay(d, { weekday: "short" }).replace(".", "").toLowerCase(); return new RegExp(`(^|[^a-zà-ù])${wd}([^a-zà-ù]|$)`).test(p.chiuso.toLowerCase()); };
   const closedPill = p => `<span class="pill warn">${icon("Clock")} chiuso di ${esc(p.chiuso)}!</span>`;
+  // numeri interi sempre con il punto delle migliaia (1.500 ¥ come 12.000 ¥)
+  const fmtInt = n => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   const fmtKm = km => km < .05 ? "qui" : km < 1 ? `${Math.round(km * 1000 / 10) * 10} m` : `${km.toFixed(km < 10 ? 1 : 0).replace(".", ",")} km`;
   const dayIndex = iso => DAYS.indexOf(iso);
   const getDay = iso => (plan[iso] ||= { l: "", n: "", i: [] });
@@ -297,7 +299,7 @@
     if (reduceMotion()) return;
     $$("[data-count]", root).forEach(el => {
       const to = +el.dataset.count, fmt = el.dataset.fmt, t0 = performance.now(), dur = 750;
-      const show = v => el.textContent = fmt === "eur" ? eurF(v) : fmt === "eur±" ? (to > 0 ? "+" : "") + eurF(v) : Math.round(v).toLocaleString("it-IT");
+      const show = v => el.textContent = fmt === "eur" ? eurF(v) : fmt === "eur±" ? (to > 0 ? "+" : "") + eurF(v) : fmtInt(v);
       if (!to) return;
       let done = false;
       const step = () => { if (done) return; const k = Math.min(1, Math.max(0, (performance.now() - t0) / dur)), e = 1 - Math.pow(1 - k, 3); show(to * e); if (k < 1) requestAnimationFrame(step); else done = true; };
@@ -1056,7 +1058,7 @@
         for (const [id, m] of Object.entries(mk)) { const n = nums[id] || 0; m.setIcon(icon(pinUrl("p", byId[id], n), n)); m.setZIndex(n ? 100 - n : 1); }
         curVis = vis; curNums = nums; recluster();
         for (const h of hotelsWithPos()) {
-          hk[h.id] ||= new google.maps.Marker({ map, title: h.titolo, icon: icon(pinUrl("hotel")) });
+          hk[h.id] ||= new google.maps.Marker({ map, title: h.titolo, icon: icon(pinUrl("hotel")), zIndex: 150 });
           hk[h.id].setPosition({ lat: h.lat, lng: h.lng });
         }
         iw?.close();
@@ -1137,7 +1139,7 @@
           e.src = pinUrl("p", byId[id], n); e.width = w; e.height = h; e.style.zIndex = n ? 100 - n : 1;
         }
         curVis = vis; curNums = nums; recluster();
-        for (const h of hotelsWithPos()) { if (hk[h.id]) hk[h.id].setLngLat([h.lng, h.lat]); else hk[h.id] = new maplibregl.Marker({ element: markerEl(pinUrl("hotel")), anchor: "bottom" }).setLngLat([h.lng, h.lat]).addTo(map); }   // prima la posizione, poi sulla mappa
+        for (const h of hotelsWithPos()) { if (hk[h.id]) hk[h.id].setLngLat([h.lng, h.lat]); else { const e = markerEl(pinUrl("hotel")); e.style.zIndex = 150; hk[h.id] = new maplibregl.Marker({ element: e, anchor: "bottom" }).setLngLat([h.lng, h.lat]).addTo(map); } }   // prima la posizione, poi sulla mappa
         popup?.remove();
       },
       route(pts) { routePts = pts; if (map.isStyleLoaded()) addRoute(); },
@@ -1392,7 +1394,7 @@
     view.innerHTML = `${back}<h2>Yen ↔ Euro</h2><p class="lead" id="rate"></p>
       <div class="card">
         <div class="conv"><div><label for="jpy">Yen</label><input type="number" inputmode="decimal" id="jpy" value="1000"></div><span class="muted" style="padding-top:18px">=</span><div><label for="eur">Euro</label><input type="number" inputmode="decimal" id="eur"></div></div>
-        <div class="qchips">${[100, 500, 1000, 3000, 5000, 10000, 30000].map(v => `<button class="chip" data-y="${v}">${v.toLocaleString("it-IT")} ¥</button>`).join("")}</div>
+        <div class="qchips">${[100, 500, 1000, 3000, 5000, 10000, 30000].map(v => `<button class="chip" data-y="${v}">${fmtInt(v)} ¥</button>`).join("")}</div>
       </div>
       <div class="card small"><b>A occhio:</b> 1.000 ¥ ≈ <span id="k">${(1000 / st.r).toFixed(2).replace(".", ",")}</span> €. Un pasto in un ristorantino costa 1.000–1.500 ¥, un caffè al konbini 150 ¥ e una corsa in metro 180–300 ¥.</div>`;
     let rate = st.r;
@@ -1674,7 +1676,7 @@
   // ——— SPESE condivise tra le due coppie ———
   const COPPIE = [["Niccolò", "Antonella"], ["Miriam", "Paolo"]];
   const coupleName = c => c.join(" & ");
-  const SCAT = { cibo: ["Utensils", "Cibo"], trasporti: ["TrainFront", "Trasporti"], alloggio: ["BedDouble", "Alloggio"], attivita: ["Ticket", "Attività"], shopping: ["ShoppingBag", "Shopping"], altro: ["Receipt", "Altro"], rimborso: ["HandCoins", "Rimborso"] };
+  const SCAT = { cibo: ["Utensils", "Cibo", "#d9822b"], trasporti: ["TrainFront", "Trasporti", "#1f9488"], alloggio: ["BedDouble", "Alloggio", "#2e6fb0"], attivita: ["Ticket", "Attività", "#d4442f"], shopping: ["ShoppingBag", "Shopping", "#7b4fa0"], altro: ["Receipt", "Altro", "#6b5a45"], rimborso: ["HandCoins", "Rimborso", "var(--ok)"] };
   const rate = () => LS.get("rate", { r: 170 }).r || 170;
   const eurF = v => v.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
   const avatar = (n, s = 26) => `<span class="avatar" style="width:${s}px;height:${s}px;font-size:${s * .42}px;background:${AVATAR[n] || "#888"}">${n[0]}</span>`;
@@ -1702,7 +1704,7 @@
     const debt = Math.abs(cn[0]) < .5 ? null : cn[0] > 0 ? [COPPIE[1], COPPIE[0], cn[0]] : [COPPIE[0], COPPIE[1], -cn[0]];
     const items = [...lists.spese].sort((a, b) => (b.data || "").localeCompare(a.data || "") || (b.ts || 0) - (a.ts || 0));
     let lastD = null;
-    view.innerHTML = `${back}<h2>Spese</h2><p class="lead">Chi ha pagato cosa, e alla fine chi deve quanto a chi.</p>
+    view.innerHTML = `${back}<div class="between"><h2>Spese</h2><button class="btn small primary" id="adds">${icon("Plus")} Aggiungi</button></div><p class="lead">Chi ha pagato cosa, e alla fine chi deve quanto a chi.</p>
       <div class="hero" style="min-height:0">${art()}<div class="hero-in" style="min-height:190px">
         <span class="kicker">Spesa totale del gruppo</span><div class="big-n" style="font-size:2.6rem" data-count="${total}" data-fmt="eur">${eurF(total)}</div>
         <p>${debt ? `<b>${coupleName(debt[0])}</b> devono <b>${eurF(debt[2])}</b> a ${coupleName(debt[1])}` : "Siete in pari 🤝"}</p>
@@ -1715,14 +1717,13 @@
           <p class="small muted" style="margin:6px 0 0">Conta chi ha anticipato dentro la coppia: tra voi due fate come preferite.</p>
         </details>
       </div>
-      <button class="btn primary" id="adds" style="width:100%;margin-bottom:14px">${icon("Plus")} Aggiungi spesa</button>
       ${items.length ? items.map(s => {
         const [ic, cl] = SCAT[s.cat] || SCAT.altro;
         const head = s.data !== lastD ? `<h3>${s.data ? fmtDay(s.data, { weekday: "long", day: "numeric", month: "long" }) : "Senza data"}</h3>` : ""; lastD = s.data;
         return `${head}<div class="card spesa${s.id === freshId ? " fresh" : ""}" data-spesa="${s.id}"><div class="row">
-          <span class="pic" style="background:${s.cat === "rimborso" ? "var(--ok)" : "#7b4fa0"}">${icon(ic)}</span>
+          <span class="pic" style="background:${(SCAT[s.cat] || SCAT.altro)[2]}">${icon(ic)}</span>
           <div class="grow"><b>${esc(s.desc || cl)}</b><div class="small muted">${s.cat === "rimborso" ? `${esc(s.pagatoDa)} → ${esc(splitLabel(s.perChi))}` : `pagato da ${esc(s.pagatoDa)} · per ${esc(splitLabel(s.perChi))}`}</div></div>
-          <div style="text-align:right"><b>${s.valuta === "JPY" ? Math.round(s.importo).toLocaleString("it-IT") + " ¥" : eurF(s.importo)}</b>${s.valuta === "JPY" ? `<div class="small muted">${eurF(s.eur)}</div>` : ""}</div>
+          <div style="text-align:right"><b>${s.valuta === "JPY" ? fmtInt(s.importo) + " ¥" : eurF(s.importo)}</b>${s.valuta === "JPY" ? `<div class="small muted">${eurF(s.eur)}</div>` : ""}</div>
         </div></div>`;
       }).join("") : `<p class="empty">Nessuna spesa ancora. La prima cena a Shinjuku? 🍜</p>`}`;
     $("#adds").onclick = () => editSpesa({});
@@ -1740,7 +1741,7 @@
       $$("[data-grp]", el).forEach(b => { const g = b.dataset.grp === "all" ? T.viaggiatori : COPPIE[+b.dataset.grp]; b.classList.toggle("on", g.length === st.perChi.length && g.every(n => st.perChi.includes(n))); });
       $$("[data-cat]", el).forEach(b => b.classList.toggle("on", b.dataset.cat === st.cat));
       const imp = parseNum($("#s-imp", el).value) || 0;
-      $("#s-conv", el).textContent = imp ? (st.valuta === "JPY" ? `≈ ${eurF(imp / rate())}` : `≈ ${Math.round(imp * rate()).toLocaleString("it-IT")} ¥`) + (st.perChi.length ? ` · ${eurF((st.valuta === "JPY" ? imp / rate() : imp) / st.perChi.length)} a testa` : "") : "";
+      $("#s-conv", el).textContent = imp ? (st.valuta === "JPY" ? `≈ ${eurF(imp / rate())}` : `≈ ${fmtInt(imp * rate())} ¥`) + (st.perChi.length ? ` · ${eurF((st.valuta === "JPY" ? imp / rate() : imp) / st.perChi.length)} a testa` : "") : "";
     };
     openSheet(`<div class="ttl"><span class="pic" style="background:${s.cat === "rimborso" ? "var(--ok)" : "#7b4fa0"}">${icon(s.cat === "rimborso" ? "HandCoins" : "Receipt")}</span><h2>${isNew ? (s.cat === "rimborso" ? "Rimborso" : "Nuova spesa") : "Modifica spesa"}</h2></div>
       <label class="fl"><span>Descrizione</span><input id="s-desc" value="${esc(s.desc || "")}" placeholder="es. Cena izakaya" autocomplete="off"></label>
