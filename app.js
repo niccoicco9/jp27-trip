@@ -80,7 +80,7 @@
     $$('meta[name="theme-color"]').forEach(m => m.setAttribute("content", isDark() ? "#0e0d0c" : "#f5f1ea"));
     $("#theme").innerHTML = icon(theme === "dark" ? "Moon" : theme === "light" ? "Sun" : "SunMoon");
     $("#theme").title = "Tema: " + (theme === "dark" ? "scuro" : theme === "light" ? "chiaro" : "automatico");
-    gmap?.setOptions({ styles: isDark() ? MAP_DARK : MAP_LIGHT });
+    for (const e of Object.values(engines)) e.theme();
   }
   $("#theme").onclick = () => {
     theme = theme === "" ? (mq.matches ? "light" : "dark") : theme === "light" && !mq.matches ? "dark" : theme === "dark" && mq.matches ? "light" : "";
@@ -558,8 +558,12 @@
   }
 
   // ——— MAPPA ———
+  // Due motori con la stessa interfaccia: Google (online) e MapLibre (offline, zone scaricate).
+  // In automatico si usa Google; senza rete, o se Google non si carica, si passa alla mappa offline.
   let mapFilter = { z: "all", d: "" }, mapFocus = null;
-  let gmap, markers = {}, iw, mapEl, mapsPromise, youMarker;
+  let mapMode = LS.get("mapMode", "auto");          // "auto" | "offline"
+  let mapsPromise, eng = null;                      // motore attivo
+  const engines = {};                               // google / offline, creati una volta sola
   function loadMaps() {
     if (mapsPromise) return mapsPromise;
     mapsPromise = new Promise((res, rej) => {
@@ -569,6 +573,7 @@
       s.src = `https://maps.googleapis.com/maps/api/js?key=${T.mapsKey}&loading=async&callback=__gmReady&language=it&region=JP&v=weekly`;
       s.async = true; s.onerror = () => { mapsPromise = null; rej(new Error("net")); };
       document.head.appendChild(s);
+      setTimeout(() => rej(new Error("timeout")), 12000);
     });
     return mapsPromise;
   }
@@ -581,7 +586,8 @@
     { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#f1dcbc" }] },
     { featureType: "poi", stylers: [{ visibility: "off" }] },
     { featureType: "poi.park", elementType: "geometry", stylers: [{ visibility: "on" }, { color: "#dae4c8" }] },
-    { featureType: "transit.line", elementType: "geometry", stylers: [{ color: "#d3c5b0" }] },
+    { featureType: "transit.line", elementType: "geometry", stylers: [{ color: "#c9b79c" }] },
+    { featureType: "transit.station", elementType: "labels.icon", stylers: [{ visibility: "on" }] },
     { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#d8cdbb" }] },
   ];
   const MAP_DARK = [
@@ -593,21 +599,151 @@
     { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#3a3329" }] },
     { featureType: "poi", stylers: [{ visibility: "off" }] },
     { featureType: "poi.park", elementType: "geometry", stylers: [{ visibility: "on" }, { color: "#1d2619" }] },
-    { featureType: "transit.line", elementType: "geometry", stylers: [{ color: "#39342c" }] },
+    { featureType: "transit.line", elementType: "geometry", stylers: [{ color: "#4a4236" }] },
     { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#3a352d" }] },
   ];
+
+  // segnaposto (stesso disegno per i due motori)
   const pinCache = {};
-  function pinIcon(p, n) {
-    const key = p.z + p.c + (n || "");
+  function pinSvg(col, inner) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="34" height="44" viewBox="0 0 34 44"><path d="M17 42.5s14-14.2 14-24.5A14 14 0 0 0 3 18c0 10.3 14 24.5 14 24.5z" fill="${col}" stroke="#fff" stroke-width="2"/>${inner}</svg>`;
+  }
+  function pinUrl(kind, p, n) {
+    const key = kind + (p ? p.z + p.c : "") + (n || "");
     if (!pinCache[key]) {
-      const col = zona[p.z].colore;
+      const col = kind === "hotel" ? "#2e6fb0" : zona[p.z].colore;
+      const glyph = kind === "hotel" ? "BedDouble" : cat(p)[0];
       const inner = n
         ? `<circle cx="17" cy="16" r="9.5" fill="#fff"/><text x="17" y="20.3" text-anchor="middle" font-family="Arial,sans-serif" font-weight="700" font-size="12" fill="${col}">${n}</text>`
-        : `<g transform="translate(8.6 7.6) scale(.7)" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${nodesSvg(iconNodes(cat(p)[0]))}</g>`;
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="34" height="44" viewBox="0 0 34 44"><path d="M17 42.5s14-14.2 14-24.5A14 14 0 0 0 3 18c0 10.3 14 24.5 14 24.5z" fill="${col}" stroke="#fff" stroke-width="2"/>${inner}</svg>`;
-      pinCache[key] = { url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg), scaledSize: new google.maps.Size(n ? 38 : 30, n ? 49 : 39), anchor: new google.maps.Point(n ? 19 : 15, n ? 48 : 38) };
+        : `<g transform="translate(8.6 7.6) scale(.7)" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${nodesSvg(iconNodes(glyph))}</g>`;
+      pinCache[key] = "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(pinSvg(col, inner));
     }
     return pinCache[key];
+  }
+  const pinSize = n => (n ? [38, 49] : [30, 39]);
+  function iwHtml(id) {
+    const p = byId[id];
+    return `<div class="gm-iw">${photo(id, 330)}<div class="in"><b>${esc(p.n)}</b><div class="jp">${esc(p.jp)}</div><button data-iw="${id}">Dettagli e indicazioni</button></div></div>`;
+  }
+  document.addEventListener("click", e => { const b = e.target.closest("[data-iw]"); if (b) openPlace(b.dataset.iw); });
+  const hotelsWithPos = () => lists.prenotazioni.filter(p => p.tipo === "hotel" && p.lat && p.lng);
+
+  // ——— motore Google ———
+  function googleEngine(el) {
+    let map, iw, you, route; const mk = {}, hk = {};
+    const icon = (url, n) => { const [w, h] = pinSize(n); return { url, scaledSize: new google.maps.Size(w, h), anchor: new google.maps.Point(w / 2, h - 1) }; };
+    return {
+      kind: "google",
+      async init() {
+        await loadMaps();
+        const { Map, InfoWindow } = await google.maps.importLibrary("maps");
+        const { Marker } = await google.maps.importLibrary("marker");
+        map = new Map(el, {
+          center: { lat: 35.3, lng: 137.5 }, zoom: 6, disableDefaultUI: true, zoomControl: true, gestureHandling: "greedy",
+          clickableIcons: false, styles: isDark() ? MAP_DARK : MAP_LIGHT, zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_CENTER },
+        });
+        iw = new InfoWindow({ headerDisabled: true });
+        map.addListener("click", () => iw.close());
+        for (const p of LUOGHI) {
+          if (p.out) continue;
+          const m = new Marker({ position: { lat: p.lat, lng: p.lng }, map, title: p.n, icon: icon(pinUrl("p", p)) });
+          m.addListener("click", () => { iw.setContent(iwHtml(p.id)); iw.open({ map, anchor: m }); });
+          mk[p.id] = m;
+        }
+        route = new google.maps.Polyline({ map, strokeOpacity: 0, icons: [{ icon: { path: "M 0,-1 0,1", strokeOpacity: 1, strokeColor: "#d4442f", scale: 3 }, offset: "0", repeat: "12px" }] });
+      },
+      show(vis, nums) {
+        for (const [id, m] of Object.entries(mk)) { const n = nums[id] || 0; m.setVisible(vis.has(id)); m.setIcon(icon(pinUrl("p", byId[id], n), n)); m.setZIndex(n ? 100 - n : 1); }
+        for (const h of hotelsWithPos()) {
+          hk[h.id] ||= new google.maps.Marker({ map, title: h.titolo, icon: icon(pinUrl("hotel")) });
+          hk[h.id].setPosition({ lat: h.lat, lng: h.lng });
+        }
+        iw?.close();
+      },
+      route(pts) { route.setPath(pts.map(([lng, lat]) => ({ lat, lng }))); },
+      fit(pts) {
+        if (!pts.length) return;
+        if (pts.length === 1) { map.setCenter({ lat: pts[0][1], lng: pts[0][0] }); map.setZoom(14); return; }
+        const b = new google.maps.LatLngBounds(); pts.forEach(([lng, lat]) => b.extend({ lat, lng }));
+        map.fitBounds(b, { top: 170, bottom: mapPadBottom(), left: 40, right: 60 });
+      },
+      focus(id, popup) { const p = byId[id]; map.panTo({ lat: p.lat, lng: p.lng }); if (map.getZoom() < 14) map.setZoom(15); if (popup) { iw.setContent(iwHtml(id)); iw.open({ map, anchor: mk[id] }); } },
+      you(ll) { you ||= new google.maps.Marker({ map, zIndex: 999, icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: "#2e7bf6", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 3 } }); you.setPosition({ lat: ll[1], lng: ll[0] }); map.panTo({ lat: ll[1], lng: ll[0] }); map.setZoom(15); },
+      theme() { map?.setOptions({ styles: isDark() ? MAP_DARK : MAP_LIGHT }); },
+    };
+  }
+
+  // ——— motore offline (MapLibre) ———
+  function offlineEngine(el) {
+    let map, popup, you; const mk = {}, hk = {}; let routePts = [];
+    const markerEl = (url, n) => { const [w, h] = pinSize(n); const i = document.createElement("img"); i.src = url; i.width = w; i.height = h; i.className = "ml-pin"; return i; };
+    const addRoute = () => {
+      if (!map.getSource("route")) {
+        map.addSource("route", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+        map.addLayer({ id: "route", type: "line", source: "route", paint: { "line-color": "#d4442f", "line-width": 3, "line-dasharray": [1.5, 1.5] }, layout: { "line-cap": "round" } });
+      }
+      map.getSource("route").setData({ type: "Feature", geometry: { type: "LineString", coordinates: routePts }, properties: {} });
+    };
+    return {
+      kind: "offline",
+      async init() {
+        map = await OfflineMap.create(el, { dark: isDark(), center: [137.5, 35.3], zoom: 5 });
+        await new Promise(r => map.once("load", r));
+        popup = new maplibregl.Popup({ offset: 34, closeButton: false, maxWidth: "240px", className: "ml-pop" });
+        for (const p of LUOGHI) {
+          if (p.out) continue;
+          const m = new maplibregl.Marker({ element: markerEl(pinUrl("p", p)), anchor: "bottom" }).setLngLat([p.lng, p.lat]).addTo(map);
+          m.getElement().addEventListener("click", ev => { ev.stopPropagation(); popup.setLngLat([p.lng, p.lat]).setHTML(iwHtml(p.id)).addTo(map); });
+          mk[p.id] = m;
+        }
+        map.on("style.load", addRoute);
+        addRoute();
+      },
+      show(vis, nums) {
+        for (const [id, m] of Object.entries(mk)) {
+          const n = nums[id] || 0, e = m.getElement(), [w, h] = pinSize(n);
+          e.style.display = vis.has(id) ? "" : "none"; e.src = pinUrl("p", byId[id], n); e.width = w; e.height = h; e.style.zIndex = n ? 100 - n : 1;
+        }
+        for (const h of hotelsWithPos()) { hk[h.id] ||= new maplibregl.Marker({ element: markerEl(pinUrl("hotel")), anchor: "bottom" }).addTo(map); hk[h.id].setLngLat([h.lng, h.lat]); }
+        popup?.remove();
+      },
+      route(pts) { routePts = pts; if (map.isStyleLoaded()) addRoute(); },
+      fit(pts) {
+        if (!pts.length) return;
+        map.resize();
+        if (pts.length === 1) { map.jumpTo({ center: pts[0], zoom: 14 }); return; }
+        const b = pts.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]));
+        const h = el.clientHeight, w = el.clientWidth;
+        const pad = h > 420 && w > 200 ? { top: 170, bottom: mapPadBottom(), left: 40, right: 60 } : 20;
+        try { map.fitBounds(b, { padding: pad, duration: 0, maxZoom: 15 }); } catch { map.jumpTo({ center: b.getCenter(), zoom: 9 }); }
+      },
+      focus(id, pop) { const p = byId[id]; map.easeTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 15) }); if (pop) popup.setLngLat([p.lng, p.lat]).setHTML(iwHtml(id)).addTo(map); },
+      you(ll) {
+        if (!you) { const d = document.createElement("div"); d.className = "ml-you"; you = new maplibregl.Marker({ element: d }).addTo(map); }
+        you.setLngLat(ll); map.easeTo({ center: ll, zoom: 15 });
+      },
+      theme() { if (map) OfflineMap.setTheme(map, isDark()); },
+      resize() { map?.resize(); },
+    };
+  }
+
+  const mapPadBottom = () => ($("#mcar") && !$("#mcar").hidden ? 230 : 130);
+  async function useEngine(kind) {
+    const slot = $("#mapslot"); if (!slot) return;
+    if (!engines[kind]) {
+      const el = document.createElement("div"); el.className = "mapel";
+      const e = kind === "google" ? googleEngine(el) : offlineEngine(el);
+      e.el = el; slot.appendChild(el);
+      try { await e.init(); engines[kind] = e; } catch (err) { el.remove(); throw err; }
+    }
+    eng = engines[kind];
+    $(".map-loading", slot)?.remove();
+    for (const e of Object.values(engines)) { if (e.el.parentNode !== slot) slot.appendChild(e.el); e.el.hidden = e !== eng; }
+    eng.resize?.();
+    $("#mmode") && ($("#mmode").innerHTML = eng.kind === "offline" ? `${icon("CloudOff")} Offline` : `${icon("Map")} Google`);
+    $("#mmode")?.classList.toggle("on", eng.kind === "offline");
+    applyMapFilter(true);
+    if (mapFocus) { const id = mapFocus; mapFocus = null; eng.focus(id, true); }
   }
 
   function renderMappa() {
@@ -616,83 +752,111 @@
     view.innerHTML = `<div class="mapwrap">
       <div class="map-ui">
         <div class="chips">${[["all", "Tutte"], ...ZONE.map(z => [z.id, z.nome])].map(([id, n]) => `<button class="chip${!mapFilter.d && mapFilter.z === id ? " on" : ""}" data-mz="${id}">${id !== "all" ? `<span class="dot" style="background:${zona[id].colore}"></span>` : ""}${esc(n)}</button>`).join("")}</div>
-        <select id="mday" aria-label="Filtra per giorno"><option value="">Tutti i giorni</option>${dayOpts}</select>
+        <div class="row" style="gap:8px"><select id="mday" aria-label="Filtra per giorno"><option value="">Tutti i giorni</option>${dayOpts}</select>
+          <button class="chip" id="mmode" title="Mappa Google o offline">${icon("Map")} Google</button><button class="chip" id="mdl" aria-label="Mappe offline">${icon("Download")}</button></div>
       </div>
-      <div id="mapslot" style="position:absolute;inset:0"></div>
+      <div id="mapslot" style="position:absolute;inset:0"><div class="map-loading">${icon("Map")}<span>Carico la mappa…</span></div></div>
+      <div class="mcar" id="mcar" hidden></div>
       <button class="locbtn" id="loc" aria-label="La mia posizione">${icon("LocateFixed")}</button>
     </div>`;
     $$("[data-mz]").forEach(c => c.onclick = () => { mapFilter = { z: c.dataset.mz, d: "" }; $("#mday").value = ""; $$("[data-mz]").forEach(x => x.classList.toggle("on", x === c)); applyMapFilter(true); });
     $("#mday").onchange = e => { mapFilter = { z: "all", d: e.target.value }; $$("[data-mz]").forEach(x => x.classList.toggle("on", !e.target.value && x.dataset.mz === "all")); applyMapFilter(true); };
     $("#loc").onclick = locateMe;
-
-    if (!mapEl) { mapEl = document.createElement("div"); mapEl.id = "map"; }
-    $("#mapslot").appendChild(mapEl);
-
-    if (!navigator.onLine && !gmap) return mapFallback("Sei offline: la mappa ha bisogno di internet.");
-    loadMaps().then(initMap).catch(err => mapFallback(err.message === "auth"
-      ? "La chiave Google Maps è stata rifiutata. Controlla che la <b>Maps JavaScript API</b> sia abilitata, che la fatturazione sia attiva e che questo indirizzo sia tra i siti autorizzati."
-      : "Non riesco a caricare Google Maps (connessione?)."));
+    $("#mdl").onclick = openOfflineMaps;
+    $("#mmode").onclick = () => {
+      if (eng?.kind === "offline") { if (!navigator.onLine) return toast("Sei offline: serve la rete per Google"); mapMode = "auto"; LS.set("mapMode", mapMode); pickEngine(); }
+      else { mapMode = "offline"; LS.set("mapMode", mapMode); pickEngine(); }
+    };
+    pickEngine();
   }
+  async function pickEngine() {
+    const wantOffline = mapMode === "offline" || !navigator.onLine;
+    try {
+      if (!wantOffline) { try { return await useEngine("google"); } catch (err) { if (err.message === "auth") toast("Chiave Google rifiutata: uso la mappa offline"); } }
+      await useEngine("offline");
+    } catch (err) {
+      console.warn("Mappa:", err);
+      mapFallback(navigator.onLine ? "Non riesco a caricare la mappa." : "Sei offline e la mappa offline non è ancora stata scaricata. Quando hai il Wi-Fi: Mappa → ⬇ → scarica le zone.");
+    }
+  }
+  addEventListener("offline", () => { if (location.hash.startsWith("#mappa") && eng?.kind === "google") pickEngine(); });
+
   function mapFallback(msg) {
     view.classList.remove("full");
-    view.innerHTML = `<div class="card"><b>${icon("CloudOff")} Mappa non disponibile</b><p class="small">${msg}</p><p class="small muted" style="margin-bottom:0">Puoi comunque aprire ogni luogo direttamente nell'app Google Maps:</p></div>
+    view.innerHTML = `<div class="card"><b>${icon("CloudOff")} Mappa non disponibile</b><p class="small">${msg}</p><p class="small muted" style="margin-bottom:0">Intanto ecco i luoghi: "Portami qui" apre l'app Google Maps.</p></div>
       ${LUOGHI.filter(p => !p.out && (mapFilter.d ? plan[mapFilter.d]?.i?.includes(p.id) : (mapFilter.z === "all" || p.z === mapFilter.z))).map(p => placeRow(p)).join("")}`;
   }
-  async function initMap() {
-    if (!gmap) {
-      const { Map, InfoWindow } = await google.maps.importLibrary("maps");
-      const { Marker } = await google.maps.importLibrary("marker");
-      gmap = new Map(mapEl, {
-        center: { lat: 35.3, lng: 137.5 }, zoom: 6, disableDefaultUI: true, zoomControl: true, gestureHandling: "greedy",
-        clickableIcons: false, styles: isDark() ? MAP_DARK : MAP_LIGHT,
-        zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_CENTER },
-      });
-      iw = new InfoWindow({ headerDisabled: true });
-      gmap.addListener("click", () => iw.close());
-      for (const p of LUOGHI) {
-        if (p.out) continue;
-        const m = new Marker({ position: { lat: p.lat, lng: p.lng }, map: gmap, title: p.n, icon: pinIcon(p), optimized: true });
-        m.addListener("click", () => openIw(p.id));
-        markers[p.id] = m;
-      }
-    }
-    applyMapFilter(true);
-    if (mapFocus) { const id = mapFocus; mapFocus = null; const p = byId[id]; gmap.setZoom(15); gmap.panTo({ lat: p.lat, lng: p.lng }); openIw(id); }
-  }
-  function openIw(id) {
-    const p = byId[id];
-    const div = document.createElement("div"); div.className = "gm-iw";
-    div.innerHTML = `${photo(id, 330)}<div class="in"><b>${esc(p.n)}</b><div class="jp">${esc(p.jp)}</div><button>Dettagli e indicazioni</button></div>`;
-    div.querySelector("button").onclick = () => openPlace(id);
-    iw.setContent(div); iw.open({ map: gmap, anchor: markers[id] });
-  }
+
   function applyMapFilter(fit) {
-    if (!gmap) return;
-    const dayIds = mapFilter.d ? (plan[mapFilter.d]?.i || []) : null;
-    const bounds = new google.maps.LatLngBounds(); let n = 0;
-    for (const [id, m] of Object.entries(markers)) {
-      const p = byId[id];
-      const k = dayIds ? dayIds.indexOf(id) : -1;
-      const show = dayIds ? k >= 0 : (mapFilter.z === "all" || p.z === mapFilter.z);
-      m.setVisible(show);
-      m.setIcon(pinIcon(p, k >= 0 ? k + 1 : 0));
-      m.setZIndex(k >= 0 ? 100 - k : 1);
-      if (show) { bounds.extend(m.getPosition()); n++; }
-    }
-    iw?.close();
+    if (!eng) return;
+    const dayIds = mapFilter.d ? (plan[mapFilter.d]?.i || []).filter(id => byId[id]) : null;
+    const vis = new Set(), nums = {};
+    if (dayIds) dayIds.forEach((id, k) => { vis.add(id); nums[id] = k + 1; });
+    else LUOGHI.forEach(p => { if (!p.out && (mapFilter.z === "all" || p.z === mapFilter.z)) vis.add(p.id); });
+    eng.show(vis, nums);
+    const pts = dayIds ? dayIds.map(id => [byId[id].lng, byId[id].lat]) : [];
+    eng.route(pts);
+    renderCarousel(dayIds);
     if (!fit) return;
-    if (n === 0) { if (dayIds) toast("Nessuna tappa in questo giorno"); return; }
-    if (n === 1) { gmap.setCenter(bounds.getCenter()); gmap.setZoom(14); }
-    else gmap.fitBounds(bounds, { top: 170, bottom: 130, left: 40, right: 60 });
+    if (dayIds && !dayIds.length) return toast("Nessuna tappa in questo giorno");
+    try { eng.fit([...vis].map(id => [byId[id].lng, byId[id].lat])); } catch (err) { console.warn("Mappa (zoom):", err); }
   }
+
+  // schede scorrevoli con le tappe del giorno: la mappa segue la scheda al centro
+  function renderCarousel(dayIds) {
+    const c = $("#mcar"); if (!c) return;
+    if (!dayIds?.length) { c.hidden = true; $("#loc")?.classList.remove("up"); return; }
+    c.hidden = false; $("#loc")?.classList.add("up");
+    c.innerHTML = dayIds.map((id, k) => { const p = byId[id]; return `<div class="mcard" data-mc="${id}"><div style="position:relative">${photo(id, 330)}<span class="mnum" style="background:${zona[p.z].colore}">${k + 1}</span></div><div class="grow"><b>${esc(p.n)}</b><div class="small muted">${p.dur ? esc(p.dur) : esc(zona[p.z].nome)}</div><div class="row" style="gap:6px;margin-top:6px"><a class="btn small primary" href="${gmDir(p)}" target="_blank" rel="noopener">${icon("Navigation")}</a><button class="btn small" data-place="${id}">Dettagli</button></div></div></div>`; }).join("");
+    c.scrollLeft = 0;
+    let t; c.onscroll = () => { clearTimeout(t); t = setTimeout(() => {
+      const mid = c.getBoundingClientRect().left + c.clientWidth / 2;
+      const card = [...c.children].reduce((b, x) => { const r = x.getBoundingClientRect(); return Math.abs(r.left + r.width / 2 - mid) < Math.abs(b.r.left + b.r.width / 2 - mid) ? { x, r } : b; }, { x: c.children[0], r: c.children[0].getBoundingClientRect() }).x;
+      if (card?.dataset.mc && card.dataset.mc !== c.dataset.cur) { c.dataset.cur = card.dataset.mc; eng?.focus(card.dataset.mc, false); }
+    }, 140); };
+  }
+
   function locateMe() {
     if (!navigator.geolocation) return toast("Posizione non disponibile");
-    navigator.geolocation.getCurrentPosition(pos => {
-      const ll = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-      if (!gmap) return;
-      youMarker ||= new google.maps.Marker({ map: gmap, zIndex: 999, icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: "#2e7bf6", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 3 } });
-      youMarker.setPosition(ll); gmap.panTo(ll); gmap.setZoom(15);
-    }, () => toast("Non riesco a leggere la posizione"), { enableHighAccuracy: true, timeout: 10000 });
+    navigator.geolocation.getCurrentPosition(pos => eng?.you([pos.coords.longitude, pos.coords.latitude]),
+      () => toast("Non riesco a leggere la posizione"), { enableHighAccuracy: true, timeout: 10000 });
+  }
+
+  // ——— gestione mappe offline ———
+  async function openOfflineMaps() {
+    const st = await OfflineMap.status(), used = await OfflineMap.usedMB();
+    const busy = {};
+    const row = z => `<div class="card zrow" data-zone="${z.id}"><div class="row"><span class="pic" style="background:${z.base ? "#6b5a45" : "#1f9488"}">${icon(z.base ? "Map" : "Mountain")}</span>
+      <div class="grow"><b>${esc(z.nome)}</b><div class="small muted">${z.mb.toLocaleString("it-IT")} MB${z.base ? " · si scarica con la prima zona" : ""}</div></div>
+      ${st[z.id] ? `<span class="pill ok">${icon("Check")} offline</span><button class="iconbtn danger" data-zdel="${z.id}" aria-label="Elimina">${icon("Trash2")}</button>` : `<button class="btn small primary" data-zdl="${z.id}">${icon("Download")} Scarica</button>`}</div>
+      <div class="progress" hidden style="margin-top:10px"><i style="width:0"></i></div></div>`;
+    openSheet(`<div class="ttl"><span class="pic" style="background:#1f9488">${icon("CloudOff")}</span><h2>Mappe offline</h2></div>
+      <p class="lead">Scaricale ora col Wi-Fi: in Giappone la mappa funzionerà anche senza rete, con la vostra posizione GPS. Per navigare con i treni serve comunque la rete (Google Maps).</p>
+      ${OfflineMap.ZONE.some(z => !st[z.id]) ? `<button class="btn primary" id="zall" style="width:100%;margin-bottom:14px">${icon("Download")} Scarica tutte (${Math.round(OfflineMap.ZONE.filter(z => !st[z.id]).reduce((a, z) => a + z.mb, 0))} MB)</button>` : `<p class="small" style="color:var(--ok);margin-top:0">${icon("Check")} Tutte le zone sono disponibili offline</p>`}
+      ${OfflineMap.ZONE.map(row).join("")}
+      <p class="small muted">${used != null ? `Spazio usato dall'app: circa ${used} MB. ` : ""}Su iPhone usa l'app dalla schermata Home, così iOS non cancella le mappe.</p>`, el => {
+      $$("[data-zdl]", el).forEach(b => b.onclick = async () => {
+        const z = OfflineMap.ZONE.find(x => x.id === b.dataset.zdl); if (busy[z.id]) return; busy[z.id] = true;
+        const card = b.closest(".zrow"), bar = $(".progress", card); bar.hidden = false; b.disabled = true; b.textContent = "0%";
+        try {
+          await OfflineMap.download(z, f => { $("i", bar).style.width = Math.round(f * 100) + "%"; b.textContent = Math.round(f * 100) + "%"; });
+          OfflineMap.reset(); toast(`${z.nome}: pronta offline ✓`); openOfflineMaps();
+        } catch { toast("Download non riuscito: riprova col Wi-Fi"); b.disabled = false; b.innerHTML = `${icon("Download")} Riprova`; busy[z.id] = false; }
+      });
+      $("#zall", el)?.addEventListener("click", async e => {
+        const b = e.currentTarget; b.disabled = true;
+        const todo = OfflineMap.ZONE.filter(z => !st[z.id]);
+        try {
+          for (const [i, z] of todo.entries()) await OfflineMap.download(z, f => { b.textContent = `${z.nome}: ${Math.round(f * 100)}% (${i + 1}/${todo.length})`; });
+          OfflineMap.reset(); toast("Tutte le mappe sono offline ✓"); openOfflineMaps();
+        } catch { toast("Download interrotto: riprova col Wi-Fi"); openOfflineMaps(); }
+      });
+      $$("[data-zdel]", el).forEach(b => b.onclick = async () => {
+        const z = OfflineMap.ZONE.find(x => x.id === b.dataset.zdel);
+        if (!confirm(`Eliminare la mappa offline "${z.nome}" da questo telefono?`)) return;
+        await OfflineMap.remove(z); OfflineMap.reset(); openOfflineMaps();
+      });
+    });
   }
 
   // ——— UTILITY ———
@@ -702,6 +866,7 @@
     ["yen", "Banknote", "#4f8a3c", "¥ ↔ €", "Convertitore"],
     ["frasi", "Languages", "#2b4c7e", "Frasi utili", "Con pronuncia audio"],
     ["sos", "Siren", "#d4442f", "Emergenze", "Numeri e ambasciata"],
+    ["mappe", "CloudOff", "#1f9488", "Mappe offline", "Scarica le zone"],
     ["budget", "Wallet", "#b8860b", "Budget", "Costi da Wanderlog"],
     ["checklist", "Luggage", "#c89b3c", "Checklist", "Valigia e documenti"],
     ...Object.entries(GUIDE).map(([k, g]) => [k, g.icon, g.col, g.titolo, { trasporti: "Suica, Shinkansen, JR Pass", galateo: "Cosa fare e non fare", soldi: "Contanti, ATM, tax free", stagione: "Clima ed eventi", pratico: "Prese, eSIM, farmaci", installa: "Aggiungila alla Home" }[k] || ""]),
@@ -728,6 +893,7 @@
     }
     if (sub === "budget") return renderBudget(back);
     if (sub === "prenotazioni") return renderPren(back);
+    if (sub === "mappe") { renderUtility(); setTimeout(openOfflineMaps, 50); return; }
     if (sub === "spese") return renderSpese(back);
     if (sub === "checklist") return renderChecklist(back);
     location.hash = "#utility";
@@ -879,12 +1045,24 @@
         if (t === "biglietto") item.luogo = v("p-luogo");
         if (!item.titolo) return toast("Scrivi almeno il nome");
         if (t === "hotel" && (!item.dal || !item.al || item.al <= item.dal)) return toast("Controlla check-in e check-out");
-        putItem("prenotazioni", item);
+        const saved = putItem("prenotazioni", item);
+        if (t === "hotel" && (item.jp !== p.jp || item.indirizzo !== p.indirizzo || item.titolo !== p.titolo || !p.lat)) geocodeHotel(saved);
         if (item.luogo && !booked.has(item.luogo)) { booked.add(item.luogo); savePlan(); }   // biglietto preso = "prenotato" spuntato
         closeSheet(); toast("Salvato ✓"); rerender();
       };
       $("#p-del", el)?.addEventListener("click", () => { if (confirm("Eliminare questa prenotazione per tutti?")) { delItem("prenotazioni", p.id); closeSheet(); rerender(); } });
     });
+  }
+
+  // posizione dell'hotel dall'indirizzo (OpenStreetMap), per la puntina sulla mappa
+  async function geocodeHotel(h) {
+    if (!navigator.onLine) return;
+    for (const q of [h.jp, h.indirizzo && h.indirizzo + ", Japan", h.titolo + ", Japan"].filter(Boolean)) {
+      try {
+        const r = await (await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=jp&q=${encodeURIComponent(q)}`)).json();
+        if (r[0]) { putItem("prenotazioni", { ...h, lat: +r[0].lat, lng: +r[0].lon }); return; }
+      } catch {}
+    }
   }
 
   // ——— SPESE condivise tra le due coppie ———

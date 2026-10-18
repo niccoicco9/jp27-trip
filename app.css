@@ -468,3 +468,34 @@ a.mini:not(.hotel) b { font-size: .8rem; color: var(--shu); }
 .seg.wide { display: flex; width: 100%; margin-bottom: 8px; }
 .seg.wide button { flex: 1; font-size: .8rem; font-weight: 700; min-height: 36px; white-space: nowrap; }
 input::-webkit-calendar-picker-indicator { opacity: .7; }
+
+/* ——— Mappa: due motori, schede scorrevoli, offline ——— */
+.mapel, .mapel.maplibregl-map { position: absolute !important; inset: 0; }
+.map-loading { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 8px; color: var(--muted); font-weight: 600; font-size: .9rem; }
+.map-loading svg { width: 34px; height: 34px; opacity: .5; animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .15; } }
+.map-ui .row select { flex: 1; max-width: none; }
+.map-ui .row .chip { min-height: 40px; }
+.map-ui .row .chip svg { width: 16px; height: 16px; }
+.map-ui #mmode.on { background: #1f9488; color: #fff; border-color: transparent; }
+.locbtn { transition: bottom .3s var(--ease); }
+.locbtn.up { bottom: calc(var(--nav-h) + 186px + env(safe-area-inset-bottom)); }
+.mcar {
+  position: absolute; left: 0; right: 0; bottom: calc(var(--nav-h) + 22px + env(safe-area-inset-bottom)); z-index: 3;
+  display: flex; gap: 10px; overflow-x: auto; padding: 4px 16px 8px; scroll-snap-type: x mandatory; scroll-padding-inline: 16px; scrollbar-width: none;
+}
+.mcar::-webkit-scrollbar { display: none; }
+.mcard {
+  flex: none; width: min(78vw, 320px); scroll-snap-align: center; display: flex; gap: 12px; align-items: center; padding: 10px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow-l);
+}
+.mcard .ph { width: 84px; height: 84px; border-radius: 14px; flex: none; }
+.mcard b { display: block; font-size: .95rem; line-height: 1.25; }
+.mcard .btn.small { min-height: 34px; padding: 6px 12px; }
+.mnum { position: absolute; left: -4px; top: -4px; width: 26px; height: 26px; border-radius: 50%; color: #fff; font-weight: 800; font-size: .8rem; display: grid; place-items: center; box-shadow: 0 0 0 3px var(--card); }
+.ml-pin { cursor: pointer; display: block; filter: drop-shadow(0 2px 3px rgba(0,0,0,.25)); }
+.ml-you { width: 18px; height: 18px; border-radius: 50%; background: #2e7bf6; border: 3px solid #fff; box-shadow: 0 0 0 8px rgba(46, 123, 246, .2), 0 2px 6px rgba(0,0,0,.3); }
+.ml-pop .maplibregl-popup-content { padding: 0; border-radius: 16px; overflow: hidden; box-shadow: var(--shadow-l); }
+.ml-pop .gm-iw { width: 220px; }
+.maplibregl-ctrl-attrib { font-size: 10px; }
+.zrow .pill { margin-right: 4px; }
