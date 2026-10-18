@@ -761,11 +761,58 @@
 
   // ——— router ———
   const TABS = [["oggi", "Sun", "Oggi"], ["giorni", "CalendarDays", "Giorni"], ["luoghi", "MapPin", "Luoghi"], ["mappa", "Map", "Mappa"], ["utility", "LayoutGrid", "Utility"]];
-  $("#tabs").innerHTML = TABS.map(([k, ic, t]) => `<a href="#${k}" data-tab="${k}">${icon(ic)}${t}</a>`).join("");
+  const nav = $("#tabs");
+  nav.innerHTML = `<span class="tab-ind instant" aria-hidden="true"></span>` + TABS.map(([k, ic, t]) => `<a href="#${k}" data-tab="${k}">${icon(ic)}${t}</a>`).join("");
+  const ind = $(".tab-ind", nav);
+  const tabLinks = () => $$("a", nav);
+  function placeInd(x, w) { ind.style.setProperty("--x", x + "px"); ind.style.width = w + "px"; }
+  function syncInd() { const on = $("a.on", nav); if (on) placeInd(on.offsetLeft, on.offsetWidth); }
+  addEventListener("resize", () => { ind.classList.add("instant"); syncInd(); requestAnimationFrame(() => ind.classList.remove("instant")); });
+
+  // Barra in basso come su iOS: tocca per cambiare pagina, oppure tieni premuto
+  // (la pillola diventa una lente) e trascina sulla voce che vuoi, poi lascia.
+  (() => {
+    let pid = null, x0 = 0, dragging = false, timer = 0, hoverA = null;
+    const tabAt = x => tabLinks().reduce((best, a) => Math.abs(a.offsetLeft + a.offsetWidth / 2 - x) < Math.abs(best.offsetLeft + best.offsetWidth / 2 - x) ? a : best);
+    const localX = e => e.clientX - nav.getBoundingClientRect().left;
+    function follow(e) {
+      const w = $("a", nav).offsetWidth, x = Math.max(6, Math.min(nav.clientWidth - w - 6, localX(e) - w / 2));
+      placeInd(x, w);
+      const a = tabAt(x + w / 2);
+      if (a !== hoverA) { hoverA?.classList.remove("hover"); a.classList.add("hover"); hoverA = a; }
+    }
+    function startDrag(e) { if (dragging) return; dragging = true; clearTimeout(timer); nav.classList.add("drag"); follow(e); }
+    function end(go) {
+      clearTimeout(timer);
+      const target = hoverA;
+      nav.classList.remove("drag"); hoverA?.classList.remove("hover"); hoverA = null; dragging = false; pid = null;
+      if (go && target) location.hash = "#" + target.dataset.tab;
+      requestAnimationFrame(syncInd);
+    }
+    nav.addEventListener("pointerdown", e => {
+      if (pid !== null || (e.pointerType === "mouse" && e.button !== 0)) return;
+      pid = e.pointerId; x0 = e.clientX;
+      try { nav.setPointerCapture(pid); } catch {}
+      hoverA = e.target.closest("a"); hoverA?.classList.add("hover");
+      timer = setTimeout(() => startDrag(e), 220);   // tieni premuto → lente
+    });
+    nav.addEventListener("pointermove", e => {
+      if (e.pointerId !== pid) return;
+      if (!dragging && Math.abs(e.clientX - x0) > 8) startDrag(e);
+      if (dragging) follow(e);
+    });
+    nav.addEventListener("pointerup", e => { if (e.pointerId === pid) end(true); });
+    nav.addEventListener("pointercancel", e => { if (e.pointerId === pid) end(false); });
+    // la navigazione la gestiamo noi su pointerup; resta il click da tastiera (detail 0)
+    nav.addEventListener("click", e => { if (e.detail !== 0) e.preventDefault(); });
+    nav.addEventListener("contextmenu", e => e.preventDefault());
+  })();
+
   function render() {
     const [tab, sub] = (location.hash.slice(1) || "oggi").split("/");
     view.classList.remove("full");
-    $$("#tabs a").forEach(a => a.classList.toggle("on", a.dataset.tab === tab));
+    tabLinks().forEach(a => a.classList.toggle("on", a.dataset.tab === tab));
+    syncInd(); requestAnimationFrame(() => ind.classList.remove("instant"));
     ({ oggi: renderOggi, giorni: () => renderGiorni(sub), luoghi: renderLuoghi, mappa: renderMappa, utility: () => renderUtility(sub) }[tab] || renderOggi)();
   }
   function rerender() { const [tab] = (location.hash.slice(1) || "oggi").split("/"); if (tab !== "mappa") keepScroll(render); }

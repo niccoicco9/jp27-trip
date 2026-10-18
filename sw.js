@@ -1,5 +1,5 @@
 // Service worker: l'app funziona offline (mappa e meteo esclusi).
-const VERSION = "jp27-v4";
+const VERSION = "jp27-v5";
 const SHELL = ["./", "index.html", "app.css", "app.js", "data.js", "photos.js", "content.js", "sync.js", "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-192.png", "icon-512.png", "favicon-32.png"];
 
 self.addEventListener("install", e => {
