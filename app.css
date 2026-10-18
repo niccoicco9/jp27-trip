@@ -79,13 +79,9 @@ svg.i { width: 1.15em; height: 1.15em; flex: none; vertical-align: -.2em; }
   padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
   border-bottom: 1px solid var(--line);
 }
-/* Il vetro sta su uno strato separato DIETRO il testo: su iPhone un backdrop-filter sullo stesso
-   elemento del testo lo fa a volte disegnare sfocato mentre la pagina (o la mappa) scorre sotto. */
-.top::after {
-  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
-  background: color-mix(in srgb, var(--bg) 86%, transparent);
-  backdrop-filter: blur(20px) saturate(1.2); -webkit-backdrop-filter: blur(20px) saturate(1.2);
-}
+/* Intestazione a tinta piena (niente effetto vetro): su iPhone il vetro faceva apparire
+   titolo e orari sfocati mentre la pagina o la mappa scorrevano sotto. */
+.top { background: var(--bg); }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; text-decoration: none; color: inherit; }
 .brand h1 { font-size: 1.02rem; font-weight: 800; margin: 0; line-height: 1.15; }
 .brand p { margin: 0; font-size: .74rem; color: var(--muted); }
