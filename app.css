@@ -49,6 +49,12 @@
 [hidden] { display: none !important; }
 html, body { margin: 0; }
 html { background: var(--bg); }
+/* è un'app, non un sito: niente selezione del testo, niente menu/anteprima tenendo premuto, niente doppio tocco per zoomare */
+html { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+body { touch-action: manipulation; }
+img, a { -webkit-user-drag: none; -webkit-touch-callout: none; }
+input, textarea, select, [contenteditable="true"] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+.copiabile { -webkit-user-select: all; user-select: all; -webkit-touch-callout: default; }
 body {
   background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 15.5px; line-height: 1.5;
   -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent;
@@ -71,11 +77,14 @@ svg.i { width: 1.15em; height: 1.15em; flex: none; vertical-align: -.2em; }
 .top {
   position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px;
   padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
-  /* vetro più coprente (testo leggibile anche sopra foto chiare) e niente translateZ:
-     su iPhone, insieme al backdrop-filter, faceva disegnare il testo sfocato durante lo scorrimento */
+  border-bottom: 1px solid var(--line);
+}
+/* Il vetro sta su uno strato separato DIETRO il testo: su iPhone un backdrop-filter sullo stesso
+   elemento del testo lo fa a volte disegnare sfocato mentre la pagina (o la mappa) scorre sotto. */
+.top::after {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
   background: color-mix(in srgb, var(--bg) 86%, transparent);
   backdrop-filter: blur(20px) saturate(1.2); -webkit-backdrop-filter: blur(20px) saturate(1.2);
-  border-bottom: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; text-decoration: none; color: inherit; }
 .brand h1 { font-size: 1.02rem; font-weight: 800; margin: 0; line-height: 1.15; }
@@ -545,3 +554,16 @@ input::-webkit-calendar-picker-indicator { opacity: .7; }
 }
 :root[data-theme="dark"] .top::before { display: none; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .top::before { display: none; } }
+
+/* ——— Mappa a tutto schermo: sotto l'intestazione (vetro) e sotto la barra in basso ———
+   I crediti obbligatori (logo Google, "i" di OpenStreetMap) restano visibili nella striscia sotto la barra:
+   su iPhone è lo spazio della linea Home, su Android la barra si alza un poco solo in questa pagina. */
+body.on-map { --navgap: max(38px, calc(10px + env(safe-area-inset-bottom))); overflow: hidden; }
+body.on-map .tabs { bottom: var(--navgap); }
+body.on-map main.full .mapwrap { position: fixed; inset: 0; height: auto; border-radius: 0; z-index: 0; }
+body.on-map .map-ui { top: var(--head, 60px); }
+body.on-map .mcar { bottom: calc(var(--nav-h) + var(--navgap) + 12px); }
+body.on-map .locbtn { bottom: calc(var(--nav-h) + var(--navgap) + 16px); }
+body.on-map .locbtn.up { bottom: calc(var(--nav-h) + var(--navgap) + 176px); }
+body.on-map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib.maplibregl-compact { margin: 0 10px 8px 0; }
+body.on-map .map-loading { padding-top: var(--head, 60px); }

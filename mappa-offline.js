@@ -55,6 +55,12 @@
     }
     onProgress?.(1);
   }
+  // all'avvio (con la rete): salva librerie, caratteri e icone, così la mappa offline parte sempre
+  async function warmup() {
+    const cache = await caches.open(CACHE);
+    for (const u of LIBS) { try { await fetch(u, { mode: "cors" }); } catch {} }
+    for (const a of ASSETS) { if (!(await cache.match(abs(a)))) { try { const r = await fetch(abs(a)); if (r.ok) await cache.put(abs(a), r); } catch {} } }
+  }
   async function remove(z) { const cache = await caches.open(CACHE); await cache.delete(abs(z.file)); }
 
   // ——— librerie (caricate solo quando serve la mappa offline) ———
@@ -125,5 +131,5 @@
   const setTheme = (map, dark) => map.setStyle(style(dark), { diff: false });
 
   const reset = () => { archives = null; };
-  window.OfflineMap = { ZONE, status, usedMB, download, remove, create, setTheme, loadLibs, reset };
+  window.OfflineMap = { ZONE, status, usedMB, download, remove, create, setTheme, loadLibs, reset, warmup };
 })();

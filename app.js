@@ -612,7 +612,7 @@
   let mapFilter = { z: "all", d: "" }, mapFocus = null;
   let mapMode = LS.get("mapMode", "auto");          // "auto" | "offline"
   let mapsPromise, eng = null;                      // motore attivo
-  const engines = {};                               // google / offline, creati una volta sola
+  const engines = {}, engineInit = {};              // google / offline, creati una volta sola
   function loadMaps() {
     if (mapsPromise) return mapsPromise;
     mapsPromise = new Promise((res, rej) => {
@@ -622,7 +622,8 @@
       s.src = `https://maps.googleapis.com/maps/api/js?key=${T.mapsKey}&loading=async&callback=__gmReady&language=it&region=JP&v=weekly`;
       s.async = true; s.onerror = () => { mapsPromise = null; rej(new Error("net")); };
       document.head.appendChild(s);
-      setTimeout(() => rej(new Error("timeout")), 12000);
+      // rete lenta: dopo 8 secondi si passa alla mappa offline, e la prossima volta si riprova Google
+      setTimeout(() => { if (!window.google?.maps?.Map) { mapsPromise = null; rej(new Error("timeout")); } }, 8000);
     });
     return mapsPromise;
   }
@@ -714,7 +715,7 @@
         if (!pts.length) return;
         if (pts.length === 1) { map.setCenter({ lat: pts[0][1], lng: pts[0][0] }); map.setZoom(14); return; }
         const b = new google.maps.LatLngBounds(); pts.forEach(([lng, lat]) => b.extend({ lat, lng }));
-        map.fitBounds(b, { top: 170, bottom: mapPadBottom(), left: 40, right: 60 });
+        map.fitBounds(b, { top: mapPadTop(), bottom: mapPadBottom(), left: 40, right: 60 });
       },
       focus(id, popup) { const p = byId[id]; map.panTo({ lat: p.lat, lng: p.lng }); if (map.getZoom() < 14) map.setZoom(15); if (popup) { iw.setContent(iwHtml(id)); iw.open({ map, anchor: mk[id] }); } },
       you(ll) { you ||= new google.maps.Marker({ map, zIndex: 999, icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: "#2e7bf6", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 3 } }); you.setPosition({ lat: ll[1], lng: ll[0] }); map.panTo({ lat: ll[1], lng: ll[0] }); map.setZoom(15); },
@@ -737,7 +738,7 @@
       kind: "offline",
       async init() {
         map = await OfflineMap.create(el, { dark: isDark(), center: [137.5, 35.3], zoom: 5 });
-        await new Promise(r => map.once("load", r));
+        await new Promise(r => { map.once("load", r); setTimeout(r, 6000); });   // senza rete può non arrivare mai: si va avanti comunque
         popup = new maplibregl.Popup({ offset: 34, closeButton: false, maxWidth: "240px", className: "ml-pop" });
         for (const p of LUOGHI) {
           if (p.out) continue;
@@ -763,7 +764,7 @@
         if (pts.length === 1) { map.jumpTo({ center: pts[0], zoom: 14 }); return; }
         const b = pts.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]));
         const h = el.clientHeight, w = el.clientWidth;
-        const pad = h > 420 && w > 200 ? { top: 170, bottom: mapPadBottom(), left: 40, right: 60 } : 20;
+        const pad = h > 420 && w > 200 ? { top: mapPadTop(), bottom: mapPadBottom(), left: 40, right: 60 } : 20;
         try { map.fitBounds(b, { padding: pad, duration: 0, maxZoom: 15 }); } catch { map.jumpTo({ center: b.getCenter(), zoom: 9 }); }
       },
       focus(id, pop) { const p = byId[id]; map.easeTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 15) }); if (pop) popup.setLngLat([p.lng, p.lat]).setHTML(iwHtml(id)).addTo(map); },
@@ -776,18 +777,25 @@
     };
   }
 
-  const mapPadBottom = () => ($("#mcar") && !$("#mcar").hidden ? 230 : 130);
+  // la mappa è a tutto schermo: i margini dello zoom tengono conto di intestazione, filtri, barra e schede
+  const mapPadTop = () => ($(".top")?.offsetHeight || 60) + 120;
+  const mapPadBottom = () => { const n = $("#tabs"); const navSpace = n ? innerHeight - n.getBoundingClientRect().top : 110; return navSpace + ($("#mcar") && !$("#mcar").hidden ? 190 : 24); };
   async function useEngine(kind) {
     const slot = $("#mapslot"); if (!slot) return;
     if (!engines[kind]) {
-      const el = document.createElement("div"); el.className = "mapel";
-      const e = kind === "google" ? googleEngine(el) : offlineEngine(el);
-      e.el = el; slot.appendChild(el);
-      try { await e.init(); engines[kind] = e; } catch (err) { el.remove(); throw err; }
+      engineInit[kind] ||= (async () => {
+        const el = document.createElement("div"); el.className = "mapel";
+        const e = kind === "google" ? googleEngine(el) : offlineEngine(el);
+        e.el = el; ($("#mapslot") || slot).appendChild(el);
+        try { await e.init(); engines[kind] = e; } catch (err) { el.remove(); throw err; } finally { engineInit[kind] = null; }
+      })();
+      await engineInit[kind];
+      if (!$("#mapslot")) return;   // nel frattempo si è cambiata pagina
     }
     eng = engines[kind];
-    $(".map-loading", slot)?.remove();
-    for (const e of Object.values(engines)) { if (e.el.parentNode !== slot) slot.appendChild(e.el); e.el.hidden = e !== eng; }
+    const cur = $("#mapslot");
+    $(".map-loading", cur)?.remove();
+    for (const e of Object.values(engines)) { if (e.el.parentNode !== cur) cur.appendChild(e.el); e.el.hidden = e !== eng; }
     eng.resize?.();
     $("#mmode") && ($("#mmode").innerHTML = eng.kind === "offline" ? `${icon("CloudOff")} Offline` : `${icon("Map")} Google`);
     $("#mmode")?.classList.toggle("on", eng.kind === "offline");
@@ -825,15 +833,16 @@
       await useEngine("offline");
     } catch (err) {
       console.warn("Mappa:", err);
-      mapFallback(navigator.onLine ? "Non riesco a caricare la mappa." : "Sei offline e la mappa offline non è ancora stata scaricata. Quando hai il Wi-Fi: Mappa → ⬇ → scarica le zone.");
+      mapFallback(navigator.onLine ? "Non riesco a caricare la mappa. Riprova tra poco." : "Senza rete la mappa offline non è ancora pronta su questo telefono. Appena hai il Wi-Fi apri la Mappa una volta (o scarica le zone con ⬇): da lì in poi funzionerà sempre.");
     }
   }
   addEventListener("offline", () => { if (location.hash.startsWith("#mappa") && eng?.kind === "google") pickEngine(); });
 
   function mapFallback(msg) {
-    view.classList.remove("full");
-    view.innerHTML = `<div class="card"><b>${icon("CloudOff")} Mappa non disponibile</b><p class="small">${msg}</p><p class="small muted" style="margin-bottom:0">Intanto ecco i luoghi: "Portami qui" apre l'app Google Maps.</p></div>
+    view.classList.remove("full"); document.body.classList.remove("on-map");
+    view.innerHTML = `<div class="card"><b>${icon("CloudOff")} Mappa non disponibile</b><p class="small">${msg}</p><button class="btn small primary" id="mretry">${icon("RotateCcw")} Riprova</button><p class="small muted" style="margin-bottom:0">Intanto ecco i luoghi: "Portami qui" apre l'app Google Maps.</p></div>
       ${LUOGHI.filter(p => !p.out && (mapFilter.d ? plan[mapFilter.d]?.i?.includes(p.id) : (mapFilter.z === "all" || p.z === mapFilter.z))).map(p => placeRow(p)).join("")}`;
+    $("#mretry").onclick = () => renderMappa();
   }
 
   function applyMapFilter(fit) {
@@ -1059,7 +1068,7 @@
     return `<div class="card pcard" data-pren="${p.id}">
       <div class="row"><span class="pic" style="background:${col}">${icon(ic)}</span>
         <div class="grow"><b>${esc(p.titolo || tn)}</b><div class="muted small">${when}</div>${route}${p.indirizzo ? `<div class="small muted">${esc(p.indirizzo)}</div>` : ""}</div></div>
-      ${p.codice ? `<div class="small" style="margin-top:8px">${icon("KeyRound")} Codice: <b style="user-select:all">${esc(p.codice)}</b></div>` : ""}
+      ${p.codice ? `<div class="small" style="margin-top:8px">${icon("KeyRound")} Codice: <b class="copiabile">${esc(p.codice)}</b></div>` : ""}
       ${p.note ? `<div class="small muted" style="margin-top:4px">${esc(p.note)}</div>` : ""}
       <div class="btns" style="margin-top:10px">
         ${p.tipo === "hotel" ? `<a class="btn small primary" href="${gmTo(addrQ(p))}" target="_blank" rel="noopener">${icon("Navigation")} Portami</a><button class="btn small" data-taxi="${p.id}">${icon("CarTaxiFront")} Al tassista</button>` : ""}
@@ -1382,6 +1391,8 @@
   function render() {
     const [tab, sub] = (location.hash.slice(1) || "oggi").split("/");
     view.classList.remove("full");
+    document.body.classList.toggle("on-map", tab === "mappa");
+    document.documentElement.style.setProperty("--head", ($(".top")?.offsetHeight || 60) + "px");
     tabLinks().forEach(a => a.classList.toggle("on", a.dataset.tab === tab));
     syncInd(!L.raf && L.x === 0);
     ({ oggi: renderOggi, giorni: () => renderGiorni(sub), luoghi: renderLuoghi, mappa: renderMappa, utility: () => renderUtility(sub) }[tab] || renderOggi)();
@@ -1404,7 +1415,9 @@
     if (st?.d && Date.now() - new Date(st.d) < 12 * 3600e3) return;
     fetch("https://api.frankfurter.dev/v1/latest?base=EUR&symbols=JPY").then(r => r.json()).then(j => { if (j?.rates?.JPY) LS.set("rate", { r: j.rates.JPY, d: j.date }); }).catch(() => {});
   })();
+  document.addEventListener("contextmenu", e => { if (!e.target.closest("input, textarea, select, .copiabile")) e.preventDefault(); });
   if (!maybeImport()) render();
+  setTimeout(() => { if (navigator.onLine) OfflineMap.warmup?.().catch(() => {}); }, 5000);
   if (!me || (!code && window.FIREBASE && !LS.get("skipCode", false))) setTimeout(() => askWho(), 600);
 
   // aggiornamenti: quando arriva una nuova versione compare un avviso con "Aggiorna"
