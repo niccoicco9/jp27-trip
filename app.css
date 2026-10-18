@@ -102,7 +102,6 @@ main.enter { animation: fade .18s ease-out; }
 }
 .tabs {
   touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
-  transition: scale .35s var(--spring);
 }
 .tabs a {
   position: relative; z-index: 1;
@@ -110,30 +109,44 @@ main.enter { animation: fade .18s ease-out; }
   text-decoration: none; color: var(--muted); font-size: .68rem; font-weight: 600; transition: color .2s;
   -webkit-touch-callout: none;
 }
-.tabs a svg { width: 22px; height: 22px; transition: transform .3s var(--spring); }
+.tabs a svg { width: 22px; height: 22px; transition: transform .3s var(--ease); }
 .tabs a.on { color: var(--shu); }
 .tabs a.on svg { transform: translateY(-1px) scale(1.06); }
 
-/* pillola che scorre tra le voci; tenendo premuto diventa una "lente" trascinabile */
-:root { --spring: cubic-bezier(.34, 1.56, .64, 1); }
+/* Lente "liquid glass": pilotata da una simulazione a molle in app.js */
 .tab-ind {
-  position: absolute; z-index: 0; top: 6px; bottom: 6px; left: 0; width: 0; border-radius: 18px; pointer-events: none;
-  background: var(--shu-soft); border: 1px solid transparent;
-  translate: var(--x, 6px) 0; scale: 1;
-  transition: translate .45s var(--spring), scale .35s var(--spring), width .3s var(--ease), background .25s, box-shadow .25s, border-color .25s;
+  position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; border-radius: 999px;
+  will-change: transform, width, height; transform-origin: 50% 50%;
 }
-.tab-ind.instant { transition: none; }
-.tabs.drag { scale: 1.03; }
-.tabs.drag .tab-ind {
-  scale: 1.16; transition: translate .09s linear, scale .35s var(--spring), width .3s var(--ease), background .25s, box-shadow .25s;
-  background: color-mix(in srgb, var(--card) 55%, transparent);
-  border-color: rgba(255, 255, 255, .45);
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, .6), inset 0 -1px 2px rgba(0, 0, 0, .08), 0 8px 24px rgba(0, 0, 0, .22);
+.tab-ind > i { position: absolute; inset: 0; border-radius: inherit; }
+.tab-ind .tint { background: var(--shu-soft); }
+.tab-ind .glass {
+  opacity: 0; overflow: hidden;
+  background: color-mix(in srgb, var(--card) 80%, transparent);
+  -webkit-backdrop-filter: blur(6px) saturate(1.8); backdrop-filter: blur(6px) saturate(1.8);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, .85),
+    inset 0 -1px 1px rgba(255, 255, 255, .3),
+    inset 4px 0 8px rgba(255, 80, 120, .14),
+    inset -4px 0 8px rgba(70, 170, 255, .16),
+    inset 0 0 12px rgba(255, 255, 255, .18),
+    0 0 0 1px rgba(255, 255, 255, .28),
+    0 12px 32px rgba(0, 0, 0, .28);
 }
-.tabs.drag a.on:not(.hover) { color: var(--muted); }
-.tabs.drag a.on:not(.hover) svg { transform: none; }
-.tabs.drag a.hover { color: var(--shu); }
-.tabs.drag a.hover svg { transform: translateY(-2px) scale(1.22); }
+.tab-ind .shine {
+  opacity: 0; pointer-events: none;
+  background: radial-gradient(120% 70% at 30% 0%, rgba(255, 255, 255, .55), transparent 55%),
+              radial-gradient(80% 60% at 80% 110%, rgba(255, 255, 255, .22), transparent 60%);
+  mix-blend-mode: soft-light;
+}
+.lens-row { position: absolute; left: 0; display: flex; gap: 2px; will-change: transform; }
+.lens-row span {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  font-size: .68rem; font-weight: 600; color: var(--ink-2); transition: color .15s;
+}
+.lens-row span svg { width: 22px; height: 22px; }
+.lens-row span.hit { color: var(--shu); }
+.haptic { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; overflow: hidden; }
 
 /* ——— Cards & bits ——— */
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; box-shadow: var(--shadow-s); margin-bottom: 14px; }

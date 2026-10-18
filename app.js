@@ -762,49 +762,101 @@
   // ——— router ———
   const TABS = [["oggi", "Sun", "Oggi"], ["giorni", "CalendarDays", "Giorni"], ["luoghi", "MapPin", "Luoghi"], ["mappa", "Map", "Mappa"], ["utility", "LayoutGrid", "Utility"]];
   const nav = $("#tabs");
-  nav.innerHTML = `<span class="tab-ind instant" aria-hidden="true"></span>` + TABS.map(([k, ic, t]) => `<a href="#${k}" data-tab="${k}">${icon(ic)}${t}</a>`).join("");
-  const ind = $(".tab-ind", nav);
+  nav.innerHTML = `<span class="tab-ind" aria-hidden="true"><i class="tint"></i><i class="glass"><span class="lens-row">${TABS.map(([k, ic, t]) => `<span data-tab="${k}">${icon(ic)}${t}</span>`).join("")}</span></i><i class="shine"></i></span>`
+    + TABS.map(([k, ic, t]) => `<a href="#${k}" data-tab="${k}">${icon(ic)}${t}</a>`).join("")
+    + `<label class="haptic" aria-hidden="true"><input type="checkbox" switch tabindex="-1"></label>`;
+  const ind = $(".tab-ind", nav), tint = $(".tint", ind), glass = $(".glass", ind), shine = $(".shine", ind), row = $(".lens-row", ind);
+  const rowItems = $$(".lens-row span", ind), haptic = $(".haptic", nav);
   const tabLinks = () => $$("a", nav);
-  function placeInd(x, w) { ind.style.setProperty("--x", x + "px"); ind.style.width = w + "px"; }
-  function syncInd() { const on = $("a.on", nav); if (on) placeInd(on.offsetLeft, on.offsetWidth); }
-  addEventListener("resize", () => { ind.classList.add("instant"); syncInd(); requestAnimationFrame(() => ind.classList.remove("instant")); });
 
-  // Barra in basso come su iOS: tocca per cambiare pagina, oppure tieni premuto
-  // (la pillola diventa una lente) e trascina sulla voce che vuoi, poi lascia.
-  (() => {
-    let pid = null, x0 = 0, dragging = false, timer = 0, hoverA = null;
-    const tabAt = x => tabLinks().reduce((best, a) => Math.abs(a.offsetLeft + a.offsetWidth / 2 - x) < Math.abs(best.offsetLeft + best.offsetWidth / 2 - x) ? a : best);
-    const localX = e => e.clientX - nav.getBoundingClientRect().left;
-    function follow(e) {
-      const w = $("a", nav).offsetWidth, x = Math.max(6, Math.min(nav.clientWidth - w - 6, localX(e) - w / 2));
-      placeInd(x, w);
-      const a = tabAt(x + w / 2);
-      if (a !== hoverA) { hoverA?.classList.remove("hover"); a.classList.add("hover"); hoverA = a; }
+  // ——— Lente "liquid glass" della barra in basso ———
+  // Stato fisico: posizione x (molla sottosmorzata = rimbalzo), "pressione" p 0→1 (crescita della lente).
+  const L = { x: 0, vx: 0, tx: 0, p: 0, vp: 0, tp: 0, raf: 0, last: 0, hit: null };
+  const POS = { k: 420, c: 26 }, PRESS = { k: 340, c: 17 };
+  function syncInd(instant) {
+    const on = $("a.on", nav); if (!on) return;
+    L.tx = on.offsetLeft; if (instant) { L.x = L.tx; L.vx = 0; }
+    kick();
+  }
+  function kick() { if (!L.raf) { L.last = performance.now(); L.raf = requestAnimationFrame(frame); } }
+  function frame(now) {
+    let dt = Math.min(0.05, (now - L.last) / 1000); L.last = now;
+    while (dt > 0) {   // passi piccoli = molla stabile
+      const h = Math.min(dt, 1 / 240); dt -= h;
+      L.vx += (POS.k * (L.tx - L.x) - POS.c * L.vx) * h; L.x += L.vx * h;
+      L.vp += (PRESS.k * (L.tp - L.p) - PRESS.c * L.vp) * h; L.p += L.vp * h;
     }
-    function startDrag(e) { if (dragging) return; dragging = true; clearTimeout(timer); nav.classList.add("drag"); follow(e); }
-    function end(go) {
-      clearTimeout(timer);
-      const target = hoverA;
-      nav.classList.remove("drag"); hoverA?.classList.remove("hover"); hoverA = null; dragging = false; pid = null;
-      if (go && target) location.hash = "#" + target.dataset.tab;
-      requestAnimationFrame(syncInd);
+    draw();
+    const settled = Math.abs(L.tx - L.x) < .2 && Math.abs(L.vx) < 2 && Math.abs(L.tp - L.p) < .002 && Math.abs(L.vp) < .02;
+    if (settled && !drag.on) { L.x = L.tx; L.p = L.tp; draw(); L.raf = 0; return; }
+    L.raf = requestAnimationFrame(frame);
+  }
+  function draw() {
+    const a0 = tabLinks()[0]; if (!a0) return;
+    const tabW = a0.offsetWidth, rowH = nav.clientHeight - 12, p = Math.max(0, L.p);
+    const w = tabW + 22 * p, h = rowH + 20 * p;
+    const left = L.x - (w - tabW) / 2, top = 6 - 10 * p;
+    // deformazione "gelatina": si allunga nella direzione del moto e si schiaccia in altezza
+    const st = Math.min(Math.abs(L.vx) / 2600, .24) * (.35 + .65 * Math.min(1, p + .3));
+    const pressSquish = (L.p - L.tp) * -.06;   // piccola oscillazione mentre cresce/si sgonfia
+    ind.style.width = w + "px"; ind.style.height = h + "px";
+    ind.style.transform = `translate(${left}px, ${top}px) scale(${1 + st + pressSquish}, ${1 - st * .55 - pressSquish})`;
+    const g = Math.min(1, p * 1.4);
+    tint.style.opacity = 1 - g; glass.style.opacity = g; shine.style.opacity = g;
+    // ingrandimento: copia delle voci dentro la lente, scalata attorno al centro della lente
+    const M = 1 + .22 * p, cx = L.x + tabW / 2;
+    row.style.width = nav.clientWidth - 12 + "px"; row.style.height = rowH + "px"; row.style.top = 6 - top + "px";
+    row.style.transformOrigin = `${cx - 6}px 50%`;
+    row.style.transform = `translateX(${6 - left}px) scale(${M})`;
+    nav.style.scale = 1 + .03 * p;
+    const hit = tabLinks().reduce((b, a) => Math.abs(a.offsetLeft + tabW / 2 - cx) < Math.abs(b.offsetLeft + tabW / 2 - cx) ? a : b);
+    if (hit !== L.hit) {
+      L.hit = hit;
+      rowItems.forEach(s => s.classList.toggle("hit", s.dataset.tab === hit.dataset.tab));
+      if (drag.on) buzz();
+    }
+  }
+  // feedback aptico: su iOS 18+ il toggle di un <input switch> fa vibrare il telefono
+  function buzz() { try { haptic.click(); } catch {} navigator.vibrate?.(8); }
+
+  const drag = { on: false, pid: null, x0: 0, timer: 0, tapA: null };
+  addEventListener("resize", () => syncInd(true));
+  (() => {
+    const tabW = () => tabLinks()[0].offsetWidth;
+    const localX = e => e.clientX - nav.getBoundingClientRect().left;
+    const clampX = x => Math.max(6, Math.min(nav.clientWidth - tabW() - 6, x));
+    const nearest = cx => tabLinks().reduce((b, a) => Math.abs(a.offsetLeft + tabW() / 2 - cx) < Math.abs(b.offsetLeft + tabW() / 2 - cx) ? a : b);
+    function begin(e) {
+      if (drag.on) return; drag.on = true; clearTimeout(drag.timer);
+      L.tp = 1; L.tx = clampX(localX(e) - tabW() / 2); kick();
+    }
+    function finish(go) {
+      clearTimeout(drag.timer);
+      const wasDrag = drag.on, a = wasDrag ? nearest(L.tx + tabW() / 2) : drag.tapA;
+      drag.on = false; drag.pid = null;
+      if (!go || !a) { L.tp = 0; syncInd(); return; }
+      L.tx = a.offsetLeft;
+      if (wasDrag) L.tp = 0;
+      else { L.tp = .55; setTimeout(() => { L.tp = 0; kick(); }, 140); }   // tocco: piccolo "respiro" della goccia
+      kick();
+      // cambia pagina al frame successivo, così l'animazione parte senza scatti
+      requestAnimationFrame(() => setTimeout(() => { location.hash = "#" + a.dataset.tab; }, 0));
     }
     nav.addEventListener("pointerdown", e => {
-      if (pid !== null || (e.pointerType === "mouse" && e.button !== 0)) return;
-      pid = e.pointerId; x0 = e.clientX;
-      try { nav.setPointerCapture(pid); } catch {}
-      hoverA = e.target.closest("a"); hoverA?.classList.add("hover");
-      timer = setTimeout(() => startDrag(e), 220);   // tieni premuto → lente
+      if (drag.pid !== null || (e.pointerType === "mouse" && e.button !== 0)) return;
+      drag.pid = e.pointerId; drag.x0 = e.clientX; drag.tapA = e.target.closest("a");
+      try { nav.setPointerCapture(drag.pid); } catch {}
+      const ev = { clientX: e.clientX };
+      drag.timer = setTimeout(() => begin(ev), 170);   // tieni premuto → la goccia diventa lente
     });
     nav.addEventListener("pointermove", e => {
-      if (e.pointerId !== pid) return;
-      if (!dragging && Math.abs(e.clientX - x0) > 8) startDrag(e);
-      if (dragging) follow(e);
+      if (e.pointerId !== drag.pid) return;
+      if (!drag.on && Math.abs(e.clientX - drag.x0) > 6) begin(e);
+      if (drag.on) { L.tx = clampX(localX(e) - tabW() / 2); kick(); }
     });
-    nav.addEventListener("pointerup", e => { if (e.pointerId === pid) end(true); });
-    nav.addEventListener("pointercancel", e => { if (e.pointerId === pid) end(false); });
-    // la navigazione la gestiamo noi su pointerup; resta il click da tastiera (detail 0)
-    nav.addEventListener("click", e => { if (e.detail !== 0) e.preventDefault(); });
+    nav.addEventListener("pointerup", e => { if (e.pointerId === drag.pid) finish(true); });
+    nav.addEventListener("pointercancel", e => { if (e.pointerId === drag.pid) finish(false); });
+    nav.addEventListener("click", e => { if (e.detail !== 0 && !e.target.closest(".haptic")) e.preventDefault(); });
     nav.addEventListener("contextmenu", e => e.preventDefault());
   })();
 
@@ -812,7 +864,7 @@
     const [tab, sub] = (location.hash.slice(1) || "oggi").split("/");
     view.classList.remove("full");
     tabLinks().forEach(a => a.classList.toggle("on", a.dataset.tab === tab));
-    syncInd(); requestAnimationFrame(() => ind.classList.remove("instant"));
+    syncInd(!L.raf && L.x === 0);
     ({ oggi: renderOggi, giorni: () => renderGiorni(sub), luoghi: renderLuoghi, mappa: renderMappa, utility: () => renderUtility(sub) }[tab] || renderOggi)();
   }
   function rerender() { const [tab] = (location.hash.slice(1) || "oggi").split("/"); if (tab !== "mappa") keepScroll(render); }
