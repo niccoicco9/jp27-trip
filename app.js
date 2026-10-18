@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 28;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 29;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -292,18 +292,32 @@
   }
   const sheet = $("#sheet"), sheetCard = $(".sheet-card");
   let sheetOnClose = null;
+  // ogni scheda aperta aggiunge un passo alla cronologia: "indietro" (tasto Android o swipe) la chiude
+  const layers = []; let skipPop = 0;
+  function pushLayer(close) { history.pushState({ layer: layers.length + 1 }, "", location.href); layers.push(close); }
+  function dropLayer(close) {   // chiusa dall'app (X, trascinamento…): toglie anche il passo dalla cronologia
+    const k = layers.lastIndexOf(close); if (k < 0) return;
+    layers.splice(k, 1); skipPop++; history.back();
+  }
+  addEventListener("popstate", () => {
+    if (skipPop) { skipPop--; return; }
+    const close = layers.pop(); if (close) close(true);
+  });
   let sheetT = null;
   const sheetOpen = () => !sheet.hidden && !sheet.classList.contains("closing");
   function openSheet(html, onMount, onClose) {
     clearTimeout(sheetT); sheet.classList.remove("closing"); sheetCard.style.transition = "";
+    if (!layers.includes(sheetLayer)) pushLayer(sheetLayer);
     $("#sheet-body").innerHTML = html; sheet.hidden = false; document.body.style.overflow = "hidden";
     sheetCard.scrollTop = 0; sheetCard.style.transform = "";
     lazyScan();
     sheetOnClose = onClose || null;
     onMount?.($("#sheet-body"));
   }
-  function closeSheet(instant) {
+  function sheetLayer(fromHistory) { closeSheet(false, fromHistory); }
+  function closeSheet(instant, fromHistory) {
     if (!sheetOpen()) return;
+    if (!fromHistory) dropLayer(sheetLayer);
     document.body.style.overflow = "";
     if (instant || reduceMotion()) { sheet.hidden = true; sheetCard.style.transform = ""; }
     else {
@@ -361,7 +375,9 @@
       d.innerHTML = `<div class="dlg-bg"></div><div class="dlg-card" role="alertdialog" aria-modal="true">
         <span class="dlg-ic${danger ? " danger" : ""}">${icon(ic)}</span><b>${esc(title)}</b>${text ? `<p>${esc(text)}</p>` : ""}
         <div class="dlg-btns"><button class="btn" data-a="0">Annulla</button><button class="btn ${danger ? "danger" : "primary"}" data-a="1">${esc(ok)}</button></div></div>`;
-      const close = v => { d.classList.add("out"); setTimeout(() => d.remove(), 180); document.removeEventListener("keydown", key); res(v); };
+      const layer = () => close(false, true);
+      pushLayer(layer);
+      const close = (v, fromHistory) => { if (d.classList.contains("out")) return; if (!fromHistory) dropLayer(layer); d.classList.add("out"); setTimeout(() => d.remove(), 180); document.removeEventListener("keydown", key); res(v); };
       const key = e => { if (e.key === "Escape") close(false); };
       d.addEventListener("click", e => { const b = e.target.closest("[data-a]"); if (b) close(b.dataset.a === "1"); else if (e.target.classList.contains("dlg-bg")) close(false); });
       document.addEventListener("keydown", key);
@@ -369,8 +385,10 @@
     });
   }
 
-  function hideBig() {
+  function bigLayer() { hideBig(true); }
+  function hideBig(fromHistory) {
     const b = $("#big"); if (b.hidden || b.classList.contains("out")) return;
+    if (fromHistory !== true) dropLayer(bigLayer);
     if (reduceMotion()) { b.hidden = true; return; }
     b.classList.add("out"); setTimeout(() => { b.hidden = true; b.classList.remove("out"); }, 180);
   }
@@ -379,6 +397,7 @@
     b.innerHTML = `<div class="jp">${esc(jp)}</div>${sub ? `<div class="sub">${sub}</div>` : ""}<div class="btns" style="width:100%;max-width:360px"><button class="btn" data-say>${icon("Volume2")} Ascolta</button><button class="btn primary">Chiudi</button></div>`;
     b.hidden = false;
     b.classList.remove("out");
+    if (!layers.includes(bigLayer)) pushLayer(bigLayer);
     b.onclick = e => { if (e.target.closest("[data-say]")) return speak(jp); hideBig(); };
     if (speakIt) speak(jp);
   }
@@ -1461,8 +1480,8 @@
       ${t === "volo" || t === "treno" ? `<div class="grid2">${f("p-da", "Da", p.da, "", t === "volo" ? "es. Roma FCO" : "es. Tokyo")}${f("p-a", "A", p.a, "", t === "volo" ? "es. Tokyo HND" : "es. Kyoto")}</div>` : ""}
       ${t === "hotel" ? f("p-ind", "Indirizzo", p.indirizzo, "", "es. 1-19-1 Kabukicho, Shinjuku") + f("p-jp", "Indirizzo in giapponese (per il taxi)", p.jp, "", "Dalla conferma o da Google Maps") : ""}
       ${t === "biglietto" ? `<label class="fl"><span>Luogo collegato</span><select id="p-luogo"><option value="">Nessuno</option>${LUOGHI.filter(x => !x.out).map(x => `<option value="${x.id}" ${x.id === p.luogo ? "selected" : ""}>${esc(x.n)}</option>`).join("")}</select></label>` : ""}
-      ${f("p-cod", "Codice di prenotazione", p.codice, 'autocomplete="off"', "es. ABC12345")}
-      ${f("p-link", "Link (conferma, biglietto, app)", p.link, 'type="url" inputmode="url"', "https://…")}
+      ${f("p-cod", "Codice di prenotazione", p.codice, 'autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false"', "es. ABC12345")}
+      ${f("p-link", "Link (conferma, biglietto, app)", p.link, 'type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false"', "https://…")}
       <label class="fl"><span>Note</span><textarea id="p-note" rows="2" placeholder="${t === "hotel" ? "Colazione inclusa, deposito bagagli…" : "Cosa portare, dove ci si trova…"}">${esc(p.note || "")}</textarea></label>
       <div class="btns">${isNew ? `<button class="btn" data-close>Annulla</button>` : `<button class="btn" id="p-del" style="color:var(--shu)">${icon("Trash2")} Elimina</button>`}<button class="btn primary" id="p-save">Salva</button></div>
     `, el => {
@@ -1892,6 +1911,58 @@
   const onMap = e => !!e.target?.closest?.(".mapwrap, .mapel");
   for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, e => { if (!onMap(e)) e.preventDefault(); }, { passive: false });
   document.addEventListener("touchmove", e => { if (e.touches.length > 1 && !onMap(e)) e.preventDefault(); }, { passive: false });
+  const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
+  let navDepth = 0; addEventListener("hashchange", () => navDepth++);
+  const backTarget = () => { const [tab, sub] = (location.hash.slice(1) || "oggi").split("/"); return tab === "utility" && sub ? "#utility" : navDepth > 0 ? "back" : null; };
+  if (standalone) (() => {
+    let x0 = null, y0 = 0, dx = 0, on = null, t0 = 0;
+    document.addEventListener("touchstart", e => {
+      const t = e.touches[0];
+      if (e.touches.length > 1 || t.clientX > 22 || onMap(e) || sheetOpen() || !$("#big").hidden || !backTarget()) { x0 = null; return; }
+      x0 = t.clientX; y0 = t.clientY; dx = 0; on = null; t0 = performance.now();
+    }, { passive: true });
+    document.addEventListener("touchmove", e => {
+      if (x0 == null) return;
+      const t = e.touches[0], mx = t.clientX - x0, my = t.clientY - y0;
+      if (on === null && (Math.abs(mx) > 8 || Math.abs(my) > 8)) on = mx > Math.abs(my);
+      if (!on) { if (on === false) x0 = null; return; }
+      e.preventDefault();
+      dx = Math.max(0, mx); view.style.transition = "none"; view.style.transform = `translateX(${dx}px)`; view.style.opacity = String(1 - Math.min(.4, dx / innerWidth * .6));
+    }, { passive: false });
+    document.addEventListener("touchend", () => {
+      if (x0 == null || !on) { x0 = null; return; }
+      x0 = null;
+      const fast = dx > 40 && dx / (performance.now() - t0) > .5;
+      view.style.transition = "transform .22s cubic-bezier(.32, .72, 0, 1), opacity .22s";
+      if (dx > innerWidth * .33 || fast) {
+        buzz(); view.style.transform = `translateX(${innerWidth}px)`; view.style.opacity = "0";
+        setTimeout(() => { view.style.transition = view.style.transform = view.style.opacity = ""; const b = backTarget(); if (b === "back") history.back(); else if (b) location.hash = b; }, 200);
+      } else { view.style.transform = ""; view.style.opacity = ""; setTimeout(() => (view.style.transition = ""), 240); }
+    });
+  })();
+
+  // tastiera aperta: la barra in basso si nasconde (su Android salirebbe sopra la tastiera)
+  const isTyping = el => el && (el.tagName === "TEXTAREA" || el.tagName === "SELECT" || (el.tagName === "INPUT" && !/checkbox|radio|button|submit|range/.test(el.type)));
+  document.addEventListener("focusin", e => { if (isTyping(e.target)) document.body.classList.add("kb"); });
+  document.addEventListener("focusout", () => setTimeout(() => { if (!isTyping(document.activeElement)) document.body.classList.remove("kb"); }, 80));
+
+  // tastiera giusta per ogni campo: "Cerca" nelle ricerche, maiuscola iniziale nei testi, "Fine" negli importi
+  new MutationObserver(() => $$("input:not([data-kb]), textarea:not([data-kb])").forEach(i => {
+    i.dataset.kb = 1;
+    if (i.type === "search") i.enterKeyHint = "search";
+    else if (i.inputMode === "decimal" || i.type === "number") i.enterKeyHint = "done";
+    else if ((i.type === "text" || i.tagName === "TEXTAREA") && !i.hasAttribute("autocapitalize")) i.setAttribute("autocapitalize", "sentences");
+  })).observe(document.body, { childList: true, subtree: true });
+
+  // riaperta dopo un po' (o il giorno dopo): si aggiorna da sola, come un'app
+  let shownDay = todayJP(), hiddenAt = 0;
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") { hiddenAt = Date.now(); return; }
+    const newDay = todayJP() !== shownDay, long = hiddenAt && Date.now() - hiddenAt > 20 * 60e3;
+    shownDay = todayJP();
+    if ((newDay || long) && !sheetOpen()) { const [tab] = (location.hash.slice(1) || "oggi").split("/"); if (tab === "oggi" || tab === "giorni") rerender(); }
+  });
+
   // su iPhone :active (l'effetto pressione) funziona solo con un ascoltatore touchstart
   document.addEventListener("touchstart", () => {}, { passive: true });
   // vibrazione leggera quando si spunta qualcosa
@@ -1910,7 +1981,8 @@
   }
   function restoreScroll(y) { scrollTo(0, y); if (y && Math.abs(scrollY - y) > 2) [80, 250].forEach(ms => setTimeout(() => { if (scrollY < y) scrollTo(0, y); }, ms)); }
   function navigate() {
-    closeSheet(true); hideBig();
+    layers.length = 0;   // la pagina cambia: i passi delle schede restano indietro, senza effetti
+    closeSheet(true, true); hideBig(true);
     if (maybeImport()) return;
     const to = location.hash || "#oggi", kind = navKind(lastHash, to);
     if (!lastHash.startsWith("#mappa")) scrollMem[lastHash] = scrollY;

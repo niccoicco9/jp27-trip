@@ -727,3 +727,14 @@ html, body { touch-action: pan-x pan-y; }
 .perperson summary::-webkit-details-marker { display: none; }
 .perperson summary::after { content: " ›"; }
 .perperson[open] summary::after { content: " ⌄"; }
+
+/* ——— v29: comportamenti da app ——— */
+/* niente "rimbalzo" di tutta la pagina (la testata resta ferma); le schede e le liste interne scorrono normalmente */
+html, body { overscroll-behavior-y: none; }
+/* il testo non cambia grandezza girando il telefono */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+/* tastiera aperta: la barra in basso si toglie di mezzo */
+.tabs { transition: transform .25s var(--ease), opacity .2s; }
+body.kb .tabs { transform: translateY(160%); opacity: 0; pointer-events: none; }
+/* pagina trascinata dal bordo per tornare indietro */
+main#view { will-change: auto; }

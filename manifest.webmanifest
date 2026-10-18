@@ -5,6 +5,7 @@
   "start_url": "./#oggi",
   "scope": "./",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#26285e",
   "theme_color": "#26285e",
   "lang": "it",
