@@ -639,8 +639,8 @@
         const { Map, InfoWindow } = await google.maps.importLibrary("maps");
         const { Marker } = await google.maps.importLibrary("marker");
         map = new Map(el, {
-          center: { lat: 35.3, lng: 137.5 }, zoom: 6, disableDefaultUI: true, zoomControl: true, gestureHandling: "greedy",
-          clickableIcons: false, styles: isDark() ? MAP_DARK : MAP_LIGHT, zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_CENTER },
+          center: { lat: 35.3, lng: 137.5 }, zoom: 6, disableDefaultUI: true, gestureHandling: "greedy",   // zoom con due dita
+          clickableIcons: false, styles: isDark() ? MAP_DARK : MAP_LIGHT, keyboardShortcuts: false,
         });
         iw = new InfoWindow({ headerDisabled: true });
         map.addListener("click", () => iw.close());
