@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Giappone 2027</title>
+  <meta name="description" content="Il nostro viaggio in Giappone: programma, mappa e utility.">
+  <meta name="theme-color" content="#f5f1ea">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Giappone">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Shippori+Mincho:wght@800&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="app.css">
+  <script>try { const t = JSON.parse(localStorage.getItem("jp27:theme") || '""'); if (t) document.documentElement.dataset.theme = t; } catch {}</script>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="#oggi"><span class="hanko">旅</span><div><h1>Giappone 2027 <span id="syncdot" class="sync-dot" hidden></span></h1><p id="sub">20 feb – 7 mar</p></div></a>
+    <div class="clocks" id="clocks"></div>
+    <button class="round" id="theme" aria-label="Cambia tema"></button>
+  </header>
+
+  <main id="view"></main>
+
+  <nav class="tabs" id="tabs"></nav>
+
+  <div id="sheet" class="sheet" hidden>
+    <div class="sheet-bg" data-close></div>
+    <div class="sheet-card" role="dialog" aria-modal="true">
+      <div class="grab" aria-hidden="true"></div>
+      <button class="sheet-x" data-close aria-label="Chiudi"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      <div id="sheet-body" class="sheet-body"></div>
+    </div>
+  </div>
+  <div id="big" class="big" hidden></div>
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <script src="data.js"></script>
+  <script src="photos.js"></script>
+  <script src="content.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
