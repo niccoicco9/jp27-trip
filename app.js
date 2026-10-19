@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 35;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 36;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -1923,11 +1923,11 @@
       if (drag.on) return; drag.on = true; clearTimeout(drag.timer);
       L.tp = 1; L.tx = clampX(localX(e) - tabW() / 2); kick();
     }
-    function finish(go) {
+    function finish(ok) {
       clearTimeout(drag.timer);
       const wasDrag = drag.on, a = wasDrag ? nearest(L.tx + tabW() / 2) : drag.tapA;
       drag.on = false; drag.pid = null;
-      if (!go || !a) { L.tp = 0; syncInd(); return; }
+      if (!ok || !a) { L.tp = 0; syncInd(); return; }
       L.tx = a.offsetLeft;
       if (wasDrag) L.tp = 0;
       else { L.tp = .55; setTimeout(() => { L.tp = 0; kick(); }, 140); }   // tocco: piccolo "respiro" della goccia
