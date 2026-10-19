@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 70;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 71;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -964,6 +964,18 @@
     } catch (e) { if (e?.name !== "AbortError") prompt("Copia questo link:", url); }
   }
   function maybeImport() {
+    // link con una prenotazione già compilata (#pren=…): apre il modulo pronto, si controlla e si salva
+    const q = location.hash.match(/^#pren=(.+)$/);
+    if (q) {
+      let d = null; try { d = JSON.parse(b64d(q[1])); } catch {}
+      land("#utility/prenotazioni");
+      if (!d || !PTYPE[d.tipo]) { toast("Link non valido"); return true; }
+      if (!code) { askWho(true); return true; }
+      const p = {}; for (const k of ["tipo", "titolo", "dal", "al", "ora", "da", "a", "codice", "link", "note", "indirizzo", "jp"]) if (typeof d[k] === "string") p[k] = d[k].slice(0, 400);
+      const dup = lists.prenotazioni.find(x => x.tipo === p.tipo && x.dal === p.dal && (x.ora || "") === (p.ora || ""));
+      setTimeout(() => { if (dup) toast("Questa prenotazione c'è già"); editPren(dup || p); }, 350);
+      return true;
+    }
     const m = location.hash.match(/^#import=(.+)$/); if (!m) return false;
     let data; try { data = JSON.parse(b64d(m[1])); } catch { toast("Link non valido"); location.replace("#giorni"); return true; }
     const n = Object.values(data.p || {}).reduce((s, d) => s + (d.i?.length || 0), 0), g = Object.keys(data.p || {}).length, nb = data.b?.length || 0;
