@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 56;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 57;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -190,12 +190,24 @@
   // luoghi aggiunti da voi (condivisi): si uniscono a quelli di Wanderlog
   const BASE_N = LUOGHI.length;
   const BASE_OUT = new Set(LUOGHI.filter(p => p.out).map(p => p.id));   // scartati già in Wanderlog
+  // luoghi di Wanderlog modificati da voi: si salvano solo le differenze, l'originale resta per poterlo ripristinare
+  const EDIT_F = ["n", "jp", "d", "dur", "eur", "pren"];
+  const BASE_ORIG = new Map(LUOGHI.slice(0, BASE_N).map(p => [p.id, Object.fromEntries(EDIT_F.map(f => [f, p[f]]))]));
   function mergeCustom() {
     for (const k of customFoto) delete FOTO[k]; customFoto.clear();
     LUOGHI.length = BASE_N;
     for (const k of Object.keys(byId)) if (byId[k].mine) delete byId[k];
-    for (let i = 0; i < BASE_N; i++) { const b = LUOGHI[i]; b.out = BASE_OUT.has(b.id); delete b.gone; }
+    for (let i = 0; i < BASE_N; i++) { const b = LUOGHI[i]; b.out = BASE_OUT.has(b.id); delete b.gone; delete b.edBy; Object.assign(b, BASE_ORIG.get(b.id)); }
     for (const x of lists.luoghi) {
+      if (x.edit) {   // testi cambiati da voi su un luogo di Wanderlog
+        const b = byId[x.edit]; if (!b || b.mine) continue;
+        if (str(x.n).trim()) b.n = str(x.n).slice(0, 80);
+        for (const f of ["jp", "d", "dur"]) if (typeof x[f] === "string") b[f] = x[f].slice(0, f === "d" ? 1000 : 80);
+        if ("eur" in x) b.eur = +x.eur > 0 ? +x.eur : undefined;
+        if (typeof x.pren === "boolean") b.pren = x.pren;
+        b.edBy = str(x.by) || "voi";
+        continue;
+      }
       // luogo di Wanderlog eliminato da voi: resta solo tra gli scartati (si può ripristinare), per tutti e quattro
       if (x.hide) { const b = byId[x.hide]; if (b && !b.mine) { b.out = true; b.gone = true; } continue; }
       if (!x.n || !isFinite(x.lat) || !isFinite(x.lng)) continue;
@@ -542,6 +554,7 @@
       ${p.jp ? `<p class="jpname jp">${esc(p.jp)}</p>` : ""}
       ${p.d ? `<p style="margin:0">${esc(p.d)}</p>` : ""}
       ${p.mine ? `<p class="small muted" style="margin:6px 0 0">${icon("UserRound")} Aggiunto da ${esc(p.chi || "voi")}, non è nella lista Wanderlog</p>` : ""}
+      ${p.edBy ? `<p class="small muted" style="margin:6px 0 0">${icon("Pencil")} Modificato da ${esc(p.edBy)}</p>` : ""}
       ${p.note ? `<div class="note">${icon("Pencil")}<span>${esc(p.note)}</span></div>` : ""}
       <div class="btns">
         <a class="btn primary" href="${gmDir(p)}" target="_blank" rel="noopener">${icon("Navigation")} Portami qui</a>
@@ -550,7 +563,7 @@
       <div class="btns" style="margin-top:8px">
         ${p.jp ? `<button class="btn" id="showjp">${icon("Languages")} In giapponese</button>` : ""}
         <button class="btn" id="onmap">${icon("Map")} Sulla mappa</button>
-        ${p.mine ? `<button class="btn" id="editl">${icon("Pencil")} Modifica</button>` : ""}
+        ${p.gone ? "" : `<button class="btn" id="editl">${icon("Pencil")} Modifica</button>`}
       </div>
       <dl class="info">
         ${p.dur ? `<dt>Durata</dt><dd>${esc(p.dur)}</dd>` : ""}
@@ -567,7 +580,7 @@
       $("#delp", el)?.addEventListener("click", () => deletePlace(p));
       $("#restp", el)?.addEventListener("click", () => { delItem("luoghi", "h" + id); toast("Luogo ripristinato"); closeSheet(); rerender(); });
       $("#bk", el)?.addEventListener("change", e => { e.target.checked ? booked.add(id) : booked.delete(id); savePlan(); openPlace(id); });
-      $("#editl", el)?.addEventListener("click", () => editLuogo(lists.luoghi.find(x => x.id === id) || p));
+      $("#editl", el)?.addEventListener("click", () => p.mine ? editLuogo(lists.luoghi.find(x => x.id === id) || p) : editBase(p));
       if ($("#showjp", el)) $("#showjp", el).onclick = () => showBig(p.jp, `${esc(p.n)}<br><span class="jp" style="font-size:1.3rem;color:var(--ink)">ここに行きたいです</span><br><small>"Vorrei andare qui"</small>`);
       $("#onmap", el).onclick = () => { mapFocus = id; go("#mappa"); };
       if ($("#addday", el)) $("#addday", el).onchange = e => {
@@ -1755,6 +1768,37 @@
     try { const { Place } = await google.maps.importLibrary("places"); const pl = new Place({ id: gid, requestedLanguage: "ja" }); await pl.fetchFields({ fields: ["displayName"] }); return pl.displayName || ""; } catch { return ""; }
   }
 
+  // luogo della lista Wanderlog: si cambiano i testi (la posizione resta quella originale)
+  function editBase(p) {
+    const ed = lists.luoghi.find(x => x.edit === p.id), o = BASE_ORIG.get(p.id) || {};
+    openSheet(`
+      <div class="ttl"><span class="pic" style="background:var(--shu)">${icon("Pencil")}</span><h2>Modifica luogo</h2></div>
+      <p class="lead">Le modifiche si vedono per tutti e quattro. Posizione e foto restano quelle di Wanderlog.</p>
+      <label class="fl"><span>Nome</span><input id="b-n" value="${esc(p.n || "")}" autocomplete="off"></label>
+      <label class="fl"><span>Nome in giapponese (per il tassista)</span><input id="b-jp" value="${esc(p.jp || "")}" placeholder="Facoltativo" autocomplete="off"></label>
+      <label class="fl"><span>Descrizione</span><textarea id="b-d" rows="4" placeholder="Perché andarci, cosa vedere, orari…">${esc(p.d || "")}</textarea></label>
+      <div class="grid2">
+        <label class="fl"><span>Durata</span><input id="b-dur" value="${esc(p.dur || "")}" placeholder="es. 1 ora" autocomplete="off"></label>
+        <label class="fl"><span>Costo a persona (€)</span><input id="b-eur" inputmode="decimal" value="${p.eur ?? ""}" placeholder="Facoltativo"></label>
+      </div>
+      <label class="check" style="border:none;padding:0 0 12px"><input type="checkbox" id="b-pren" ${p.pren ? "checked" : ""}><span>Da prenotare in anticipo</span></label>
+      ${ed ? `<button class="btn" id="b-orig" style="width:100%;margin-bottom:10px">${icon("Undo2")} Ripristina com'era su Wanderlog</button>` : ""}
+      <div class="btns"><button class="btn" data-close>Annulla</button><button class="btn primary" id="b-save">Salva</button></div>
+    `, el => {
+      const v = id => $("#" + id, el).value.trim();
+      $("#b-save", el).onclick = () => {
+        const n = v("b-n"); if (!n) return toast("Scrivi il nome del luogo");
+        const now = { n, jp: v("b-jp"), d: v("b-d"), dur: v("b-dur"), eur: parseNum(v("b-eur")) || 0, pren: $("#b-pren", el).checked };
+        // si salvano solo i campi diversi dall'originale di Wanderlog
+        const diff = {}; for (const f of EDIT_F) { const a = now[f], b = f === "eur" ? (+o.eur || 0) : f === "pren" ? !!o.pren : (o[f] || ""); if (a !== b) diff[f] = a; }
+        if (!now.pren) booked.delete(p.id), savePlan();
+        if (Object.keys(diff).length) putItem("luoghi", { id: "e" + p.id, edit: p.id, ...diff });
+        else if (ed) delItem("luoghi", ed.id);
+        mergeCustom(); closeSheet(); rerender(); toast("Salvato ✓"); setTimeout(() => openPlace(p.id), 50);
+      };
+      $("#b-orig", el)?.addEventListener("click", () => { delItem("luoghi", ed.id); mergeCustom(); closeSheet(); rerender(); toast("Ripristinato com'era su Wanderlog"); setTimeout(() => openPlace(p.id), 50); });
+    });
+  }
   function editLuogo(p, day) {
     const isNew = !p.id;
     let st = { c: p.c || "cibo", z: p.z || "", lat: p.lat, lng: p.lng, where: p.lat ? (p.addr || `${(+p.lat).toFixed(5)}, ${(+p.lng).toFixed(5)}`) : "", pren: !!p.pren,
