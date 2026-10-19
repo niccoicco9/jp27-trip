@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 32;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 33;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -330,9 +330,33 @@
     const k = layers.lastIndexOf(close); if (k < 0) return;
     layers.splice(k, 1); skipPop++; history.back();
   }
+  // cronologia a forma di app: sotto c'è sempre e solo la pagina principale della sezione; sopra, al massimo,
+  // la sottopagina di Utility e le schede aperte. Così "indietro" (swipe di iOS, tasto Android, il nostro swipe)
+  // risale dentro la sezione e non salta mai a sezioni o giorni visti prima
+  let subPushed = false, pendingGo = null;
+  const isSub = h => /^#utility\/./.test(h);
+  function land(h) {
+    if (isSub(h)) { if (location.hash !== "#utility") history.replaceState(null, "", "#utility"); subPushed = true; location.hash = h; }
+    else location.replace(h);
+  }
+  function go(h) {
+    const cur = location.hash || "#oggi";
+    if (!layers.length && cur === "#utility" && isSub(h)) { subPushed = true; location.hash = h; return; }
+    const depth = layers.length + (subPushed ? 1 : 0);
+    if (!depth) { if (h !== cur) land(h); return; }
+    while (layers.length) layers.pop()(true);   // chiude le schede aperte e toglie i loro passi dalla cronologia
+    skipPop = 0; subPushed = false; pendingGo = h; history.go(-depth);
+  }
   addEventListener("popstate", () => {
+    if (pendingGo) { const h = pendingGo; pendingGo = null; if (h !== (location.hash || "#oggi")) land(h); return; }
     if (skipPop) { skipPop--; return; }
     const close = layers.pop(); if (close) close(true);
+  });
+  // tutti i link interni passano da go()
+  document.addEventListener("click", e => {
+    const a = e.target.closest?.('a[href^="#"]');
+    if (!a || e.defaultPrevented || a.target || e.metaKey || e.ctrlKey) return;
+    e.preventDefault(); go(a.getAttribute("href"));
   });
   let sheetT = null;
   const sheetOpen = () => !sheet.hidden && !sheet.classList.contains("closing");
@@ -500,7 +524,7 @@
       $("#bk", el)?.addEventListener("change", e => { e.target.checked ? booked.add(id) : booked.delete(id); savePlan(); openPlace(id); });
       $("#editl", el)?.addEventListener("click", () => editLuogo(lists.luoghi.find(x => x.id === id) || p));
       if ($("#showjp", el)) $("#showjp", el).onclick = () => showBig(p.jp, `${esc(p.n)}<br><span class="jp" style="font-size:1.3rem;color:var(--ink)">ここに行きたいです</span><br><small>"Vorrei andare qui"</small>`);
-      $("#onmap", el).onclick = () => { mapFocus = id; location.hash = "#mappa"; };
+      $("#onmap", el).onclick = () => { mapFocus = id; go("#mappa"); };
       $("#addday", el).onchange = e => {
         const d = e.target.value; if (!d) return;
         getDay(d).i.push(id); savePlan(); toast(closedOn(p, d) ? `Attenzione: quel giorno è chiuso (${p.chiuso})` : `Aggiunto al giorno ${dayIndex(d) + 1}`); openPlace(id);
@@ -766,7 +790,7 @@
     $("#cover").addEventListener("touchstart", e => { x0 = e.touches[0].clientX; }, { passive: true });
     $("#cover").addEventListener("touchend", e => {
       if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null;
-      if (Math.abs(dx) > 60) { const j = i + (dx < 0 ? 1 : -1); if (DAYS[j]) location.hash = "#giorni/" + DAYS[j]; }
+      if (Math.abs(dx) > 60) { const j = i + (dx < 0 ? 1 : -1); if (DAYS[j]) go("#giorni/" + DAYS[j]); }
     });
   }
   function keepScroll(fn) { const y = scrollY; fn(); scrollTo(0, y); }
@@ -817,7 +841,7 @@
   }
   function maybeImport() {
     const m = location.hash.match(/^#import=(.+)$/); if (!m) return false;
-    let data; try { data = JSON.parse(b64d(m[1])); } catch { toast("Link non valido"); location.hash = "#giorni"; return true; }
+    let data; try { data = JSON.parse(b64d(m[1])); } catch { toast("Link non valido"); location.replace("#giorni"); return true; }
     const n = Object.values(data.p || {}).reduce((s, d) => s + (d.i?.length || 0), 0), g = Object.keys(data.p || {}).length, nb = data.b?.length || 0;
     history.replaceState(null, "", "#giorni"); render();
     openSheet(`<h2>Importa programma</h2><p>Questo link contiene un programma con <b>${n} ${n === 1 ? "tappa" : "tappe"}</b> in ${g} ${g === 1 ? "giorno" : "giorni"}${nb ? ` e ${nb} ${nb === 1 ? "prenotazione segnata" : "prenotazioni segnate"}` : ""}.</p><p class="muted small">Sostituirà il programma salvato su questo telefono.</p><div class="btns"><button class="btn" data-close>Annulla</button><button class="btn primary" id="imp">Importa</button></div>`, el => {
@@ -1373,7 +1397,7 @@
     if (sub === "mappe") { renderUtility(); setTimeout(openOfflineMaps, 50); return; }
     if (sub === "spese") return renderSpese(back);
     if (sub === "checklist") return renderChecklist(back);
-    location.hash = "#utility";
+    go("#utility");
   }
 
   const phraseRow = ([jp, ro, it]) => `<div class="phrase" data-jp="${esc(jp)}" data-it="${esc(it)}" data-ro="${esc(ro)}"><div class="grow"><div class="jp">${esc(jp)}</div><div class="ro">${esc(ro)}</div><div class="it">${esc(it)}</div></div><button class="iconbtn" data-speak aria-label="Ascolta">${icon("Volume2")}</button></div>`;
@@ -1905,7 +1929,7 @@
       else { L.tp = .55; setTimeout(() => { L.tp = 0; kick(); }, 140); }   // tocco: piccolo "respiro" della goccia
       kick();
       // cambia pagina al frame successivo, così l'animazione parte senza scatti
-      requestAnimationFrame(() => setTimeout(() => { location.hash = "#" + a.dataset.tab; }, 0));
+      requestAnimationFrame(() => setTimeout(() => go("#" + a.dataset.tab), 0));
     }
     nav.addEventListener("pointerdown", e => {
       if (drag.pid !== null || (e.pointerType === "mouse" && e.button !== 0)) return;
@@ -1967,7 +1991,7 @@
       view.style.transition = "transform .22s cubic-bezier(.32, .72, 0, 1), opacity .22s";
       if (dx > innerWidth * .33 || fast) {
         buzz(); view.style.transform = `translateX(${innerWidth}px)`; view.style.opacity = "0";
-        setTimeout(() => { view.style.transition = view.style.transform = view.style.opacity = ""; const b = backTarget(); if (b) location.replace(b); }, 200);
+        setTimeout(() => { view.style.transition = view.style.transform = view.style.opacity = ""; if (backTarget()) go("#utility"); }, 200);
       } else { view.style.transform = ""; view.style.opacity = ""; setTimeout(() => (view.style.transition = ""), 240); }
     });
   })();
