@@ -81,7 +81,7 @@
     if (archives) return archives;
     archives = await Promise.all(ZONE.map(async z => {
       const a = new pmtiles.PMTiles(abs(z.file));
-      try { const h = await a.getHeader(); return { z, a, b: [h.minLon, h.minLat, h.maxLon, h.maxLat] }; } catch { return { z, a, b: null }; }
+      try { const h = await a.getHeader(); return { z, a, b: [h.minLon, h.minLat, h.maxLon, h.maxLat], mz: h.maxZoom }; } catch { return { z, a, b: null }; }
     }));
     return archives;
   }
@@ -131,5 +131,11 @@
   const setTheme = (map, dark) => map.setStyle(style(dark), { diff: false });
 
   const reset = () => { archives = null; };
-  window.OfflineMap = { ZONE, status, usedMB, download, remove, create, setTheme, loadLibs, reset, warmup };
+  // c'è una zona scaricata (con le strade) che copre questo punto? E fino a che zoom arriva la panoramica?
+  async function covers([lng, lat]) {
+    const st = await status(), list = await getArchives();
+    const ok = list.some(it => !it.z.base && st[it.z.id] && it.b && lng >= it.b[0] && lng <= it.b[2] && lat >= it.b[1] && lat <= it.b[3]);
+    return { ok, baseMax: list.find(it => it.z.base)?.mz ?? 6 };
+  }
+  window.OfflineMap = { ZONE, status, usedMB, download, remove, create, setTheme, loadLibs, reset, warmup, covers };
 })();

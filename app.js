@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 57;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 58;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -1308,8 +1308,19 @@
       },
       focus(id, pop) { const p = byId[id]; map.easeTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 15.5) }); if (pop) setTimeout(() => openPop(id), 350); },
       you(ll) {
-        if (!you) { const d = document.createElement("div"); d.className = "ml-you"; you = new maplibregl.Marker({ element: d }).addTo(map); }
-        you.setLngLat(ll); map.easeTo({ center: ll, zoom: 15 });
+        // il segnaposto va creato già con la posizione: senza, la libreria va in errore a ogni movimento e la mappa si blocca
+        if (!you) { const d = document.createElement("div"); d.className = "ml-you"; you = new maplibregl.Marker({ element: d }).setLngLat(ll).addTo(map); }
+        else you.setLngLat(ll);
+        // la mappa offline copre solo il Giappone: fuori (es. ancora in Italia) si avvisa invece di portare la mappa sul vuoto
+        const [lng, lat] = ll;
+        if (lng < 122 || lng > 154 || lat < 24 || lat > 46) return toast("Sei fuori dal Giappone: la mappa offline copre solo il Giappone");
+        // zona non scaricata: senza rete ci sarebbe solo lo sfondo vuoto, quindi niente zoom stretto e un avviso
+        OfflineMap.covers(ll).then(({ ok, baseMax }) => {
+          if (!map) return;
+          const off = !ok && !navigator.onLine;   // con la rete le zone non scaricate arrivano lo stesso
+          map.easeTo({ center: ll, zoom: off ? Math.min(map.getZoom() + 1, baseMax) : 15 });
+          if (off) toast("Questa zona non è scaricata: scaricala da Mappe offline per vedere le strade");
+        }, () => map?.easeTo({ center: ll, zoom: 15 }));
       },
       theme() { if (map) OfflineMap.setTheme(map, isDark()); },
       resize() { map?.resize(); },
