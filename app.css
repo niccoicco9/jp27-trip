@@ -759,9 +759,16 @@ main.enter.nav-fade { animation: fade .2s ease-out; }
 .toast.out { opacity: 0; transform: translate(-50%, 8px); transition: opacity .2s, transform .2s; }
 
 /* foto: compaiono con una dissolvenza (quelle già viste restano ferme) */
-.ph[data-lz] { transition: opacity .4s ease-out; }
-.ph[data-lz]:not(.in) { opacity: 0; }
-.ph.now { transition: none; }
+/* foto: mentre arrivano c'è un riquadro con un riflesso che scorre, poi la foto compare con una dissolvenza */
+.ph > img.phi { opacity: 0; transition: opacity .45s ease-out; }
+.ph > img.phi.ok { opacity: 1; }
+.ph.now > img.phi { transition-duration: .22s; }
+.ph:is([data-bg], .wait)::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(100deg, transparent 20%, rgba(255,255,255,.22) 50%, transparent 80%); transform: translateX(-100%); animation: shim 1.4s ease-in-out infinite; }
+.ph.wait:has(> img.ok)::after { animation: none; opacity: 0; transition: opacity .3s; }
+@keyframes shim { to { transform: translateX(100%); } }
+/* sotto le scritte bianche (copertine): riquadro scuro, così il testo si legge anche prima che arrivi la foto */
+.hero > .ph, .daycover .ph, .gcard .ph, .chapter .ph { background-color: #3d3029; }
 
 /* voci appena aggiunte */
 .fresh { animation: fresh .5s cubic-bezier(.32, .72, 0, 1); }

@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 55;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 56;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -90,22 +90,26 @@
   // caricamento pigro delle foto: si scaricano solo quando stanno per comparire (risparmio dati)
   const seenPh = new Set();
   function showPhoto(el) {
-    const u = el.dataset.bg; el.removeAttribute("data-bg");
+    const u = el.dataset.bg; el.removeAttribute("data-bg"); el.classList.add("wait");
     const put = () => {
-      // foto grandi in cima alla pagina: decodificate subito (niente riquadro vuoto tornando); nelle liste e gallerie no, per non frenare lo scorrimento
+      // foto grandi in cima alla pagina: decodificate subito; nelle liste e gallerie in sottofondo, per non frenare lo scorrimento
       const img = document.createElement("img"); img.className = "phi"; img.alt = ""; img.decoding = el.closest(".hero, .daycover") ? "sync" : "async"; img.draggable = false; img.src = u;
       el.prepend(img); el.classList.add("in");
+      getComputedStyle(img).opacity;   // fissa il punto di partenza (trasparente), altrimenti la dissolvenza non parte
+      // compare con una dissolvenza solo quando è davvero pronta da disegnare (niente comparse a scatti)
+      const show = () => requestAnimationFrame(() => { img.classList.add("ok"); setTimeout(() => el.classList.remove("wait"), 500); });
+      img.decode ? img.decode().then(show, show) : (img.onload = show);
     };
-    if (seenPh.has(u)) { el.classList.add("now"); return put(); }   // già scaricata: niente dissolvenza, niente lampeggio
-    const img = new Image(); img.src = u;
-    (img.decode ? img.decode() : Promise.resolve()).then(() => { seenPh.add(u); put(); }, () => el.classList.add("in"));
+    if (seenPh.has(u)) { el.classList.add("now"); return put(); }   // già vista: dissolvenza breve
+    const pre = new Image(); pre.src = u;
+    (pre.decode ? pre.decode() : Promise.resolve()).then(() => { seenPh.add(u); put(); }, () => { el.classList.add("in"); el.classList.remove("wait"); });
   }
   const lazyIO = "IntersectionObserver" in window ? new IntersectionObserver(es => es.forEach(e => {
     if (!e.isIntersecting) return;
     lazyIO.unobserve(e.target); showPhoto(e.target);
   }), { rootMargin: "300px" }) : null;
   function lazyScan() {
-    $$("[data-bg]").forEach(el => { if (el.dataset.lz) return; el.dataset.lz = 1; if (seenPh.has(el.dataset.bg) || !lazyIO) showPhoto(el); else lazyIO.observe(el); });
+    $$("[data-bg]").forEach(el => { if (el.dataset.lz) return; el.dataset.lz = 1; if (seenPh.has(el.dataset.bg) || !lazyIO || el.matches(".hero > .ph, .daycover .ph")) showPhoto(el); else lazyIO.observe(el); });   // la foto in cima parte subito
   }
   let lazyRaf = 0;
   new MutationObserver(() => { cancelAnimationFrame(lazyRaf); lazyRaf = requestAnimationFrame(lazyScan); }).observe(document.body, { childList: true, subtree: true });
