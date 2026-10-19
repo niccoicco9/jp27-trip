@@ -1,6 +1,6 @@
 // Service worker: l'app si apre subito dai file salvati (anche con rete scarsa o assente) e si aggiorna
 // in sottofondo; ogni nuova versione (VERSION) viene scaricata intera e poi compare l'avviso "Aggiorna".
-const VERSION = "jp27-v52";
+const VERSION = "jp27-v53";
 const MAPPE = "jp27-mappe";   // zone offline, caratteri e icone della mappa: non si cancellano con gli aggiornamenti
 const CDN = "jp27-cdn";       // librerie, font e foto da siti esterni
 const SHELL = ["./", "index.html", "app.css", "app.js", "data.js", "photos.js", "content.js", "sync.js", "mappa-offline.js", "icons.js", "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-192.png", "icon-512.png", "favicon-32.png", "fonts/jakarta-latin.woff2", "fonts/jakarta-latin-ext.woff2"];
@@ -78,7 +78,11 @@ self.addEventListener("fetch", e => {
       const hit = await c.match(e.request);
       if (hit) return hit;
       try {
-        const r = await fetch(e.request); if (r.ok || r.type === "opaque") c.put(e.request, r.clone()); return r;
+        // le foto di Wikimedia si chiedono in modalità "cors" (il sito lo permette): così si salvano con il loro peso reale,
+        // non come risposte "opache" che Safari conta molto più grandi nello spazio a disposizione dell'app
+        const wiki = url.hostname.endsWith("wikimedia.org") && e.request.mode === "no-cors";
+        const r = await fetch(wiki ? new Request(e.request.url, { mode: "cors", credentials: "omit" }) : e.request).catch(err => wiki ? fetch(e.request) : Promise.reject(err));
+        if (r.ok || r.type === "opaque") c.put(e.request, r.clone()); return r;
       } catch (err) {
         // offline: per le foto usa la miniatura salvata dello stesso file, se c'è
         if (url.hostname.endsWith("wikimedia.org")) { const small = await c.match(url.href.replace(/\/\d+px-/, "/330px-")); if (small) return small; }

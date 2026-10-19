@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 52;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 53;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -196,6 +196,11 @@
   // ultimo stato confermato dal server: si inviano solo le differenze rispetto a questo
   let synced = { plan: clone(plan), booked: [...booked] };
   const same = (a, b) => JSON.stringify(a || null) === JSON.stringify(b || null);
+  // impronta dei dati indipendente dall'ordine delle chiavi e dall'orario del server ("at"):
+  // serve a riconoscere gli aggiornamenti di Firestore che non cambiano niente (conferme delle proprie modifiche, passaggio online)
+  const sig = v => JSON.stringify(v ?? null, (k, x) => k === "at" ? undefined
+    : x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map(j => [j, x[j]])) : x);
+  const listSig = items => sig([...items].sort((a, b) => String(a.id).localeCompare(String(b.id))));
   function localChanges() {
     const days = {};
     for (const d of new Set([...Object.keys(plan), ...Object.keys(synced.plan)])) if (!same(plan[d], synced.plan[d])) days[d] = plan[d] || { l: "", n: "", i: [] };
@@ -235,15 +240,19 @@
     const mine = localChanges();
     const remote = cleanPlan(data.plan);
     synced = { plan: clone(remote), booked: [...(Array.isArray(data.booked) ? data.booked : [])] };
-    plan = { ...remote, ...clone(mine.days) };
-    booked = new Set([...(Array.isArray(data.booked) ? data.booked : []).filter(x => !mine.rem.includes(x)), ...mine.add]);
+    const nextPlan = { ...remote, ...clone(mine.days) };
+    const nextBooked = new Set([...(Array.isArray(data.booked) ? data.booked : []).filter(x => !mine.rem.includes(x)), ...mine.add]);
     if (Object.keys(mine.days).length || mine.add.length || mine.rem.length) { clearTimeout(pushT); pushT = setTimeout(pushChanges, 400); }
+    // niente di nuovo (es. conferma della propria modifica): la pagina resta com'è, senza ricostruirla
+    if (sig(nextPlan) === sig(plan) && sig([...nextBooked].sort()) === sig([...booked].sort())) return;
+    plan = nextPlan; booked = nextBooked;
     lastEdit = { by: data.by, at: data.at?.toMillis?.() || Date.now() };
     LS.set("plan", plan); LS.set("booked", [...booked]); LS.set("lastEdit", lastEdit);
     remoteChanged();
   }
   function onList(name, items) {
     items = cleanList(name, items);
+    if (listSig(items) === listSig(lists[name])) { lists[name] = items; return; }   // stessi dati: nessuna ricostruzione
     lists[name] = items; LS.set(name, items);
     if (name === "luoghi") mergeCustom();
     remoteChanged();
@@ -370,7 +379,7 @@
   const sheetOpen = () => !sheet.hidden && !sheet.classList.contains("closing");
   function openSheet(html, onMount, onClose) {
     if (!sheetOpen()) sheetVer = dataVer;   // riaperta da dentro (es. dopo una modifica): conta da quando si è aperta la prima volta
-    clearTimeout(sheetT); sheet.classList.remove("closing"); $(".sheet-bg").style.opacity = ""; sheetCard.style.transition = "";
+    clearTimeout(sheetT); if (sheet.hidden) sheetCard.style.animation = ""; sheet.classList.remove("closing"); $(".sheet-bg").style.opacity = ""; sheetCard.style.transition = "";
     if (!layers.includes(sheetLayer)) pushLayer(sheetLayer);
     $("#sheet-body").innerHTML = html; sheet.hidden = false; SC.classList.add("locked");
     sheetCard.scrollTop = 0; sheetCard.style.transform = "";
@@ -406,7 +415,11 @@
   // basta anche un colpetto veloce verso il basso
   (() => {
     let y0 = null, dy = 0, t0 = 0, lastY = 0, lastT = 0, v = 0, mode = null;
-    const startAt = (y) => { y0 = y; dy = 0; t0 = lastT = performance.now(); lastY = y; v = 0; sheetCard.style.transition = "none"; $(".sheet-bg").style.transition = "none"; };
+    const startAt = (y) => {
+      // presa mentre sta ancora salendo: si ferma dov'è e segue il dito da lì (l'animazione CSS altrimenti ignorerebbe il dito)
+      let from = 0;
+      if (sheetCard.getAnimations?.().length) { from = Math.max(0, new DOMMatrix(getComputedStyle(sheetCard).transform).m42 || 0); sheetCard.style.animation = "none"; sheetCard.style.transform = `translate3d(0, ${from}px, 0)`; }
+      y0 = y - from; dy = from; t0 = lastT = performance.now(); lastY = y; v = 0; sheetCard.style.transition = "none"; $(".sheet-bg").style.transition = "none"; };
     // si aggiorna una volta per fotogramma, solo con transform/opacity (lavoro della scheda grafica, niente ricalcolo della pagina)
     const bg = $(".sheet-bg"); let raf = 0;
     const paint = () => { raf = 0; sheetCard.style.transform = `translate3d(0, ${dy}px, 0)`; bg.style.opacity = String(Math.max(0, 1 - dy / 500)); };
