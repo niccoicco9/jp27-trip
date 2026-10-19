@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 40;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 41;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -38,6 +38,7 @@
         const per = (Array.isArray(x.perChi) ? x.perChi : []).filter(n => T.viaggiatori.includes(n));
         return { ...x, importo, valuta, eur, perChi: per.length ? per : [...T.viaggiatori], pagatoDa: T.viaggiatori.includes(x.pagatoDa) ? x.pagatoDa : T.viaggiatori[0], desc: str(x.desc), cat: str(x.cat) || "altro" };
       }
+      if (name === "categorie") return str(x.n) ? { ...x, n: str(x.n).slice(0, 24), e: str(x.e) || "🏷️", col: /^#[0-9a-f]{6}$/i.test(x.col) ? x.col : "#8a6d4b" } : null;
       if (name === "prenotazioni") return { ...x, tipo: ["hotel", "volo", "treno", "biglietto", "altro"].includes(x.tipo) ? x.tipo : "altro", titolo: str(x.titolo), dal: /^\d{4}-\d{2}-\d{2}$/.test(x.dal) ? x.dal : "", al: /^\d{4}-\d{2}-\d{2}$/.test(x.al) ? x.al : "", lat: isFinite(x.lat) && x.lat !== null ? +x.lat : null, lng: isFinite(x.lng) && x.lng !== null ? +x.lng : null };
       return x;
     }).filter(Boolean);
@@ -170,7 +171,7 @@
 
   // ——— salvataggio + sync ———
   // Spese e prenotazioni: una voce per documento, in cache locale per l'avvio offline.
-  const lists = { spese: cleanList("spese", LS.get("spese", [])), prenotazioni: cleanList("prenotazioni", LS.get("prenotazioni", [])), luoghi: cleanList("luoghi", LS.get("luoghi", [])) };
+  const lists = { spese: cleanList("spese", LS.get("spese", [])), prenotazioni: cleanList("prenotazioni", LS.get("prenotazioni", [])), luoghi: cleanList("luoghi", LS.get("luoghi", [])), categorie: cleanList("categorie", LS.get("categorie", [])) };
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   let code = LS.get("code", "");
   let pushT;
@@ -1714,6 +1715,29 @@
   const COPPIE = [["Niccolò", "Antonella"], ["Miriam", "Paolo"]];
   const coupleName = c => c.join(" & ");
   const SCAT = { cibo: ["Utensils", "Cibo", "#d9822b"], trasporti: ["TrainFront", "Trasporti", "#1f9488"], alloggio: ["BedDouble", "Alloggio", "#2e6fb0"], attivita: ["Ticket", "Attività", "#d4442f"], shopping: ["ShoppingBag", "Shopping", "#7b4fa0"], altro: ["Receipt", "Altro", "#6b5a45"], rimborso: ["HandCoins", "Rimborso", "var(--ok)"] };
+  // categoria di una spesa: quelle fisse con icona, quelle create da voi con emoji; sconosciuta → Altro
+  const CCOL = ["#db2777", "#65a30d", "#4f46e5", "#0891b2", "#ca8a04", "#e11d48", "#059669", "#c026d3", "#475569", "#0d9488"];   // diversi dai colori delle categorie fisse
+  function catOf(k) {
+    if (SCAT[k]) { const [ic, n, col] = SCAT[k]; return { k, n, col, html: icon(ic) }; }
+    const c = lists.categorie.find(x => x.id === k);
+    return c ? { k, n: c.n, col: c.col, html: `<i class="emo">${esc(c.e)}</i>`, mine: true } : { ...catOf("altro"), k: "altro" };
+  }
+  let spFilter = null, spMine = false;   // grafico: categoria scelta e "la mia parte"
+  // grafico a ciambella: totale per categoria (del gruppo o solo la mia parte); tocca una riga per filtrare
+  function catCard() {
+    const sp = lists.spese.filter(s => s.cat !== "rimborso");
+    if (!sp.length) return "";
+    const share = s => { const per = s.perChi?.length ? s.perChi : T.viaggiatori; return spMine ? (per.includes(me) ? s.eur / per.length : 0) : s.eur; };
+    const tot = {}; for (const s of sp) { const k = catOf(s.cat).k; tot[k] = (tot[k] || 0) + share(s); }
+    const rows = Object.entries(tot).filter(([, v]) => v > .004).sort((a, b) => b[1] - a[1]);
+    const sum = rows.reduce((a, [, v]) => a + v, 0), R = 52, C = 2 * Math.PI * R;
+    let off = 0;
+    const arcs = rows.map(([k, v]) => { const len = v / sum * C, a = `<circle r="${R}" cx="66" cy="66" stroke="${catOf(k).col}" stroke-dasharray="${Math.max(.5, len - (rows.length > 1 ? 2 : 0))} ${C}" stroke-dashoffset="${-off}" opacity="${spFilter && spFilter !== k ? .25 : 1}"/>`; off += len; return a; }).join("");
+    return `<div class="card"><div class="between" style="gap:8px"><h3 style="margin:0">Per categoria</h3>${me ? `<div class="seg"><button data-spmine="0" class="${spMine ? "" : "on"}">Gruppo</button><button data-spmine="1" class="${spMine ? "on" : ""}">La mia parte</button></div>` : ""}</div>
+      ${sum ? `<div class="catchart"><div class="donut"><svg viewBox="0 0 132 132" aria-hidden="true"><circle r="${R}" cx="66" cy="66" stroke="var(--card-2)"/>${arcs}</svg><div class="mid"><small class="muted">${spMine ? "la tua parte" : "totale"}</small><b>${eurF(sum)}</b></div></div>
+        <div class="catrows">${rows.map(([k, v]) => { const c = catOf(k); return `<button class="catrow${spFilter === k ? " on" : ""}" data-fcat="${k}"><span class="sw" style="background:${c.col}">${c.html}</span><span class="nm">${esc(c.n)}</span><span><b>${eurF(v)}</b><span class="pc">${Math.round(v / sum * 100)}%</span></span></button>`; }).join("")}</div></div>
+        <p class="small muted" style="margin:8px 0 0">Tocca una categoria per vedere solo quelle spese. I rimborsi non contano.</p>` : `<p class="small muted" style="margin:10px 0 0">Nessuna spesa a tuo carico per ora.</p>`}</div>`;
+  }
   const rate = () => LS.get("rate", { r: 170 }).r || 170;
   const eurF = v => v.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
   const avatar = (n, s = 26) => `<span class="avatar" style="width:${s}px;height:${s}px;font-size:${s * .42}px;background:${AVATAR[n] || "#888"}">${n[0]}</span>`;
@@ -1739,7 +1763,7 @@
     if (!code) { view.innerHTML = `${back}<h2>Spese</h2>${needCodeBox("Le spese")}`; bindPcards(); return; }
     const { net, total, cn } = balances();   // cn: saldo di ogni coppia
     const debt = Math.abs(cn[0]) < .5 ? null : cn[0] > 0 ? [COPPIE[1], COPPIE[0], cn[0]] : [COPPIE[0], COPPIE[1], -cn[0]];
-    const items = [...lists.spese].sort((a, b) => (b.data || "").localeCompare(a.data || "") || (b.ts || 0) - (a.ts || 0));
+    const items = [...lists.spese].filter(s => !spFilter || catOf(s.cat).k === spFilter).sort((a, b) => (b.data || "").localeCompare(a.data || "") || (b.ts || 0) - (a.ts || 0));
     let lastD = null;
     view.innerHTML = `${back}<div class="between"><h2>Spese</h2><button class="btn small primary" id="adds">${icon("Plus")} Aggiungi</button></div><p class="lead">Chi ha pagato cosa, e alla fine chi deve quanto a chi.</p>
       <div class="hero" style="min-height:0">${art()}<div class="hero-in" style="min-height:190px">
@@ -1754,16 +1778,21 @@
           <p class="small muted" style="margin:6px 0 0">Conta chi ha anticipato dentro la coppia: tra voi due fate come preferite.</p>
         </details>
       </div>
+      ${catCard()}
+      ${spFilter ? `<div class="row" style="margin-top:14px"><span class="grow small muted">Solo le spese <b>${esc(catOf(spFilter).n)}</b></span><button class="chip on" id="spclr">Mostra tutte ✕</button></div>` : ""}
       ${items.length ? items.map(s => {
-        const [ic, cl] = SCAT[s.cat] || SCAT.altro;
+        const c = catOf(s.cat), cl = c.n;
         const head = s.data !== lastD ? `<h3>${s.data ? fmtDay(s.data, { weekday: "long", day: "numeric", month: "long" }) : "Senza data"}</h3>` : ""; lastD = s.data;
         return `${head}<div class="card spesa${s.id === freshId ? " fresh" : ""}" data-spesa="${s.id}"><div class="row">
-          <span class="pic" style="background:${(SCAT[s.cat] || SCAT.altro)[2]}">${icon(ic)}</span>
+          <span class="pic" style="background:${c.col}">${c.html}</span>
           <div class="grow"><b>${esc(s.desc || cl)}</b><div class="small muted">${s.cat === "rimborso" ? `${esc(s.pagatoDa)} → ${esc(splitLabel(s.perChi))}` : `pagato da ${esc(s.pagatoDa)} · per ${esc(splitLabel(s.perChi))}`}</div></div>
           <div style="text-align:right"><b>${s.valuta === "JPY" ? fmtInt(s.importo) + " ¥" : eurF(s.importo)}</b>${s.valuta === "JPY" ? `<div class="small muted">${eurF(s.eur)}</div>` : ""}</div>
         </div></div>`;
       }).join("") : `<p class="empty">Nessuna spesa ancora. La prima cena a Shinjuku? 🍜</p>`}`;
     $("#adds").onclick = () => editSpesa({});
+    $$("[data-fcat]").forEach(b => b.onclick = () => { spFilter = spFilter === b.dataset.fcat ? null : b.dataset.fcat; buzz(); keepScroll(render); });
+    $("#spclr")?.addEventListener("click", () => { spFilter = null; keepScroll(render); });
+    $$("[data-spmine]").forEach(b => b.onclick = () => { spMine = b.dataset.spmine === "1"; keepScroll(render); });
     $("#settle")?.addEventListener("click", () => editSpesa({ cat: "rimborso", desc: "Rimborso", valuta: "EUR", importo: Math.round(debt[2] * 100) / 100, pagatoDa: me && debt[0].includes(me) ? me : debt[0][0], perChi: debt[1] }));
     $$("[data-spesa]").forEach(c => c.onclick = () => editSpesa(lists.spese.find(x => x.id === c.dataset.spesa)));
   }
@@ -1771,6 +1800,24 @@
   function editSpesa(s) {
     const isNew = !s.id, today = todayJP();
     let st = { valuta: s.valuta || "JPY", pagatoDa: s.pagatoDa || me || T.viaggiatori[0], perChi: s.perChi?.length ? [...s.perChi] : [...T.viaggiatori], cat: s.cat || "cibo" };
+    // chip delle categorie: fisse + create da voi + "Nuova"; tieni premuto su una vostra per eliminarla
+    const drawCats = el => {
+      const box = $("#s-cats", el); if (!box) return;
+      box.innerHTML = Object.keys(SCAT).filter(k => k !== "rimborso").concat(lists.categorie.map(c => c.id)).map(k => { const c = catOf(k); return `<button class="chip" data-cat="${k}">${c.html} ${esc(c.n)}</button>`; }).join("")
+        + `<button class="chip" id="nc-open">${icon("Plus")} Nuova</button>`;
+      $$("[data-cat]", el).forEach(b => {
+        b.onclick = () => { st.cat = b.dataset.cat; draw(el); };
+        if (!SCAT[b.dataset.cat]) { let t; b.addEventListener("pointerdown", () => { t = setTimeout(() => delCat(b.dataset.cat, el), 600); }); ["pointerup", "pointerleave", "pointercancel"].forEach(ev => b.addEventListener(ev, () => clearTimeout(t))); }
+      });
+      $("#nc-open", el).onclick = () => { const n = $("#s-newcat", el); n.hidden = !n.hidden; if (!n.hidden) $("#nc-n", el).focus(); };
+      draw(el);
+    };
+    const delCat = async (k, el) => {
+      buzz(); const c = catOf(k), used = lists.spese.filter(x => x.cat === k).length;
+      if (!(await ask({ title: `Eliminare "${c.n}"?`, text: used ? `${used === 1 ? "1 spesa passa" : used + " spese passano"} in "Altro".` : "Nessuna spesa la usa.", ok: "Elimina", danger: true }))) return;
+      for (const x of lists.spese.filter(x => x.cat === k)) putItem("spese", { ...x, cat: "altro" });
+      delItem("categorie", k); if (st.cat === k) st.cat = "altro"; drawCats(el); pendingRemote = true;   // la pagina sotto si aggiorna alla chiusura
+    };
     const draw = el => {
       $$("[data-val]", el).forEach(b => b.classList.toggle("on", b.dataset.val === st.valuta));
       $$("[data-paid]", el).forEach(b => b.classList.toggle("sel", b.dataset.paid === st.pagatoDa));
@@ -1791,17 +1838,24 @@
       <div class="fl"><span>${s.cat === "rimborso" ? "A chi" : "Diviso tra"}</span>
         <div class="seg wide"><button data-grp="all">Tutti e 4</button><button data-grp="0">${COPPIE[0].map(n => n[0]).join(" & ")}</button><button data-grp="1">${COPPIE[1].map(n => n[0]).join(" & ")}</button></div>
         <div class="whos multi">${T.viaggiatori.map(n => `<button data-per="${n}">${avatar(n, 30)}${n}</button>`).join("")}</div></div>
-      ${s.cat === "rimborso" ? "" : `<div class="fl"><span>Categoria</span><div class="chips" style="margin:0;padding:0;flex-wrap:wrap">${Object.entries(SCAT).filter(([k]) => k !== "rimborso").map(([k, [ic, n]]) => `<button class="chip" data-cat="${k}">${icon(ic)} ${n}</button>`).join("")}</div></div>`}
+      ${s.cat === "rimborso" ? "" : `<div class="fl"><span>Categoria</span><div class="chips" id="s-cats" style="margin:0;padding:0;flex-wrap:wrap"></div>
+        <div class="newcat" id="s-newcat" hidden><input id="nc-e" placeholder="🍡" maxlength="4" autocomplete="off" aria-label="Emoji"><input id="nc-n" placeholder="Nome, es. Onsen" maxlength="24" autocomplete="off"><button class="btn small primary" id="nc-ok">Crea</button></div></div>`}
       <label class="fl"><span>Giorno</span><input type="date" id="s-data" value="${s.data || (today >= T.inizio && today <= T.fine ? today : today)}"></label>
       <div class="btns">${isNew ? `<button class="btn" data-close>Annulla</button>` : `<button class="btn" id="s-del" style="color:var(--shu)">${icon("Trash2")} Elimina</button>`}<button class="btn primary" id="s-save">Salva</button></div>
     `, el => {
-      draw(el);
+      drawCats(el); draw(el);
+      if ($("#nc-ok", el)) $("#nc-ok", el).onclick = () => {
+        const n = $("#nc-n", el).value.trim(); if (!n) return toast("Scrivi il nome della categoria");
+        if ([...Object.values(SCAT).map(x => x[1]), ...lists.categorie.map(c => c.n)].some(x => x.toLowerCase() === n.toLowerCase())) return toast("Esiste già");
+        const e = [...$("#nc-e", el).value.trim()].slice(0, 2).join("") || "🏷️";
+        const c = putItem("categorie", { id: "k" + uid(), n, e, col: CCOL[lists.categorie.length % CCOL.length] });
+        st.cat = c.id; $("#nc-n", el).value = $("#nc-e", el).value = ""; $("#s-newcat", el).hidden = true; drawCats(el); toast(`Categoria "${n}" creata ✓`);
+      };
       $("#s-imp", el).oninput = () => draw(el);
       $$("[data-val]", el).forEach(b => b.onclick = () => { st.valuta = b.dataset.val; draw(el); });
       $$("[data-paid]", el).forEach(b => b.onclick = () => { st.pagatoDa = b.dataset.paid; draw(el); });
       $$("[data-per]", el).forEach(b => b.onclick = () => { const n = b.dataset.per; st.perChi = st.perChi.includes(n) ? st.perChi.filter(x => x !== n) : [...st.perChi, n]; draw(el); });
       $$("[data-grp]", el).forEach(b => b.onclick = () => { st.perChi = [...(b.dataset.grp === "all" ? T.viaggiatori : COPPIE[+b.dataset.grp])]; draw(el); });
-      $$("[data-cat]", el).forEach(b => b.onclick = () => { st.cat = b.dataset.cat; draw(el); });
       $("#s-save", el).onclick = () => {
         const importo = parseNum($("#s-imp", el).value);
         if (!(importo > 0)) return toast("Inserisci l'importo");

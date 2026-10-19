@@ -10,7 +10,7 @@ import {
   FieldPath, arrayUnion, arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-export const LISTS = ["spese", "prenotazioni", "luoghi"];
+export const LISTS = ["spese", "prenotazioni", "luoghi", "categorie"];
 
 export function start(config, code, h) {
   const app = initializeApp(config);
