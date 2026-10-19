@@ -518,7 +518,6 @@ table.budget td:last-child { text-align: right; font-variant-numeric: tabular-nu
 .big .jp { font-size: clamp(2rem, 11vw, 4.5rem); font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
 .big .sub { color: var(--muted); font-size: 1rem; }
 
-.toast { position: fixed; left: 50%; bottom: calc(var(--nav-h) + 26px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 70; background: var(--ink); color: var(--bg); padding: 11px 18px; border-radius: 99px; font-size: .88rem; font-weight: 600; box-shadow: var(--shadow-l); max-width: calc(100vw - 32px); animation: rise .3s var(--ease); }
 .empty { text-align: center; color: var(--muted); padding: 22px 10px; font-size: .9rem; border: 1.5px dashed var(--line); border-radius: 18px; }
 
 /* who am I */
@@ -684,9 +683,6 @@ body.on-map .map-loading { padding-top: var(--head, 60px); }
 .hero .kicker, .hero p { text-shadow: 0 1px 10px rgba(0,0,0,.45); }
 
 /* avviso con "Annulla" */
-.toast.act { display: flex; align-items: center; gap: 12px; padding: 6px 6px 6px 18px; }
-.toast .undo { display: inline-flex; align-items: center; gap: 5px; border: none; border-radius: 99px; padding: 8px 14px; min-height: 36px; font-weight: 800; font-size: .84rem; background: color-mix(in srgb, var(--bg) 18%, transparent); color: var(--bg); white-space: nowrap; }
-.toast .undo svg { width: 15px; height: 15px; }
 
 /* Oggi: preparativi e prossima tappa */
 .prep { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 0; border: none; border-top: 1px solid var(--line); background: none; color: var(--ink); text-decoration: none; text-align: left; font: inherit; }
@@ -756,7 +752,6 @@ main.enter.nav-fade { animation: fade .2s ease-out; }
 /* testo grande, conferma e avvisi: escono come entrano */
 .big.out { animation: none; opacity: 0; transform: scale(.98); transition: opacity .18s, transform .18s; }
 .dlg.out .dlg-card { transform: scale(.94); transition: transform .18s; }
-.toast.out { opacity: 0; transform: translate(-50%, 8px); transition: opacity .2s, transform .2s; }
 
 /* foto: compaiono con una dissolvenza (quelle già viste restano ferme) */
 /* foto: mentre arrivano c'è un riquadro con un riflesso che scorre, poi la foto compare con una dissolvenza */
@@ -869,3 +864,23 @@ main#view { will-change: auto; }
 .sheet-body.pop { animation: sheet-pop .32s cubic-bezier(.32, .72, 0, 1); }
 @keyframes sheet-push { from { opacity: 0; transform: translate3d(36px, 0, 0); } }
 @keyframes sheet-pop { from { opacity: 0; transform: translate3d(-36px, 0, 0); } }
+/* avviso in basso (stile iOS): scheda scura sopra la barra, icona colorata, testo a sinistra, "Annulla" a destra */
+.toast { position: fixed; left: 12px; right: 12px; bottom: calc(var(--nav-h) + 22px + env(safe-area-inset-bottom)); z-index: 70; max-width: 460px; margin: 0 auto;
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 18px; overflow: hidden;
+  background: rgba(30, 26, 23, .94); color: #fff; box-shadow: 0 10px 30px rgba(20, 12, 6, .28), 0 0 0 .5px rgba(255, 255, 255, .14) inset;
+  -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6);
+  animation: toast-in .38s cubic-bezier(.32, .72, 0, 1); }
+.toast .tic { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, .12); }
+.toast .tic svg { width: 16px; height: 16px; }
+.toast.ok .tic { background: #2f9e5b; }
+.toast.del .tic { background: #d4442f; }
+.toast.net .tic { background: #1f9488; }
+.toast.info .tic { color: #f1c36b; }
+.toast .tmsg { flex: 1; min-width: 0; font-size: .88rem; font-weight: 600; line-height: 1.3; text-wrap: pretty; }
+.toast .undo { flex: none; border: none; background: none; color: #ff9a85; font-weight: 800; font-size: .9rem; padding: 8px 4px 8px 10px; min-height: 36px; }
+.toast .tbar { position: absolute; left: 0; bottom: 0; height: 2.5px; width: 100%; background: #ff9a85; opacity: .7; transform-origin: left; animation: toast-time linear forwards; }
+.toast.out { opacity: 0; transform: translateY(10px) scale(.98); transition: opacity .22s, transform .22s; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(18px) scale(.97); } }
+@keyframes toast-time { to { transform: scaleX(0); } }
+:root[data-theme="dark"] .toast { background: rgba(58, 52, 47, .94); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .toast { background: rgba(58, 52, 47, .94); } }

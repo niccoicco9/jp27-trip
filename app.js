@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 59;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 60;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -352,15 +352,19 @@
 
   // ——— ui helpers ———
   let toastT;
+  // avviso in basso: scheda scura con icona, testo su una o due righe e, se si può, "Annulla" con il tempo che scorre
   function toast(msg, undo) {
-    const t = $("#toast");
-    t.innerHTML = `<span>${esc(msg)}</span>${undo ? `<button class="undo">${icon("Undo2")} Annulla</button>` : ""}`;
-    t.classList.toggle("act", !!undo); t.hidden = false;
-    t.classList.remove("out");
-    if (undo || /✓/.test(msg)) buzz();
-    const hide = () => { if (t.hidden) return; t.classList.add("out"); toastT = setTimeout(() => { t.hidden = true; t.classList.remove("out"); }, reduceMotion() ? 0 : 200); };
-    if (undo) t.querySelector(".undo").onclick = () => { clearTimeout(toastT); hide(); buzz(); undo(); };
-    clearTimeout(toastT); toastT = setTimeout(hide, undo ? 5000 : 2200);
+    const t = $("#toast"), ok = /✓\s*$/.test(msg), text = String(msg).replace(/\s*✓\s*$/, "");
+    const kind = undo ? "del" : ok ? "ok" : /offline|rete|connession/i.test(text) ? "net" : "info";
+    const ic = { del: "Trash2", ok: "Check", net: "CloudOff", info: "Sparkles" }[kind], ms = undo ? 5000 : Math.min(4200, 1800 + text.length * 35);
+    t.className = "toast " + kind + (undo ? " act" : "");
+    t.innerHTML = `<span class="tic">${icon(ic)}</span><span class="tmsg">${esc(text)}</span>${undo ? `<button class="undo">Annulla</button><i class="tbar" style="animation-duration:${ms}ms"></i>` : ""}`;
+    t.hidden = false;
+    if (undo || ok) buzz();
+    const hide = () => { if (t.hidden) return; t.classList.add("out"); toastT = setTimeout(() => { t.hidden = true; t.classList.remove("out"); }, reduceMotion() ? 0 : 220); };
+    if (undo) t.querySelector(".undo").onclick = e => { e.stopPropagation(); clearTimeout(toastT); hide(); buzz(); undo(); };
+    t.onclick = () => { clearTimeout(toastT); hide(); };   // un tocco lo chiude
+    clearTimeout(toastT); toastT = setTimeout(hide, ms);
   }
   const sheet = $("#sheet"), sheetCard = $(".sheet-card");
   let sheetOnClose = null;
