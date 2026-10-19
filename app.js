@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 31;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 32;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -1942,8 +1942,9 @@
   for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, e => { if (!onMap(e)) e.preventDefault(); }, { passive: false });
   document.addEventListener("touchmove", e => { if (e.touches.length > 1 && !onMap(e)) e.preventDefault(); }, { passive: false });
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
-  let navDepth = 0; addEventListener("hashchange", () => navDepth++);
-  const backTarget = () => { const [tab, sub] = (location.hash.slice(1) || "oggi").split("/"); return tab === "utility" && sub ? "#utility" : navDepth > 0 ? "back" : null; };
+  // indietro come nelle app con la barra in basso: risale solo dentro la sezione (Utility › Spese → Utility),
+  // non salta mai da una sezione all'altra; sulla pagina principale di una sezione non fa nulla
+  const backTarget = () => { const [tab, sub] = (location.hash.slice(1) || "oggi").split("/"); return tab === "utility" && sub ? "#utility" : null; };
   if (standalone) (() => {
     let x0 = null, y0 = 0, dx = 0, on = null, t0 = 0;
     document.addEventListener("touchstart", e => {
@@ -1966,7 +1967,7 @@
       view.style.transition = "transform .22s cubic-bezier(.32, .72, 0, 1), opacity .22s";
       if (dx > innerWidth * .33 || fast) {
         buzz(); view.style.transform = `translateX(${innerWidth}px)`; view.style.opacity = "0";
-        setTimeout(() => { view.style.transition = view.style.transform = view.style.opacity = ""; const b = backTarget(); if (b === "back") history.back(); else if (b) location.hash = b; }, 200);
+        setTimeout(() => { view.style.transition = view.style.transform = view.style.opacity = ""; const b = backTarget(); if (b) location.replace(b); }, 200);
       } else { view.style.transform = ""; view.style.opacity = ""; setTimeout(() => (view.style.transition = ""), 240); }
     });
   })();
