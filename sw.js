@@ -1,6 +1,6 @@
 // Service worker: l'app si apre subito dai file salvati (anche con rete scarsa o assente) e si aggiorna
 // in sottofondo; ogni nuova versione (VERSION) viene scaricata intera e poi compare l'avviso "Aggiorna".
-const VERSION = "jp27-v53";
+const VERSION = "jp27-v54";
 const MAPPE = "jp27-mappe";   // zone offline, caratteri e icone della mappa: non si cancellano con gli aggiornamenti
 const CDN = "jp27-cdn";       // librerie, font e foto da siti esterni
 const SHELL = ["./", "index.html", "app.css", "app.js", "data.js", "photos.js", "content.js", "sync.js", "mappa-offline.js", "icons.js", "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-192.png", "icon-512.png", "favicon-32.png", "fonts/jakarta-latin.woff2", "fonts/jakarta-latin-ext.woff2"];
@@ -73,7 +73,7 @@ self.addEventListener("fetch", e => {
   }
 
   // font, icone, librerie e foto: cache prima (così funzionano offline)
-  if (["fonts.googleapis.com", "fonts.gstatic.com", "cdn.jsdelivr.net", "www.gstatic.com", "upload.wikimedia.org", "thumb.wikimedia.org"].includes(url.hostname)) {
+  if (["fonts.googleapis.com", "fonts.gstatic.com", "cdn.jsdelivr.net", "www.gstatic.com", "upload.wikimedia.org", "thumb.wikimedia.org", "lh3.googleusercontent.com"].includes(url.hostname)) {
     e.respondWith(caches.open(CDN).then(async c => {
       const hit = await c.match(e.request);
       if (hit) return hit;

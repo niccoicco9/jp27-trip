@@ -9,9 +9,11 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 53;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 54;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
+  const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
+  const customFoto = new Set();   // luoghi vostri con una foto scelta all'aggiunta
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
   const zona = Object.fromEntries(ZONE.map(z => [z.id, z]));
   const zoneOrder = Object.fromEntries(ZONE.map((z, i) => [z.id, i]));
@@ -73,8 +75,11 @@
   const cat = p => CAT[p.c] || ["MapPin", "#888", ""];
 
   // ——— foto (Wikimedia) ———
-  const photoUrl = (id, w = 330) => FOTO[id]?.u?.replace(/\/\d+px-/, `/${w}px-`);
-  const credit = id => FOTO[id] ? `https://${FOTO[id].h}.wikipedia.org/wiki/File:${encodeURIComponent(FOTO[id].f)}` : "";
+  // foto: Wikimedia (larghezza nel nome del file, "960px-") o Google (larghezza in fondo, "-w960")
+  const photoUrl = (id, w = 330) => { const u = FOTO[id]?.u; return u && (u.includes("googleusercontent") ? u.replace(/-w\d+$/, `-w${w}`) : u.replace(/\/\d+px-/, `/${w}px-`)); };
+  const credit = id => { const f = FOTO[id]; return !f ? "" : f.g ? `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(f.g)}`
+    : f.h === "commons" ? `https://commons.wikimedia.org/wiki/File:${encodeURIComponent(f.f)}` : `https://${f.h}.wikipedia.org/wiki/File:${encodeURIComponent(f.f)}`; };
+  const creditLabel = id => FOTO[id]?.g ? `Foto: Google${FOTO[id].a ? " · " + FOTO[id].a : ""}` : "Foto: Wikimedia Commons";
   function photo(id, w, cls = "") {
     const u = photoUrl(id, w), p = byId[id];
     if (u) return `<div class="ph ${cls}" data-bg="${u}"></div>`;
@@ -92,7 +97,7 @@
     };
     if (seenPh.has(u)) { el.classList.add("now"); return put(); }   // già scaricata: niente dissolvenza, niente lampeggio
     const img = new Image(); img.src = u;
-    (img.decode ? img.decode() : Promise.resolve()).catch(() => {}).then(() => { seenPh.add(u); put(); });
+    (img.decode ? img.decode() : Promise.resolve()).then(() => { seenPh.add(u); put(); }, () => el.classList.add("in"));
   }
   const lazyIO = "IntersectionObserver" in window ? new IntersectionObserver(es => es.forEach(e => {
     if (!e.isIntersecting) return;
@@ -181,6 +186,7 @@
   const BASE_N = LUOGHI.length;
   const BASE_OUT = new Set(LUOGHI.filter(p => p.out).map(p => p.id));   // scartati già in Wanderlog
   function mergeCustom() {
+    for (const k of customFoto) delete FOTO[k]; customFoto.clear();
     LUOGHI.length = BASE_N;
     for (const k of Object.keys(byId)) if (byId[k].mine) delete byId[k];
     for (let i = 0; i < BASE_N; i++) { const b = LUOGHI[i]; b.out = BASE_OUT.has(b.id); delete b.gone; }
@@ -190,6 +196,7 @@
       if (!x.n || !isFinite(x.lat) || !isFinite(x.lng)) continue;
       const p = { jp: "", d: "", c: "esperienza", ...x, z: zona[x.z] ? x.z : "altre", mine: true };
       LUOGHI.push(p); byId[p.id] = p;
+      if (isPhotoUrl(x.img?.u)) { FOTO[p.id] = { u: x.img.u, f: str(x.img.f), h: /^(it|en|ja|commons)$/.test(x.img.h) ? x.img.h : "commons", g: str(x.img.g), a: str(x.img.a).slice(0, 60) }; customFoto.add(p.id); }
     }
   }
   mergeCustom();
@@ -524,7 +531,7 @@
     const ds = dayOf(id);
     const [ic, col, cname] = cat(p);
     openSheet(`
-      <div class="cover ph${photoUrl(id) ? "" : " none"}"${photoUrl(id) ? ` data-full="${photoUrl(id, 1600)}" data-small="${photoUrl(id, 960)}"` : ""} style="${photoUrl(id) ? `background-image:url('${photoUrl(id, 960)}')` : `background:linear-gradient(135deg, ${zona[p.z].colore}, ${col})`}">${photoUrl(id) ? `<a class="credit" href="${credit(id)}" target="_blank" rel="noopener">Foto: Wikimedia Commons</a>` : icon(ic)}</div>
+      <div class="cover ph${photoUrl(id) ? "" : " none"}"${photoUrl(id) ? ` data-full="${photoUrl(id, 1600)}" data-small="${photoUrl(id, 960)}"` : ""} style="${photoUrl(id) ? `background-image:url('${photoUrl(id, 960)}')` : `background:linear-gradient(135deg, ${zona[p.z].colore}, ${col})`}">${photoUrl(id) ? `<a class="credit" href="${credit(id)}" target="_blank" rel="noopener">${esc(creditLabel(id))}</a>` : icon(ic)}</div>
       <div class="row" style="gap:6px;margin-bottom:8px">${zonePill(p.z)}<span class="pill ghost" style="color:${col}">${icon(ic)} ${cname}</span></div>
       <h2>${esc(p.n)}</h2>
       ${p.jp ? `<p class="jpname jp">${esc(p.jp)}</p>` : ""}
@@ -1706,6 +1713,38 @@
     const r = await (await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=6&countrycodes=jp&namedetails=1&accept-language=it&q=${encodeURIComponent(text)}`)).json();
     return r.map(x => ({ n: x.namedetails?.["name:it"] || x.namedetails?.["name:en"] || x.name || x.display_name.split(",")[0], jp: x.namedetails?.["name:ja"] || x.namedetails?.name || "", addr: x.display_name.split(",").slice(1, 4).join(",").trim(), lat: +x.lat, lng: +x.lon }));
   }
+  // ——— foto per i luoghi aggiunti da voi: prima quelle del locale su Google, poi Wikipedia, poi le foto scattate lì vicino ———
+  async function googlePhotos({ gid, name, lat, lng }) {
+    try {
+      await Promise.race([loadMaps(), new Promise((_, r) => setTimeout(r, 4000))]);
+      const { Place } = await google.maps.importLibrary("places");
+      let pl;
+      if (gid) { pl = new Place({ id: gid }); await pl.fetchFields({ fields: ["photos"] }); }
+      else if (name && lat != null) {
+        const { places } = await Place.searchByText({ textQuery: name, fields: ["location", "photos"], locationBias: { center: { lat, lng }, radius: 500 }, maxResultCount: 1 });
+        pl = places?.[0]; if (!pl?.location || kmBetween({ lat: pl.location.lat(), lng: pl.location.lng() }, { lat, lng }) > .5) return [];   // trovato un altro posto con lo stesso nome
+      }
+      return (pl?.photos || []).slice(0, 6).map(ph => ({ src: "g", ph, gid: pl.id, thumb: ph.getURI({ maxWidth: 330 }), a: ph.authorAttributions?.[0]?.displayName || "" }));
+    } catch { return []; }
+  }
+  async function wikiPhotos(name, lat, lng) {
+    const api = (host, q) => fetch(`https://${host}/w/api.php?` + new URLSearchParams({ format: "json", origin: "*", action: "query", ...q })).then(r => r.json()).catch(() => ({}));
+    const pages = j => Object.values(j.query?.pages || {}).sort((a, b) => (a.index || 0) - (b.index || 0));
+    const clean = u => u?.split("?")[0];
+    const [arts, geo] = await Promise.all([
+      Promise.all((name ? ["it", "en", "ja"] : []).map(l => api(`${l}.wikipedia.org`, { generator: "search", gsrsearch: name, gsrlimit: 3, prop: "pageimages|coordinates", piprop: "thumbnail|name", pithumbsize: 960 }).then(j => ({ l, j })))),
+      lat != null ? api("commons.wikimedia.org", { generator: "geosearch", ggscoord: `${lat}|${lng}`, ggsradius: 200, ggslimit: 12, ggsnamespace: 6, prop: "imageinfo", iiprop: "url", iiurlwidth: 960 }) : {},
+    ]);
+    const out = [];
+    // articolo di Wikipedia con quel nome e nello stesso posto (entro 3 km): la sua foto principale
+    for (const { l, j } of arts) for (const p of pages(j)) {
+      const c = p.coordinates?.[0], u = clean(p.thumbnail?.source);
+      if (isPhotoUrl(u) && u.includes("/wikipedia/commons/") && c && lat != null && kmBetween({ lat: c.lat, lng: c.lon }, { lat, lng }) < 3) out.push({ src: "w", u, f: p.pageimage, h: l });
+    }
+    // foto scattate a meno di 200 m (utili per i posti piccoli, ma da scegliere a mano)
+    for (const p of pages(geo)) { const u = clean(p.imageinfo?.[0]?.thumburl); if (isPhotoUrl(u) && /\.(jpe?g|png)$/i.test(p.title)) out.push({ src: "w", u, f: p.title.replace(/^File:/, ""), h: "commons", near: true }); }
+    const seen = new Set(); return out.filter(x => !seen.has(x.u) && seen.add(x.u));
+  }
   // nome giapponese (per il tassista) di un risultato Google
   async function jpName(gid) {
     try { const { Place } = await google.maps.importLibrary("places"); const pl = new Place({ id: gid, requestedLanguage: "ja" }); await pl.fetchFields({ fields: ["displayName"] }); return pl.displayName || ""; } catch { return ""; }
@@ -1713,7 +1752,34 @@
 
   function editLuogo(p, day) {
     const isNew = !p.id;
-    let st = { c: p.c || "cibo", z: p.z || "", lat: p.lat, lng: p.lng, where: p.lat ? (p.addr || `${(+p.lat).toFixed(5)}, ${(+p.lng).toFixed(5)}`) : "", pren: !!p.pren };
+    let st = { c: p.c || "cibo", z: p.z || "", lat: p.lat, lng: p.lng, where: p.lat ? (p.addr || `${(+p.lat).toFixed(5)}, ${(+p.lng).toFixed(5)}`) : "", pren: !!p.pren,
+      gid: "", sel: isPhotoUrl(p.img?.u) ? "cur" : -1, picked: isPhotoUrl(p.img?.u) };   // sel: "cur" = foto già salvata, numero = proposta, -1 = nessuna
+    let cands = [], phTok = 0, phT;
+    const thumbOf = c => c.src === "g" ? c.thumb : c.u.replace(/\/\d+px-/, "/330px-");
+    const drawPh = el => {
+      const box = $("#l-ph", el); if (!box) return;
+      const btn = (k, src) => `<button type="button" class="lphb${st.sel === k ? " on" : ""}" data-ph="${k}"><img src="${esc(src)}" alt="" decoding="async"></button>`;
+      box.innerHTML = (isPhotoUrl(p.img?.u) ? btn("cur", photoUrl(p.id, 330) || p.img.u) : "")
+        + cands.map((c, k) => btn(k, thumbOf(c))).join("")
+        + `<button type="button" class="lphb none${st.sel === -1 ? " on" : ""}" data-ph="-1">Nessuna</button>`;
+      $("#l-phn", el).textContent = st.loading ? "Cerco le foto…" : cands.length ? (cands[0].src === "g" ? "Foto da Google Maps e Wikimedia: tocca quella che preferisci." : "Foto da Wikimedia: tocca quella che preferisci.")
+        : st.lat ? "Nessuna foto trovata: resta il colore della categoria." : "Scegli dove si trova e cerco una foto.";
+    };
+    const findPh = el => {
+      clearTimeout(phT);
+      phT = setTimeout(async () => {
+        if (st.lat == null && !st.gid) return;
+        const my = ++phTok, name = $("#l-n", el)?.value.trim() || "";
+        st.loading = true; drawPh(el);
+        const [g, w] = await Promise.all([googlePhotos({ gid: st.gid, name, lat: +st.lat, lng: +st.lng }), wikiPhotos(name, +st.lat, +st.lng)]);
+        if (my !== phTok || !el.isConnected) return;
+        cands = [...g, ...w.filter(x => !x.near), ...w.filter(x => x.near)].slice(0, 10);
+        st.loading = false;
+        // scelta automatica: la prima foto sicura (del locale o della sua pagina Wikipedia), non quelle "dei dintorni"
+        if (!st.picked) { const k = cands.findIndex(c => !c.near); st.sel = k; }
+        drawPh(el);
+      }, 500);
+    };
     const draw = el => {
       $$("[data-lc]", el).forEach(b => b.classList.toggle("on", b.dataset.lc === st.c));
       $$("[data-lz]", el).forEach(b => b.classList.toggle("on", b.dataset.lz === st.z));
@@ -1723,10 +1789,10 @@
         ? `${icon("MapPin")}<span class="grow">${esc(st.where)}</span><a href="https://www.google.com/maps/search/?api=1&query=${st.lat},${st.lng}" target="_blank" rel="noopener">Controlla</a>`
         : `${icon("MapPin")}<span class="grow">Posizione non ancora scelta</span>`;
     };
-    const setPos = (el, lat, lng, where) => {
-      Object.assign(st, { lat, lng, where });
+    const setPos = (el, lat, lng, where, gid = "") => {
+      Object.assign(st, { lat, lng, where, gid });
       if (!st.zManual) st.z = guessZone(lat, lng);
-      draw(el);
+      draw(el); findPh(el);
     };
     openSheet(`
       <div class="ttl"><span class="pic" style="background:var(--shu)">${icon("MapPin")}</span><h2>${isNew ? "Nuovo luogo" : "Modifica luogo"}</h2></div>
@@ -1737,6 +1803,7 @@
         <div class="row" style="gap:8px;margin-top:8px"><button class="btn small" id="l-gps">${icon("LocateFixed")} Sono qui</button><button class="btn small" id="l-link">${icon("Link")} Incolla link Maps</button></div>
         <div id="l-pos" class="lpos"></div>
       </div>
+      <div class="fl"><span>Foto</span><div id="l-ph" class="lph"></div><small id="l-phn" class="muted small"></small></div>
       <label class="fl"><span>Nome</span><input id="l-n" value="${esc(p.n || "")}" placeholder="Come lo chiamate voi" autocomplete="off"></label>
       <label class="fl"><span>Nome in giapponese (per il tassista)</span><input id="l-jp" value="${esc(p.jp || "")}" placeholder="Facoltativo" autocomplete="off"></label>
       <div class="fl"><span>Categoria</span><div class="chips" style="margin:0;padding:0;flex-wrap:wrap">${Object.entries(CAT).map(([k, [ic, col, n]]) => `<button class="chip" data-lc="${k}"><span style="color:${col};display:contents">${icon(ic)}</span> ${n}</button>`).join("")}</div></div>
@@ -1749,7 +1816,10 @@
       <label class="check" style="border:none;padding:0 0 12px"><input type="checkbox" id="l-pren" ${st.pren ? "checked" : ""}><span>Da prenotare in anticipo</span></label>
       <div class="btns">${isNew ? `<button class="btn" data-close>Annulla</button>` : `<button class="btn" id="l-del" style="color:var(--shu)">${icon("Trash2")} Elimina</button>`}<button class="btn primary" id="l-save">Salva</button></div>
     `, el => {
-      draw(el);
+      draw(el); drawPh(el);
+      if (!isNew && !st.picked && st.lat != null) findPh(el);   // luogo già salvato senza foto: propone qualcosa
+      $("#l-ph", el).onclick = e => { const b = e.target.closest("[data-ph]"); if (!b) return; st.sel = b.dataset.ph === "cur" ? "cur" : +b.dataset.ph; st.picked = true; buzz(); drawPh(el); };
+      $("#l-n", el).addEventListener("change", () => { if (!st.gid) findPh(el); });
       const res = $("#l-res", el), qi = $("#l-q", el);
       let found = [];
       const doSearch = async () => {
@@ -1766,7 +1836,7 @@
         const b = e.target.closest("[data-lr]"); if (!b) return;
         const r = found[+b.dataset.lr]; res.innerHTML = ""; qi.value = "";
         if (!$("#l-n", el).value.trim()) $("#l-n", el).value = r.n;
-        setPos(el, r.lat, r.lng, [r.n, r.addr].filter(Boolean).join(" · "));
+        setPos(el, r.lat, r.lng, [r.n, r.addr].filter(Boolean).join(" · "), r.gid || "");
         const jp = r.jp || (r.gid ? await jpName(r.gid) : "");
         if (jp && !$("#l-jp", el).value.trim()) $("#l-jp", el).value = jp;
       };
@@ -1784,7 +1854,7 @@
       };
       $$("[data-lc]", el).forEach(b => b.onclick = () => { st.c = b.dataset.lc; draw(el); });
       $$("[data-lz]", el).forEach(b => b.onclick = () => { st.z = b.dataset.lz; st.zManual = true; draw(el); });
-      $("#l-save", el).onclick = () => {
+      $("#l-save", el).onclick = async e => {
         const v = id => $("#" + id, el).value.trim();
         const n = v("l-n");
         if (!n) return toast("Scrivi il nome del luogo");
@@ -1792,6 +1862,19 @@
         const eur = parseNum(v("l-eur"));
         const item = { id: p.id || "u" + uid(), n, jp: v("l-jp"), d: v("l-d"), c: st.c, z: st.z || guessZone(st.lat, st.lng), lat: +(+st.lat).toFixed(6), lng: +(+st.lng).toFixed(6), addr: st.where, chi: p.chi || me || "", dur: v("l-dur"), pren: $("#l-pren", el).checked, eur: eur > 0 ? eur : null, ts: p.ts || Date.now() };
         if (!item.pren) booked.delete(item.id);
+        // foto scelta: quelle di Google si salvano come indirizzo diretto dell'immagine (così funzionano anche offline)
+        let img = null;
+        if (st.sel === "cur") img = p.img;
+        else if (st.sel >= 0 && cands[st.sel]) {
+          const c = cands[st.sel];
+          if (c.src === "w") img = { u: c.u, f: c.f || "", h: c.h };
+          else {
+            const b = e.currentTarget; b.disabled = true; b.textContent = "Salvo…";
+            try { const u = (await (await fetch(c.ph.getURI({ maxWidth: 960 }) + "&skipHttpRedirect=true")).json()).photoUri; if (isPhotoUrl(u)) img = { u, g: c.gid, a: c.a }; } catch {}
+            if (!el.isConnected) return;
+          }
+        }
+        item.img = img;
         const saved = putItem("luoghi", item);
         toast(isNew ? "Luogo aggiunto ✓" : "Salvato ✓");
         if (day) { const dd = getDay(day); if (!dd.i.includes(saved.id)) dd.i.push(saved.id); savePlan(); openPicker(day); }

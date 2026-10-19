@@ -849,3 +849,11 @@ main#view { will-change: auto; }
 .hero.solid::after { display: none; }
 /* la scheda entra dal bordo in basso come quelle di iOS */
 @keyframes sheet-up { from { transform: translate3d(0, 100%, 0); } }
+/* foto del luogo aggiunto: proposte da toccare */
+.lph { display: flex; gap: 8px; overflow-x: auto; padding: 2px 16px 4px; margin: 0 -16px 4px; scrollbar-width: none; }
+.lph::-webkit-scrollbar { display: none; }
+.lphb { flex: none; width: 84px; height: 84px; border-radius: 14px; overflow: hidden; padding: 0; border: 2px solid transparent; background: var(--card-2); position: relative; }
+.lphb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lphb.on { border-color: var(--shu); box-shadow: 0 0 0 2px var(--shu-soft); }
+.lphb.none { display: grid; place-items: center; color: var(--muted); font-size: .76rem; font-weight: 700; border: 1.5px dashed var(--line); }
+.lphb.none.on { border: 2px solid var(--shu); color: var(--shu); }
