@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 66;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 67;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -893,12 +893,12 @@
         const mx = e.touches[0].clientX - x0, my = e.touches[0].clientY - y0;
         if (on === null && (Math.abs(mx) > 10 || Math.abs(my) > 10)) on = Math.abs(mx) > Math.abs(my) * 1.3 && mx < 0;
         if (!on) return;
-        dx = Math.min(0, mx); card.style.transform = `translateX(${dx}px)`; li.classList.toggle("swipe-go", dx < -110);
+        dx = Math.min(0, mx); card.style.transform = `translateX(${dx}px)`; li.classList.add("swiping"); li.classList.toggle("swipe-go", dx < -110);
       }, { passive: true });
       li.addEventListener("touchend", () => {
         card.style.transition = "";
         if (on && dx < -110) { card.style.transform = "translateX(-110%)"; setTimeout(() => collapse(li).then(() => removeStop(k)), 140); }
-        else { card.style.transform = ""; li.classList.remove("swipe-go"); }
+        else { card.style.transform = ""; li.classList.remove("swipe-go"); setTimeout(() => li.classList.remove("swiping"), 220); }
       });
     });
     $("#share")?.addEventListener("click", sharePlan);
@@ -2528,8 +2528,22 @@
     if ((newDay || long) && !sheetOpen()) { const [tab] = (location.hash.slice(1) || "oggi").split("/"); if (tab === "oggi" || tab === "giorni") rerender(); }
   });
 
-  // su iPhone :active (l'effetto pressione) funziona solo con un ascoltatore touchstart
-  document.addEventListener("touchstart", () => {}, { passive: true });
+  // effetto pressione come nelle app native: compare solo quando è davvero un tocco, non quando il dito
+  // appoggiato inizia a scorrere la pagina (con :active le card si "accendevano" anche scorrendo)
+  const PRESSABLE = ".ucard, .qa, .dchip, .chip, .mini, .prep, .mcard, .chapter, .lres button, .whos button, .who button, .addgrid button, .dayact > *, .iconbtn, .seg button, .card.pcard, .card.spesa, .nextstop .row, .gcard, .place, .btn, .urow, label.check, .phrase";
+  let press = null;
+  const unpress = (keep = 0) => { if (!press) return; clearTimeout(press.t); const el = press.el; press = null; setTimeout(() => el.classList.remove("pressed"), keep); };
+  document.addEventListener("pointerdown", e => {
+    unpress();
+    if (e.pointerType === "mouse" && e.button) return;
+    const el = e.target.closest(PRESSABLE); if (!el || el.disabled || el.closest(".dragging, .swiping")) return;
+    // un attimo di attesa: se nel frattempo il dito si muove è uno scorrimento, e non si accende niente
+    press = { el, x: e.clientX, y: e.clientY, t: setTimeout(() => el.classList.add("pressed"), 60) };
+  }, { passive: true });
+  document.addEventListener("pointermove", e => { if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 8) { press.el.classList.remove("pressed"); unpress(); } }, { passive: true });
+  document.addEventListener("pointerup", () => { if (!press) return; press.el.classList.add("pressed"); unpress(110); }, { passive: true });   // tocco veloce: si vede comunque
+  document.addEventListener("pointercancel", () => { if (press) { press.el.classList.remove("pressed"); unpress(); } }, { passive: true });
+  addEventListener("scroll", () => { if (press) { press.el.classList.remove("pressed"); unpress(); } }, { passive: true, capture: true });
   // vibrazione leggera quando si spunta qualcosa
   document.addEventListener("change", e => { if (e.target.matches?.('input[type="checkbox"]') && !e.target.closest(".haptic")) buzz(); });
   // ogni pagina ricorda dov'eri arrivato; entrare in una sottopagina scorre da destra, tornare da sinistra

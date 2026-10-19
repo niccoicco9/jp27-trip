@@ -239,7 +239,7 @@ main.enter { animation: fade .18s ease-out; }
 .btn.dark { background: var(--ink); color: var(--bg); border-color: transparent; }
 .btn.small { min-height: 40px; padding: 6px 12px; font-size: .82rem; border-radius: 12px; }
 .btn.ghost { background: transparent; box-shadow: none; }
-.btn:active { transform: scale(.97); }
+.btn.pressed { transform: scale(.97); }
 .btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .btns .btn { flex: 1 1 0; }
 
@@ -327,7 +327,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: color-m
   display: flex; gap: 12px; align-items: center; padding: 10px; background: var(--card); border: 1px solid var(--line);
   border-radius: 20px; margin-bottom: 8px; cursor: pointer; box-shadow: var(--shadow-s); transition: transform .15s;
 }
-.place:active { transform: scale(.985); }
+.place.pressed { transform: scale(.985); }
 .place .ph { width: 72px; height: 72px; border-radius: 13px; flex: none; }
 .place h4 { margin: 0; font-size: .98rem; font-weight: 700; line-height: 1.25; }
 .place .jp { color: var(--muted); font-size: .78rem; margin-top: 1px; }
@@ -442,7 +442,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: color-m
 .gcard .ph.none { display: grid; place-items: center; }
 .gcard .ph.none svg.i { width: 54px; height: 54px; opacity: .5; margin-bottom: 40px; }
 .gcard::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, rgba(0,0,0,0) 35%, rgba(10,6,4,.72) 100%); }
-.gcard:active { transform: scale(.98); }
+.gcard.pressed { transform: scale(.98); }
 .gin { position: absolute; left: 14px; right: 14px; bottom: 12px; }
 .gin b { display: block; font-size: 1.1rem; font-weight: 800; line-height: 1.2; text-shadow: 0 1px 10px rgba(0,0,0,.35); }
 .gin small { display: block; font-size: .78rem; opacity: .85; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -715,8 +715,9 @@ body.on-map .map-loading { padding-top: var(--head, 60px); }
 /* tappe: scorri per togliere, trascina per riordinare, orari */
 .tl .sw { position: relative; border-radius: 20px; }
 .tl .sw .place { position: relative; z-index: 1; transition: transform .2s var(--ease); }
-.swipebg { position: absolute; inset: 0; border-radius: 20px; background: var(--shu); color: #fff; display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding-right: 20px; font-weight: 800; font-size: .85rem; opacity: .55; transition: opacity .15s; }
-.swipe-go .swipebg { opacity: 1; }
+.swipebg { position: absolute; inset: 0; border-radius: 20px; background: var(--shu); color: #fff; display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding-right: 20px; font-weight: 800; font-size: .85rem; opacity: 0; visibility: hidden; transition: opacity .15s; }
+.swiping .swipebg { visibility: visible; opacity: .55; }
+.swipe-go .swipebg { visibility: visible; opacity: 1; }
 .tl li.dragging { transition: none; z-index: 5; }
 .tl li.dragging .place { box-shadow: var(--shadow-l); transform: scale(1.02); }
 .tl .grip { touch-action: none; cursor: grab; width: 32px; height: 32px; left: 0; top: 26px; }
@@ -774,11 +775,11 @@ main.enter.nav-fade { animation: fade .2s ease-out; }
   transition: transform .5s cubic-bezier(.34, 1.56, .64, 1), background-color .2s, box-shadow .2s;   /* rilascio con un piccolo rimbalzo */
   -webkit-tap-highlight-color: transparent;
 }
-:is(.ucard, .qa, .dchip, .chip, .mini, .prep, .mcard, .chapter, .lres button, .whos button, .who button, .addgrid button, .dayact > *, .iconbtn, .seg button, .card.pcard, .card.spesa, .nextstop .row, .gcard, .place, .btn):active { transition-duration: .1s; transition-timing-function: ease-out; }
-.ucard:active, .qa:active, .mini:active, .mcard:active, .chapter:active, .lres button:active, .whos button:active, .who button:active, .addgrid button:active, .dayact > :active:not(:disabled), .card.pcard:active, .card.spesa:active, .nextstop .row:active { transform: scale(.97); }
-.dchip:active, .chip:active, .iconbtn:active, .seg button:active { transform: scale(.92); }
-.prep:active, label.check:active { background-color: color-mix(in srgb, var(--ink) 5%, transparent); }
-.dchip.on:active { transform: translateY(-2px) scale(.94); }
+:is(.ucard, .qa, .dchip, .chip, .mini, .prep, .mcard, .chapter, .lres button, .whos button, .who button, .addgrid button, .dayact > *, .iconbtn, .seg button, .card.pcard, .card.spesa, .nextstop .row, .gcard, .place, .btn).pressed { transition-duration: .1s; transition-timing-function: ease-out; }
+.ucard.pressed, .qa.pressed, .mini.pressed, .mcard.pressed, .chapter.pressed, .lres button.pressed, .whos button.pressed, .who button.pressed, .addgrid button.pressed, .dayact > .pressed:not(:disabled), .card.pcard.pressed, .card.spesa.pressed, .nextstop .row.pressed { transform: scale(.97); }
+.dchip.pressed, .chip.pressed, .iconbtn.pressed, .seg button.pressed { transform: scale(.92); }
+.prep.pressed, label.check.pressed, .phrase.pressed, .tl .stops label.pressed { opacity: .55; }
+.dchip.on.pressed { transform: translateY(-2px) scale(.94); }
 
 /* ——— v27: mappa ordinata ——— */
 /* la scheda del luogo sta sempre sopra le puntine */
@@ -824,7 +825,7 @@ main#view { will-change: auto; }
 .urow > svg.i:last-child { color: var(--muted); width: 18px; height: 18px; }
 .uic { width: 32px; height: 32px; border-radius: 10px; background: var(--card-2); color: var(--shu); display: grid; place-items: center; flex: none; }
 .uic svg.i { width: 18px; height: 18px; }
-.urow:active { opacity: .6; }
+.urow.pressed { opacity: .55; }
 /* avviso offline */
 .offpill { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 50px); transform: translateX(-50%); z-index: 45; display: inline-flex; align-items: center; gap: 7px;
   padding: 7px 14px; border-radius: 99px; background: var(--ink); color: var(--bg); font-size: .8rem; font-weight: 700; box-shadow: var(--shadow-l); animation: rise .3s var(--ease); white-space: nowrap; }
@@ -888,9 +889,9 @@ main#view { will-change: auto; }
 /* ——— animazioni: numeri che non ballano, card che si premono, pagine che scorrono ——— */
 .big-n, .stat b, .gpill, [data-count] { font-variant-numeric: tabular-nums; }
 .gcard, .place, .btn { transition: transform .5s cubic-bezier(.34, 1.56, .64, 1), background-color .2s, box-shadow .2s, opacity .2s; }
-.gcard:active { transform: scale(.97); }
-.place:active { transform: scale(.98); }
-.btn:active:not(:disabled) { transform: scale(.96); }
+.gcard.pressed { transform: scale(.97); }
+.place.pressed { transform: scale(.98); }
+.btn.pressed:not(:disabled) { transform: scale(.96); }
 
 /* View Transitions (Safari 18 e successivi): barra in basso e testata restano ferme, la pagina scorre */
 .tabs { view-transition-name: tabbar; }
@@ -964,3 +965,7 @@ h3, .ugroup, .ugroup:first-of-type, .galh, .section-h { margin-top: var(--sp-6);
 .sheet .ttl { margin-bottom: var(--sp-4); }
 .sheet-body > h2 + :not(.lead) { margin-top: var(--sp-3); }
 .who { gap: var(--sp-2); margin-top: var(--sp-3); }
+
+/* tocco: le righe delle liste si schiariscono (niente rettangolo grigio), card e pulsanti si abbassano */
+.prep, label.check, .urow, .phrase { transition: opacity .25s ease-out; }
+:is(.prep, label.check, .urow, .phrase).pressed { transition-duration: .08s; }
