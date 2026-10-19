@@ -60,15 +60,20 @@
 /* ——— Base ——— */
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html, body { margin: 0; touch-action: pan-x pan-y; overscroll-behavior-y: none; }   /* niente zoom con due dita né rimbalzo della pagina */
+html, body { margin: 0; touch-action: pan-x pan-y; }   /* niente zoom con due dita; il rimbalzo in cima e in fondo resta, come nelle app di iPhone */
 html { background: var(--bg); font-synthesis: none; -webkit-font-synthesis: none; -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }   /* mai grassetto/corsivo finti */
 /* è un'app, non un sito: niente selezione del testo, niente menu/anteprima tenendo premuto, niente doppio tocco per zoomare */
 img, a { -webkit-user-drag: none; -webkit-touch-callout: none; }
 input, textarea, select, [contenteditable="true"] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
 .copiabile { -webkit-user-select: all; user-select: all; -webkit-touch-callout: default; }
+/* testo da leggere (descrizioni, nomi giapponesi, note, guide, frasi): tieni premuto per selezionarlo e copiarlo,
+   come in Note o Safari. Pulsanti, link, schede toccabili e barra restano "da app" */
+#sheet-body, .prose, .card, .note, .jp, .jpname, .big { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+:is(a, button, label, .btn, .chip, .pill, .place, .tl li, .tabs, .grab, .ph, .cover),
+:is(a, button, label, .btn, .chip, .place, .tl li, .tabs) * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 body {
-  background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 15.5px; line-height: 1.5;
+  background: var(--bg); color: var(--ink); font-family: var(--font); font-size: .97rem; line-height: 1.5;
   -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent;
   padding-bottom: calc(var(--nav-h) + 24px + env(safe-area-inset-bottom));
   transition: background-color .3s;
@@ -98,6 +103,21 @@ svg.i { width: 1.15em; height: 1.15em; flex: none; vertical-align: -.2em; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --head-bg: #000000; } }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; text-decoration: none; color: inherit; }
 .brand h1 { font-size: 1.02rem; font-weight: 800; margin: 0; line-height: 1.15; }
+/* titolo compatto: quando il titolo grande della pagina scorre sotto la testata, compare qui (come le app di iPhone) */
+.brand > div { position: relative; min-width: 0; }
+.brand > div > :not(.ctitle) { transition: opacity .2s, transform .2s; }
+.ctitle { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-20%); opacity: 0; pointer-events: none;
+  font-size: 1.12rem; font-weight: 800; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity .2s, transform .2s; }
+.top.compact .ctitle { opacity: 1; transform: translateY(-50%); }
+.top.compact .brand > div > :not(.ctitle) { opacity: 0; transform: translateY(-6px); }
+/* foto a schermo intero: due dita per ingrandire, doppio tocco, trascina giù per chiudere */
+.cover[data-full] { cursor: zoom-in; }
+.viewer { position: fixed; inset: 0; z-index: 90; background: #000; display: grid; place-items: center; touch-action: none; animation: fade .2s; overflow: hidden; }
+.viewer.out { opacity: 0; transition: opacity .2s; }
+.viewer img { max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center; will-change: transform; -webkit-user-select: none; user-select: none; }
+.viewer .vx { position: absolute; top: calc(12px + env(safe-area-inset-top)); right: 14px; width: 40px; height: 40px; border-radius: 99px; border: 0;
+  background: rgba(255,255,255,.18); color: #fff; display: grid; place-items: center; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.viewer .vx svg { width: 20px; height: 20px; }
 .brand p { margin: 0; font-size: .74rem; color: var(--muted); }
 .hanko { width: 36px; height: 36px; border-radius: 10px; flex: none; display: block; box-shadow: 0 4px 12px rgba(38, 40, 94, .35); }
 .clocks { font-size: .72rem; color: var(--muted); text-align: right; line-height: 1.3; white-space: nowrap; }

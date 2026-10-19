@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 37;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 38;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -341,8 +341,10 @@
   }
   function go(h) {
     const cur = location.hash || "#oggi";
+    // stessa pagina: chiude la scheda aperta, altrimenti torna in cima (come ritoccare la scheda attiva su iPhone)
+    if (h === cur) { if (sheetOpen()) closeSheet(); else scrollTo({ top: 0, behavior: reduceMotion() ? "auto" : "smooth" }); return; }
     if (cur === "#utility" && isSub(h)) { subPushed = true; setUrl(h, true); return; }
-    if (!subPushed) { if (h !== cur) land(h); return; }
+    if (!subPushed) { land(h); return; }
     subPushed = false; pendingGo = h; history.back();
     // rete di sicurezza: se la cronologia non risponde (passo già tolto), si va comunque alla pagina
     setTimeout(() => { if (pendingGo === h) { pendingGo = null; land(h); } }, 700);
@@ -493,7 +495,7 @@
     const ds = dayOf(id);
     const [ic, col, cname] = cat(p);
     openSheet(`
-      <div class="cover ph${photoUrl(id) ? "" : " none"}" style="${photoUrl(id) ? `background-image:url('${photoUrl(id, 960)}')` : `background:linear-gradient(135deg, ${zona[p.z].colore}, ${col})`}">${photoUrl(id) ? `<a class="credit" href="${credit(id)}" target="_blank" rel="noopener">Foto: Wikimedia Commons</a>` : icon(ic)}</div>
+      <div class="cover ph${photoUrl(id) ? "" : " none"}"${photoUrl(id) ? ` data-full="${photoUrl(id, 1600)}" data-small="${photoUrl(id, 960)}"` : ""} style="${photoUrl(id) ? `background-image:url('${photoUrl(id, 960)}')` : `background:linear-gradient(135deg, ${zona[p.z].colore}, ${col})`}">${photoUrl(id) ? `<a class="credit" href="${credit(id)}" target="_blank" rel="noopener">Foto: Wikimedia Commons</a>` : icon(ic)}</div>
       <div class="row" style="gap:6px;margin-bottom:8px">${zonePill(p.z)}<span class="pill ghost" style="color:${col}">${icon(ic)} ${cname}</span></div>
       <h2>${esc(p.n)}</h2>
       ${p.jp ? `<p class="jpname jp">${esc(p.jp)}</p>` : ""}
@@ -1956,13 +1958,25 @@
     tabLinks().forEach(a => a.classList.toggle("on", a.dataset.tab === tab));
     syncInd(!L.raf && L.x === 0);
     ({ oggi: renderOggi, giorni: () => renderGiorni(sub), luoghi: renderLuoghi, mappa: renderMappa, utility: () => renderUtility(sub) }[tab] || renderOggi)();
+    watchTitle();
   }
+  // titolo compatto nella testata quando quello grande della pagina scorre via
+  let pageTitle = null;
+  function watchTitle() {
+    pageTitle = $("#view > h2, #view > .between > h2");
+    if (pageTitle) $("#ctitle").textContent = pageTitle.textContent;
+    checkTitle();
+  }
+  function checkTitle() {
+    const top = $(".top"), on = !!pageTitle?.isConnected && pageTitle.getBoundingClientRect().bottom < top.offsetHeight;
+    if (top.classList.contains("compact") !== on) top.classList.toggle("compact", on);
+  }
+  addEventListener("scroll", checkTitle, { passive: true });
   function rerender() { const [tab] = (location.hash.slice(1) || "oggi").split("/"); if (tab !== "mappa") keepScroll(render); }
   // è un'app: niente zoom della pagina con due dita (iOS ignora user-scalable=no, serve bloccarlo a mano).
   // La mappa resta libera: ha il suo zoom
   const onMap = e => !!e.target?.closest?.(".mapwrap, .mapel");
   for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, e => { if (!onMap(e)) e.preventDefault(); }, { passive: false });
-  document.addEventListener("touchmove", e => { if (e.touches.length > 1 && !onMap(e)) e.preventDefault(); }, { passive: false });
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
   // indietro come nelle app con la barra in basso: risale solo dentro la sezione (Utility › Spese → Utility),
   // non salta mai da una sezione all'altra; sulla pagina principale di una sezione non fa nulla
@@ -1973,16 +1987,18 @@
       const t = e.touches[0];
       if (e.touches.length > 1 || t.clientX > 22 || onMap(e) || sheetOpen() || !$("#big").hidden || !backTarget()) { x0 = null; return; }
       x0 = t.clientX; y0 = t.clientY; dx = 0; on = null; t0 = performance.now();
+      document.addEventListener("touchmove", move, { passive: false });   // solo durante questo gesto: lo scroll normale resta fluido
     }, { passive: true });
-    document.addEventListener("touchmove", e => {
+    function move(e) {
       if (x0 == null) return;
       const t = e.touches[0], mx = t.clientX - x0, my = t.clientY - y0;
       if (on === null && (Math.abs(mx) > 8 || Math.abs(my) > 8)) on = mx > Math.abs(my);
       if (!on) { if (on === false) x0 = null; return; }
       e.preventDefault();
       dx = Math.max(0, mx); view.style.transition = "none"; view.style.transform = `translateX(${dx}px)`; view.style.opacity = String(1 - Math.min(.4, dx / innerWidth * .6));
-    }, { passive: false });
+    }
     document.addEventListener("touchend", () => {
+      document.removeEventListener("touchmove", move);
       if (x0 == null || !on) { x0 = null; return; }
       x0 = null;
       const fast = dx > 40 && dx / (performance.now() - t0) > .5;
@@ -2059,7 +2075,63 @@
     if (st?.d && Date.now() - new Date(st.d) < 12 * 3600e3) return;
     fetch("https://api.frankfurter.dev/v1/latest?base=EUR&symbols=JPY").then(r => r.json()).then(j => { if (j?.rates?.JPY) LS.set("rate", { r: j.rates.JPY, d: j.date }); }).catch(() => {});
   })();
-  document.addEventListener("contextmenu", e => { if (!e.target.closest("input, textarea, select, .copiabile")) e.preventDefault(); });
+  // dimensione del testo come in Impostazioni › Schermo e luminosità › Dimensioni testo di iPhone
+  function textScale() {
+    if (!CSS.supports?.("font", "-apple-system-body") || !navigator.maxTouchPoints) return;   // solo iPhone/iPad (sul Mac la misura è diversa)
+    const probe = document.createElement("span"); probe.style.cssText = "font:-apple-system-body;position:absolute;visibility:hidden"; probe.textContent = "x";
+    document.body.appendChild(probe); const px = parseFloat(getComputedStyle(probe).fontSize); probe.remove();
+    const r = px ? Math.min(1.3, Math.max(.9, px / 17)) : 1;   // 17 = dimensione standard di iPhone; limiti perché l'impaginazione regga
+    document.documentElement.style.fontSize = Math.abs(r - 1) < .01 ? "" : 16 * r + "px";
+    document.documentElement.style.setProperty("--head", ($(".top")?.offsetHeight || 60) + "px");
+  }
+  textScale();
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") textScale(); });
+
+  // foto a schermo intero: due dita per ingrandire, doppio tocco per zoom, trascina giù per chiudere
+  function openViewer(src, small) {
+    const v = document.createElement("div"); v.className = "viewer";
+    v.innerHTML = `<img src="${src}" alt=""><button class="vx" aria-label="Chiudi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>`;
+    document.body.appendChild(v);
+    const img = $("img", v); if (small) img.onerror = () => { img.onerror = null; img.src = small; };   // foto originale più piccola di 1600px
+    let s = 1, tx = 0, ty = 0, st = null, lastTap = 0;
+    const apply = anim => { img.style.transition = anim ? "transform .25s cubic-bezier(.32, .72, 0, 1)" : "none"; img.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`; };
+    const close = () => { if (v.classList.contains("out")) return; v.classList.add("out"); document.removeEventListener("keydown", key); setTimeout(() => v.remove(), 200); };
+    const key = e => { if (e.key === "Escape") close(); };
+    const mid = t => ({ x: (t[0].clientX + t[1].clientX) / 2 - innerWidth / 2, y: (t[0].clientY + t[1].clientY) / 2 - innerHeight / 2 });
+    const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    v.addEventListener("touchstart", e => {
+      const t = e.touches;
+      if (t.length === 2) { const m = mid(t); st = { d: dist(t), s, lx: (m.x - tx) / s, ly: (m.y - ty) / s }; return; }
+      if (t.length !== 1) return;
+      const now = Date.now();
+      if (now - lastTap < 280) {   // doppio tocco: ingrandisce dove tocchi, o torna normale
+        if (s > 1) { s = 1; tx = ty = 0; } else { const x = t[0].clientX - innerWidth / 2, y = t[0].clientY - innerHeight / 2; s = 2.5; tx = -x * 1.5; ty = -y * 1.5; }
+        apply(true); st = null; lastTap = 0; return;
+      }
+      lastTap = now; st = { x: t[0].clientX, y: t[0].clientY, tx, ty };
+    }, { passive: true });
+    v.addEventListener("touchmove", e => {
+      e.preventDefault(); const t = e.touches; if (!st) return;
+      if (t.length === 2 && st.d) { const m = mid(t); s = Math.min(5, Math.max(1, st.s * dist(t) / st.d)); tx = m.x - st.lx * s; ty = m.y - st.ly * s; apply(); return; }
+      if (t.length === 1 && st.x != null) {
+        const dx = t[0].clientX - st.x, dy = t[0].clientY - st.y;
+        if (s > 1) { tx = st.tx + dx; ty = st.ty + dy; }
+        else { tx = 0; ty = Math.max(0, dy); v.style.background = `rgba(0,0,0,${1 - Math.min(.7, ty / 300)})`; }
+        apply();
+      }
+    }, { passive: false });
+    v.addEventListener("touchend", e => {
+      if (e.touches.length) { st = null; return; }
+      if (s <= 1.02) { if (ty > 110) return close(); s = 1; tx = ty = 0; v.style.background = ""; apply(true); }
+      st = null;
+    });
+    v.addEventListener("click", e => { if (e.target.closest(".vx") || (!("ontouchstart" in window) && e.target === v)) close(); });
+    document.addEventListener("keydown", key);
+  }
+  document.addEventListener("click", e => { const c = e.target.closest(".cover[data-full]"); if (c && !e.target.closest("a")) openViewer(c.dataset.full, c.dataset.small); });
+
+  // tieni premuto: menu Copia sul testo da leggere; niente menu/anteprima su pulsanti, link, foto e schede toccabili
+  document.addEventListener("contextmenu", e => { if (e.target.closest("a, img, button, label, .tabs, .place, .tl li, .ph, .cover, .viewer") && !e.target.closest("input, textarea, .copiabile")) e.preventDefault(); });
   if (!maybeImport()) render();
   // la sincronizzazione (Firebase, ~525 KB) parte dopo la prima schermata: l'app compare subito con i dati del telefono
   (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => startSync(), { timeout: 800 });
