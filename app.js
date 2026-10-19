@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 63;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 64;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2557,7 +2557,7 @@
       if (!to.startsWith("#mappa")) SC.scrollTop = 0;
       render();
       if (!to.startsWith("#mappa") && (kind === "tab" || kind === "pop")) restoreScroll(scrollMem[location.hash || "#oggi"] || 0);
-      if (!restored) { playIntro(); if (kind === "tab") enterItems(); }
+      if (!restored) playIntro();
     };
     // come su iPhone: le schede in basso cambiano all'istante; entrare/uscire da una pagina (o passare al giorno dopo)
     // fa scorrere la pagina intera, con la tecnica nativa di Safari (View Transitions) quando c'è
@@ -2591,15 +2591,6 @@
       if (!n || seen.has(n) || seen.size > 60 || el.offsetParent === null) { el.style.viewTransitionName = ""; continue; }
       seen.add(n); el.style.viewTransitionName = n;
     }
-  }
-  // prima volta che si apre una pagina: le card salgono una dopo l'altra (solo trasformazioni, leggere da disegnare).
-  // Non partono mai da trasparenti: se il telefono è impegnato a costruire la pagina, l'animazione parte in ritardo
-  // e con le card invisibili si vedrebbe una pagina vuota
-  function enterItems() {
-    if (reduceMotion() || !view.animate) return;
-    const els = [...view.children].filter(el => el.offsetParent !== null && el.getBoundingClientRect().top < innerHeight).slice(0, 8);
-    els.forEach((el, i) => el.animate([{ opacity: .55, transform: "translate3d(0, 12px, 0)" }, { opacity: 1, transform: "none" }],
-      { duration: 380, delay: i * 30, easing: "cubic-bezier(.32, .72, 0, 1)", fill: "backwards" }));
   }
   // indietro/avanti di sistema: cambia pagina se l'indirizzo è cambiato (una volta sola, chiunque arrivi prima)
   const syncNav = () => { if ((location.hash || "#oggi") !== lastHash) navigate(); };
