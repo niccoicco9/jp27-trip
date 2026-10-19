@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 36;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 37;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -323,15 +323,13 @@
   }
   const sheet = $("#sheet"), sheetCard = $(".sheet-card");
   let sheetOnClose = null;
-  // ogni scheda aperta aggiunge un passo alla cronologia: "indietro" (tasto Android o swipe) la chiude
-  const layers = []; let skipPop = 0;
-  function pushLayer(close) { history.pushState({ layer: layers.length + 1 }, "", location.href); layers.push(close); }
-  function dropLayer(close) {   // chiusa dall'app (X, trascinamento…): toglie anche il passo dalla cronologia
-    const k = layers.lastIndexOf(close); if (k < 0) return;
-    layers.splice(k, 1); skipPop++; history.back();
-  }
+  // schede e finestre aperte: NON entrano nella cronologia (non sono pagine nuove). Si chiudono
+  // trascinandole giù o con la X, e lo swipe indietro dal bordo non le tocca
+  const layers = [];
+  function pushLayer(close) { layers.push(close); }
+  function dropLayer(close) { const k = layers.lastIndexOf(close); if (k >= 0) layers.splice(k, 1); }
   // cronologia a forma di app: sotto c'è sempre e solo la pagina principale della sezione; sopra, al massimo,
-  // la sottopagina di Utility e le schede aperte. Così "indietro" (swipe di iOS, tasto Android, il nostro swipe)
+  // la sottopagina di Utility. Così "indietro" (swipe di iOS, tasto Android, il nostro swipe)
   // risale dentro la sezione e non salta mai a sezioni o giorni visti prima
   let subPushed = false, pendingGo = null;
   const isSub = h => /^#utility\/./.test(h);
@@ -343,18 +341,14 @@
   }
   function go(h) {
     const cur = location.hash || "#oggi";
-    if (!layers.length && cur === "#utility" && isSub(h)) { subPushed = true; setUrl(h, true); return; }
-    const depth = layers.length + (subPushed ? 1 : 0);
-    if (!depth) { if (h !== cur) land(h); return; }
-    while (layers.length) layers.pop()(true);   // chiude le schede aperte e toglie i loro passi dalla cronologia
-    skipPop = 0; subPushed = false; pendingGo = h; history.go(-depth);
+    if (cur === "#utility" && isSub(h)) { subPushed = true; setUrl(h, true); return; }
+    if (!subPushed) { if (h !== cur) land(h); return; }
+    subPushed = false; pendingGo = h; history.back();
     // rete di sicurezza: se la cronologia non risponde (passo già tolto), si va comunque alla pagina
     setTimeout(() => { if (pendingGo === h) { pendingGo = null; land(h); } }, 700);
   }
   addEventListener("popstate", () => {
-    if (pendingGo) { const h = pendingGo; pendingGo = null; if (h !== (location.hash || "#oggi")) land(h); return; }
-    if (skipPop) { skipPop--; return; }
-    const close = layers.pop(); if (close) close(true);
+    if (pendingGo) { const h = pendingGo; pendingGo = null; if (h !== (location.hash || "#oggi")) land(h); }
   });
   // tutti i link interni passano da go()
   document.addEventListener("click", e => {
@@ -2041,7 +2035,7 @@
   function restoreScroll(y) { scrollTo(0, y); if (y && Math.abs(scrollY - y) > 2) [80, 250].forEach(ms => setTimeout(() => { if (scrollY < y) scrollTo(0, y); }, ms)); }
   function navigate() {
     if (!isSub(location.hash)) subPushed = false;   // indietro di sistema da una sottopagina: non si è più "dentro"
-    layers.length = 0;   // la pagina cambia: i passi delle schede restano indietro, senza effetti
+    layers.length = 0;   // la pagina cambia: le schede aperte si chiudono
     closeSheet(true, true); hideBig(true);
     if (maybeImport()) return;
     const to = location.hash || "#oggi", kind = navKind(lastHash, to);
