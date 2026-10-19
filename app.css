@@ -841,3 +841,9 @@ main#view { will-change: auto; }
 .rline small { display: block; }
 .rpics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .rpics .ph { aspect-ratio: 1; border-radius: 14px; cursor: pointer; }
+.contact > svg.i:last-child { color: var(--muted); width: 18px; height: 18px; flex: none; }
+/* il credito della foto non finisce sotto la X della scheda */
+.cover .credit { right: auto; left: 10px; }
+/* riquadri dei numeri (Spese, Budget): tinta piena calda al posto dell'illustrazione, con il kanji in trasparenza */
+.hero.solid { background: linear-gradient(150deg, #c8402f 0%, #8f2a22 55%, #3b1d1a 100%); }
+.hero.solid::after { display: none; }

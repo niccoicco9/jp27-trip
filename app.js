@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 45;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 46;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -531,7 +531,7 @@
         ${p.dur ? `<dt>Durata</dt><dd>${esc(p.dur)}</dd>` : ""}
         ${p.eur ? `<dt>Costo</dt><dd>~${p.eur.toLocaleString("it-IT", { minimumFractionDigits: 2 })} € a persona <span class="muted">(${p.mine ? "stima vostra" : "stima Wanderlog"})</span></dd>` : ""}
         ${p.chiuso ? `<dt>Chiuso</dt><dd>${esc(p.chiuso)}</dd>` : ""}
-        ${p.pren ? `<dt>Biglietti</dt><dd><label class="check" style="border:none;padding:0"><input type="checkbox" id="bk" ${booked.has(id) ? "checked" : ""}><span>Da prenotare in anticipo: <b>${booked.has(id) ? "fatto ✓" : "segna quando è fatto"}</b></span></label></dd>` : ""}
+        ${p.pren ? `<dt>Biglietti</dt><dd><label class="check" style="border:none;padding:0"><input type="checkbox" id="bk" ${booked.has(id) ? "checked" : ""}><span>${booked.has(id) ? "<b>Prenotato</b>" : "Da prenotare in anticipo: <b>segna quando è fatto</b>"}</span></label></dd>` : ""}
         <dt>In programma</dt><dd>${ds.length ? ds.map(d => `<a href="#giorni/${d}">Giorno ${dayIndex(d) + 1} · ${fmtDay(d)}</a>`).join("<br>") : "<span class='muted'>non ancora</span>"}</dd>
       </dl>
       ${p.gone ? "" : `<h3>Aggiungi a un giorno</h3>
@@ -1487,7 +1487,7 @@
     if (sub === "yen") return renderYen(back);
     if (sub === "sos") {
       view.innerHTML = `${back}<h2>Emergenze</h2><p class="lead">Tocca per chiamare.</p>
-        ${CONTATTI.map(c => `<a class="card contact" href="tel:${c.n.replace(/\s/g, "")}" style="text-decoration:none;color:inherit"><span class="ic">${icon("Phone")}</span><div class="grow"><b>${c.t}</b><div class="muted small">${c.d}</div></div><b style="color:var(--shu);white-space:nowrap">${c.n}</b></a>`).join("")}
+        ${CONTATTI.map(c => `<a class="card contact" href="tel:${c.n.replace(/\s/g, "")}" style="text-decoration:none;color:inherit"><span class="ic">${icon("Phone")}</span><div class="grow"><b>${c.t}</b><div style="color:var(--shu);font-weight:800;font-variant-numeric:tabular-nums">${c.n}</div><div class="muted small">${c.d}</div></div>${icon("ChevronRight")}</a>`).join("")}
         <div class="card"><h3 style="margin-top:0">Frasi rapide</h3>${FRASI.find(f => f.cat === "Emergenza").items.map(phraseRow).join("")}</div>
         <p class="muted small">Prima di partire registratevi su <a href="https://www.dovesiamonelmondo.it" target="_blank" rel="noopener">Dove siamo nel mondo</a> (Farnesina). Verificate i numeri prima del viaggio.</p>`;
       bindPhrases(); return;
@@ -1544,7 +1544,7 @@
     const max = Math.max(...perZ.map(x => x[1]));
     const planned = new Set(DAYS.flatMap(d => plan[d]?.i || []));
     view.innerHTML = `${back}<h2>Budget</h2><p class="lead">Biglietti e attività stimati in Wanderlog, a persona.</p>
-      <div class="hero" style="min-height:0">${art()}<div class="hero-in" style="min-height:170px"><span class="kicker">Luoghi attivi</span><div class="big-n" style="font-size:2.8rem">${eur(sum(act))}</div><p>In programma: <b>${eur(sum(act.filter(p => planned.has(p.id))))}</b> · Totale Wanderlog con gli scartati: ${eur(T.budgetWanderlog)}</p></div></div>
+      <div class="hero solid" style="min-height:0"><span class="kanji" aria-hidden="true">予算</span><div class="hero-in" style="min-height:170px"><span class="kicker">Luoghi attivi</span><div class="big-n" style="font-size:2.8rem">${eur(sum(act))}</div><p>In programma: <b>${eur(sum(act.filter(p => planned.has(p.id))))}</b> · Totale Wanderlog con gli scartati: ${eur(T.budgetWanderlog)}</p></div></div>
       <div class="card"><h3 style="margin-top:0">Per zona</h3>${perZ.map(([z, v]) => `<div style="margin-bottom:12px"><div class="row small"><span class="dot" style="background:${z.colore}"></span><span class="grow">${z.nome}</span><b>${eur(v)}</b></div><div class="bar"><i style="width:${v / max * 100}%;background:${z.colore}"></i></div></div>`).join("")}</div>
       <div class="card"><h3 style="margin-top:0">Dettaglio</h3><table class="budget">${act.sort((a, b) => b.eur - a.eur).map(p => `<tr data-place="${p.id}" style="cursor:pointer"><td>${esc(p.n)} <span class="muted small">· ${zona[p.z].nome}</span></td><td>${eur(p.eur)}</td></tr>`).join("")}</table>
       ${out.length ? `<h3>Scartati</h3><table class="budget">${out.map(p => `<tr class="muted"><td>${esc(p.n)}</td><td>${eur(p.eur)}</td></tr>`).join("")}</table>` : ""}</div>
@@ -1858,7 +1858,7 @@
     const items = [...lists.spese].filter(s => !spFilter || catOf(s.cat).k === spFilter).sort((a, b) => (b.data || "").localeCompare(a.data || "") || (b.ts || 0) - (a.ts || 0));
     let lastD = null;
     view.innerHTML = `${back}<div class="between"><h2>Spese</h2><button class="btn small primary" id="adds" data-top>${icon("Plus")} Aggiungi</button></div><p class="lead">Chi ha pagato cosa, e alla fine chi deve quanto a chi.</p>
-      <div class="hero" style="min-height:0">${art()}<div class="hero-in" style="min-height:190px">
+      <div class="hero solid" style="min-height:0"><span class="kanji" aria-hidden="true">会計</span><div class="hero-in" style="min-height:190px">
         <span class="kicker">Spesa totale del gruppo</span><div class="big-n" style="font-size:2.6rem" data-count="${total}" data-fmt="eur">${eurF(total)}</div>
         <p>${debt ? `<b>${coupleName(debt[0])}</b> devono <b>${eurF(debt[2])}</b> a ${coupleName(debt[1])}` : "Siete in pari 🤝"}</p>
       </div></div>
