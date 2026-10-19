@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 33;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 34;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -346,7 +346,11 @@
     if (!depth) { if (h !== cur) land(h); return; }
     while (layers.length) layers.pop()(true);   // chiude le schede aperte e toglie i loro passi dalla cronologia
     skipPop = 0; subPushed = false; pendingGo = h; history.go(-depth);
+    // rete di sicurezza: se la cronologia non risponde (passo già tolto), si va comunque alla pagina
+    setTimeout(() => { if (pendingGo === h) { pendingGo = null; land(h); } }, 700);
   }
+  // indietro di sistema da una sottopagina: non si è più "dentro"
+  addEventListener("hashchange", () => { if (!isSub(location.hash)) subPushed = false; });
   addEventListener("popstate", () => {
     if (pendingGo) { const h = pendingGo; pendingGo = null; if (h !== (location.hash || "#oggi")) land(h); return; }
     if (skipPop) { skipPop--; return; }
