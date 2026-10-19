@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 41;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 42;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -1386,6 +1386,7 @@
         <h3 class="ugroup">Impostazioni</h3>
         <div class="card row"><div class="grow"><b>Accesso</b><div class="muted small">${me ? esc(me) : "Nome non scelto"} · ${code ? "dati condivisi attivi" : "codice del viaggio non inserito"}</div></div><button class="btn small${code ? "" : " primary"}" id="whoami">${icon(code ? "UserRound" : "KeyRound")} ${code ? "Cambia" : "Inserisci"}</button></div>`;
       $("#whoami").onclick = askWho;
+      notifCard();
       view.insertAdjacentHTML("beforeend", `<div class="card row"><div class="grow"><b>Versione ${APP_VERSION}</b><div class="muted small">Se qualcosa non sembra aggiornato, scarica di nuovo l'app (le mappe offline restano).</div></div><button class="btn small" id="forceupd">${icon("RotateCcw")} Aggiorna adesso</button></div>`);
       $("#forceupd").onclick = forceUpdate;
       return;
@@ -1558,6 +1559,7 @@
         if (!item.titolo) return toast("Scrivi almeno il nome");
         if (t === "hotel" && (!item.dal || !item.al || item.al <= item.dal)) return toast("Controlla check-in e check-out");
         const saved = putItem("prenotazioni", item);
+        if (isNew) notifyOthers("pren", saved);
         if (t === "hotel" && (item.jp !== p.jp || item.indirizzo !== p.indirizzo || item.titolo !== p.titolo || !p.lat)) geocodeHotel(saved);
         if (item.luogo && !booked.has(item.luogo)) { booked.add(item.luogo); savePlan(); }   // biglietto preso = "prenotato" spuntato
         closeSheet(); toast("Salvato ✓"); rerender();
@@ -1861,12 +1863,91 @@
         if (!(importo > 0)) return toast("Inserisci l'importo");
         if (!st.perChi.length) return toast("Scegli tra chi dividere");
         const eur = st.valuta === "JPY" ? (s.valuta === "JPY" && s.importo === importo && s.eur ? s.eur : importo / rate()) : importo;
-        putItem("spese", { ...s, ...st, desc: $("#s-desc", el).value.trim(), importo, eur: Math.round(eur * 100) / 100, data: $("#s-data", el).value, ts: s.ts || Date.now() });
+        const saved = putItem("spese", { ...s, ...st, desc: $("#s-desc", el).value.trim(), importo, eur: Math.round(eur * 100) / 100, data: $("#s-data", el).value, ts: s.ts || Date.now() });
+        if (isNew) notifyOthers("spesa", saved);
         closeSheet(); toast("Spesa salvata ✓"); rerender();
       };
       $("#s-del", el)?.addEventListener("click", () => { const old = { ...s }; delItem("spese", s.id); closeSheet(); rerender(); toast("Spesa eliminata", () => { putItem("spese", old); rerender(); }); });
     });
   }
+
+  // ——— NOTIFICHE ———
+  // Le manda il servizio notifiche (Cloudflare, gratuito): l'app registra questo telefono in Firestore (viaggi/{codice}/push)
+  // e gli segnala le spese e prenotazioni nuove; i promemoria a orario li decide il servizio da solo.
+  const VAPID = "BIRse5R_V9V2eO33I-EUwgiO2zR6uYtwm2c-zn6xTvUBB5Ot5yig1WfJI0A5FYwL_JX55CtfcrzCwvmWLRLNVfM";
+  const PREFS = [["spese", "Nuove spese", "quando un altro aggiunge una spesa o un rimborso"], ["pren", "Nuove prenotazioni", "hotel, voli, treni e biglietti aggiunti dagli altri"],
+    ["bigl", "Biglietti da prenotare", "30, 14, 7 e 3 giorni prima, finché non è spuntato"], ["part", "Prima di partire", "una settimana e il giorno prima, check-in del volo"],
+    ["matt", "Ogni mattina in viaggio", "alle 8: tappe del giorno, meteo e hotel"], ["trasf", "Sera prima di un trasferimento", "alle 20: treno, orario e valigie"]];
+  const pushOK = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const sha = async s => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)))].slice(0, 16).map(b => b.toString(16).padStart(2, "0")).join("");
+  const unb64u = s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+  async function whenSync() { for (let i = 0; i < 40 && !sync; i++) await new Promise(r => setTimeout(r, 250)); return sync; }
+  async function savePush(sub, st) { const s = await whenSync(); s?.put("push", { id: st.sid, sub: JSON.stringify(sub), who: me || "", prefs: st.prefs }); }
+  async function currentSub() { try { return await (await navigator.serviceWorker.ready).pushManager.getSubscription(); } catch { return null; } }
+  function notifCard() {
+    if (!T.notifyUrl) return;
+    const st = LS.get("push", null), box = document.createElement("div"); box.className = "card"; box.id = "notif";
+    const msg = t => `<div class="row"><span class="pic" style="background:#d4442f">${icon("Sparkles")}</span><div class="grow"><b>Notifiche</b><div class="muted small">${t}</div></div></div>`;
+    if (!pushOK()) box.innerHTML = msg(isIOS && !standalone ? "Per riceverle aggiungi l'app alla schermata Home (Condividi › Aggiungi alla schermata Home) e aprila da lì." : "Questo browser non le supporta.");
+    else if (!code) box.innerHTML = msg("Serve prima il codice del viaggio (Accesso, qui sopra).");
+    else if (Notification.permission === "denied") box.innerHTML = msg(isIOS ? "Bloccate. Per riattivarle: Impostazioni di iPhone › Notifiche › Giappone 2027." : "Bloccate. Riattivale dalle impostazioni del browser per questo sito.");
+    else if (!st || Notification.permission !== "granted") {
+      box.innerHTML = `${msg("Spese e prenotazioni degli altri, promemoria per biglietti, partenza, mattine e trasferimenti.")}<button class="btn primary" id="pushon" style="width:100%;margin-top:12px">${icon("Sparkles")} Attiva notifiche</button>`;
+    } else {
+      box.innerHTML = `<div class="between"><b>Notifiche attive</b><button class="btn small" id="pushtest">Prova</button></div>
+        ${PREFS.map(([k, t, d]) => `<label class="check" style="margin-top:8px"><input type="checkbox" data-pref="${k}" ${st.prefs?.[k] !== false ? "checked" : ""}><span><b>${t}</b><br><small class="muted">${d}</small></span></label>`).join("")}
+        <button class="btn" id="pushoff" style="width:100%;margin-top:12px;color:var(--shu)">Disattiva su questo telefono</button>`;
+    }
+    view.appendChild(box);
+    $("#pushon", box)?.addEventListener("click", enablePush);
+    $("#pushtest", box)?.addEventListener("click", async () => {
+      try { const r = await fetch(T.notifyUrl + "/notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, kind: "test", sid: st.sid }) }); toast(r.ok ? "Inviata: arriva tra pochi secondi" : "Non riuscita, riprova tra poco"); }
+      catch { toast("Serve la connessione"); }
+    });
+    $$("[data-pref]", box).forEach(c => c.onchange = async () => { st.prefs = { ...st.prefs, [c.dataset.pref]: c.checked }; LS.set("push", st); const sub = await currentSub(); if (sub) savePush(sub, st); });
+    $("#pushoff", box)?.addEventListener("click", async () => {
+      const sub = await currentSub(); try { await sub?.unsubscribe(); } catch {}
+      (await whenSync())?.del("push", st.sid); LS.set("push", null); toast("Notifiche disattivate"); rerender();
+    });
+  }
+  async function enablePush() {
+    try {
+      if (await Notification.requestPermission() !== "granted") { toast("Permesso negato"); return rerender(); }
+      const reg = await navigator.serviceWorker.ready;
+      const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: unb64u(VAPID) });
+      const st = { sid: await sha(sub.endpoint), prefs: Object.fromEntries(PREFS.map(([k]) => [k, true])) };
+      LS.set("push", st); await savePush(sub, st); buzz(); toast("Notifiche attive ✓"); rerender();
+    } catch (err) { console.warn(err); toast("Non sono riuscito ad attivarle"); }
+  }
+  // all'avvio: tiene aggiornata l'iscrizione (il telefono può cambiarla) e il nome di chi la usa
+  setTimeout(async () => {
+    const st = LS.get("push", null); if (!st || !T.notifyUrl || !pushOK() || !code) return;
+    const sub = await currentSub();
+    if (!sub || Notification.permission !== "granted") { LS.set("push", null); return; }
+    const sid = await sha(sub.endpoint); if (sid !== st.sid) { (await whenSync())?.del("push", st.sid); st.sid = sid; LS.set("push", st); }
+    savePush(sub, st);
+  }, 4000);
+  // spese e prenotazioni nuove → avviso agli altri (in coda se si è offline, riparte appena torna la rete)
+  let flushing = false;
+  function notifyOthers(kind, it) {
+    if (!T.notifyUrl || !code) return;
+    const item = kind === "spesa" ? { id: it.id, desc: it.desc, importo: it.importo, valuta: it.valuta, eur: it.eur, pagatoDa: it.pagatoDa, perChi: it.perChi, cat: it.cat }
+      : { id: it.id, tipo: it.tipo, titolo: it.titolo, dal: it.dal, ora: it.ora };
+    LS.set("notifyQ", [...LS.get("notifyQ", []), { kind, by: me || "Qualcuno", item, t: Date.now() }].slice(-30)); flushNotify();
+  }
+  async function flushNotify() {
+    if (flushing || !navigator.onLine || !T.notifyUrl || !code) return; flushing = true;
+    try {
+      const keep = [];
+      for (const x of LS.get("notifyQ", [])) {
+        if (Date.now() - x.t > 2 * 864e5) continue;   // dopo due giorni non ha più senso
+        try { const r = await fetch(T.notifyUrl + "/notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, kind: x.kind, by: x.by, item: x.item }) }); if (r.status >= 500) keep.push(x); } catch { keep.push(x); }
+      }
+      LS.set("notifyQ", keep);
+    } finally { flushing = false; }
+  }
+  addEventListener("online", flushNotify); setTimeout(flushNotify, 3000);
 
   // aggiornamento forzato: scarta la versione salvata dell'app (non le mappe né le foto) e ricarica
   async function forceUpdate() {
@@ -2215,6 +2296,7 @@
       document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") check(); });
       setInterval(check, 30 * 60e3);
     }).catch(() => {});
+    navigator.serviceWorker.addEventListener("message", e => { if (typeof e.data?.goto === "string") go(e.data.goto || "#oggi"); });   // tocco su una notifica
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       if (!hadController || $("#upd")) return;
       const b = document.createElement("div"); b.id = "upd"; b.className = "upd";

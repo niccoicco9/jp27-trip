@@ -9,6 +9,7 @@ window.TRIP = {
   viaggiatori: ["Niccolò", "Antonella", "Miriam", "Paolo"],
   budgetWanderlog: 643.10,
   mapsKey: "AIzaSyBwcY9sg8fPJvxad05hlcvIdade0aQserA",
+  notifyUrl: "",   // servizio notifiche (Cloudflare Worker); vuoto = notifiche nascoste
 };
 
 window.ZONE = [

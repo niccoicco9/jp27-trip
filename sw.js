@@ -1,6 +1,6 @@
 // Service worker: l'app si apre subito dai file salvati (anche con rete scarsa o assente) e si aggiorna
 // in sottofondo; ogni nuova versione (VERSION) viene scaricata intera e poi compare l'avviso "Aggiorna".
-const VERSION = "jp27-v41";
+const VERSION = "jp27-v42";
 const MAPPE = "jp27-mappe";   // zone offline, caratteri e icone della mappa: non si cancellano con gli aggiornamenti
 const CDN = "jp27-cdn";       // librerie, font e foto da siti esterni
 const SHELL = ["./", "index.html", "app.css", "app.js", "data.js", "photos.js", "content.js", "sync.js", "mappa-offline.js", "icons.js", "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-192.png", "icon-512.png", "favicon-32.png", "fonts/jakarta-latin.woff2", "fonts/jakarta-latin-ext.woff2"];
@@ -27,6 +27,22 @@ async function fromBlob(req, cached) {
     headers: { "Content-Type": "application/octet-stream", "Content-Range": `bytes ${start}-${end}/${blob.size}`, "Content-Length": String(end - start + 1), "Accept-Ranges": "bytes" },
   });
 }
+
+// notifiche: le manda il servizio notifiche (Cloudflare); toccandole si apre l'app sulla pagina giusta
+self.addEventListener("push", e => {
+  let m = {}; try { m = e.data.json(); } catch { m = { body: e.data ? e.data.text() : "" }; }
+  e.waitUntil(self.registration.showNotification(m.title || "Giappone 2027", { body: m.body || "", icon: "icon-192.png", badge: "icon-192.png", tag: m.tag, data: { url: m.url || "" } }));
+});
+self.addEventListener("notificationclick", e => {
+  e.notification.close();
+  const go = e.notification.data?.url || "";
+  e.waitUntil((async () => {
+    for (const c of await self.clients.matchAll({ type: "window", includeUncontrolled: true })) {
+      if ("focus" in c) { await c.focus(); c.postMessage({ goto: go }); return; }
+    }
+    await self.clients.openWindow(new URL("./" + go, self.registration.scope).href);
+  })());
+});
 
 self.addEventListener("fetch", e => {
   const url = new URL(e.request.url);
