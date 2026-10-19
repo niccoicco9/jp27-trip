@@ -694,7 +694,7 @@ body.on-map .map-loading { padding-top: var(--head, 60px); }
 .prep .progress { margin-top: 6px; height: 5px; }
 .prep > svg:last-child { color: var(--muted); width: 18px; height: 18px; flex: none; }
 .nextstop .row { align-items: center; gap: 12px; cursor: pointer; }
-.nextstop .ns-ph { width: 64px; height: 64px; border-radius: 14px; flex: none; }
+.ns-ph { width: 64px; height: 64px; border-radius: 14px; flex: none; }
 .weather small { display: block; font-size: .66rem; margin-top: 3px; font-weight: 600; }
 #booklist .check .iconbtn { flex: none; width: 36px; height: 36px; color: var(--muted); text-decoration: none; }
 #booklist .check .iconbtn svg { width: 16px; height: 16px; }
@@ -923,3 +923,44 @@ html[data-vt="update"]::view-transition-group(*) { animation-duration: .45s; }
 /* nome del giorno in modifica: si capisce che è un campo da scrivere */
 .daycover input { background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.35); border-radius: 12px; padding: 6px 10px; font-size: 1.2rem; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .daycover input:focus { border: 1px solid rgba(255,255,255,.8); box-shadow: none; }
+
+/* ——— spaziature: una scala sola (4 · 8 · 12 · 16 · 24 px) ———
+   16 tra i blocchi della pagina, 8 tra elementi dello stesso gruppo, 12 dentro le card e tra i campi,
+   24 sopra i titoli di sezione e 12 sotto, 8 tra pulsanti e tessere affiancati */
+:root { --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-6: 24px; }
+/* blocchi della pagina */
+.card, .hero, .quick, .daycover, .daynote, .rgrid, .addgrid, .dayact { margin-bottom: var(--sp-4); }
+.greet { margin: -6px 0 var(--sp-4); }
+.daystrip { padding-bottom: var(--sp-4); }
+.tl { margin-top: 0; }
+.tl + .btns, .btns.daynav { margin-top: var(--sp-4); }
+.btns.daynav + .card, .card.daysync { margin-top: var(--sp-4); }
+#view > h2:not(:has(+ .lead)) { margin-bottom: var(--sp-4); }
+/* elementi dello stesso gruppo (stessa data, stesso giorno) */
+.card.spesa, .card.pcard, .mini { margin-bottom: var(--sp-2); }
+/* titoli di sezione: tutti uguali */
+h3, .ugroup, .ugroup:first-of-type, .galh, .section-h { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.section-h h3, .card > h3:first-child, .card > .between:first-child h3, .prose h3:first-child, .sheet .ttl h2 { margin-top: 0; }
+.card > .between:first-child h3 { margin-bottom: 0; }
+.card > h3:first-child { margin-bottom: var(--sp-3); }
+/* dentro le card */
+.btns { margin-top: var(--sp-3); gap: var(--sp-2); }
+.progress.bar-head, .nights { margin-top: var(--sp-2); margin-bottom: var(--sp-1); }
+.catchart { margin-top: var(--sp-3); }
+/* griglie di pulsanti e tessere affiancati */
+.quick, .ugrid, .rgrid, .addgrid, .dayact, .whos, .weather, .conv, .rpics { gap: var(--sp-2); }
+.hscroll, .gal { gap: var(--sp-3); }
+/* form: 12 tra i campi (in verticale e in orizzontale), 6 tra etichetta e campo, 16 prima dei pulsanti finali */
+.fl { margin-bottom: var(--sp-3); }
+.fl > span { margin-bottom: 6px; }
+.grid2 { gap: 0 var(--sp-3); }
+.sheet .ttl { margin-bottom: var(--sp-4); }
+.sheet-body > .btns:last-child { margin-top: var(--sp-4); }
+/* ricerca e filtri */
+.searchbox + .chips { margin-top: var(--sp-3); }
+.info { margin-top: var(--sp-3); }
+.perperson { margin-top: var(--sp-3); }
+.sheet h2 { margin-bottom: var(--sp-1); }
+.sheet .ttl { margin-bottom: var(--sp-4); }
+.sheet-body > h2 + :not(.lead) { margin-top: var(--sp-3); }
+.who { gap: var(--sp-2); margin-top: var(--sp-3); }

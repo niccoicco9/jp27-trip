@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 65;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 66;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -585,8 +585,8 @@
       </dl>
       ${p.gone ? "" : `<h3>Aggiungi a un giorno</h3>
       <select id="addday"><option value="">Scegli il giorno…</option>${DAYS.map((d, i) => `<option value="${d}" ${plan[d]?.i?.includes(id) ? "disabled" : ""}>Giorno ${i + 1} · ${fmtDay(d, { weekday: "short", day: "numeric", month: "short" })}${plan[d]?.l ? " — " + esc(plan[d].l) : ""}</option>`).join("")}</select>`}
-      ${p.gone ? `<button class="btn primary" id="restp" style="width:100%;margin-top:20px">${icon("Undo2")} Ripristina il luogo</button>`
-        : `<button class="btn" id="delp" style="width:100%;margin-top:20px;color:var(--shu)">${icon("Trash2")} Elimina luogo</button>`}
+      ${p.gone ? `<button class="btn primary" id="restp" style="width:100%;margin-top:16px">${icon("Undo2")} Ripristina il luogo</button>`
+        : `<button class="btn" id="delp" style="width:100%;margin-top:16px;color:var(--shu)">${icon("Trash2")} Elimina luogo</button>`}
     `, el => {
       $("#delp", el)?.addEventListener("click", () => deletePlace(p));
       $("#restp", el)?.addEventListener("click", () => { delItem("luoghi", "h" + id); toast("Luogo ripristinato"); closeSheet(); rerender(); });
@@ -628,11 +628,11 @@
   }
   function oggiPren(today, before, after) {
     if (!code || after || before) return "";
-    if (!before) return `<div class="section-h" style="margin-top:0"><h3>Oggi e stanotte</h3><a class="small" href="#utility/prenotazioni" style="font-weight:600">Tutte</a></div>${dayPren(today)}`;
+    if (!before) return `<div class="section-h"><h3>Oggi e stanotte</h3><a class="small" href="#utility/prenotazioni" style="font-weight:600">Tutte</a></div>${dayPren(today)}`;
     const next = [...lists.prenotazioni].filter(p => p.dal).sort((a, b) => a.dal.localeCompare(b.dal) || (a.ora || "").localeCompare(b.ora || "")).slice(0, 3);
     const covered = NIGHTS.filter(hotelFor).length;
     return `<a class="card mini-card" href="#utility/prenotazioni"><div class="between"><b>${icon("BedDouble")} Hotel prenotati</b><b>${covered}/${NIGHTS.length} notti</b></div>
-      <div class="nights" style="margin-top:8px">${NIGHTS.map(d => `<i class="${hotelFor(d) ? "ok" : ""}"></i>`).join("")}</div>
+      <div class="nights">${NIGHTS.map(d => `<i class="${hotelFor(d) ? "ok" : ""}"></i>`).join("")}</div>
       ${next.length ? `<div class="small muted" style="margin-top:8px">Prossime: ${next.map(p => `${esc(p.titolo)} (${short(p.dal)})`).join(" · ")}</div>` : `<div class="small muted" style="margin-top:8px">Aggiungi hotel, voli e biglietti →</div>`}</a>`;
   }
   function renderOggi() {
@@ -677,15 +677,15 @@
       ${before ? prepCard(toBook, doneBook) : ""}
       ${!before && !after ? tripCard(today) + eveningCard(today) + nearCard(today) : ""}
       ${oggiPren(today, before, after)}
-      ${ch.length ? `<div><div class="section-h" style="margin-top:4px"><h3>Il viaggio in capitoli</h3><a class="small" href="#giorni" style="font-weight:600">Tutti i giorni</a></div>
+      ${ch.length ? `<div><div class="section-h"><h3>Il viaggio in capitoli</h3><a class="small" href="#giorni" style="font-weight:600">Tutti i giorni</a></div>
       <div class="hscroll">${ch.map((c, k) => `<a class="chapter" href="#giorni/${DAYS[c.from]}" style="--c:${zona[c.z].colore}">${photoUrl(HERO_PLACE[c.z]) ? `<div class="ph" data-bg="${photoUrl(HERO_PLACE[c.z], 330)}"></div>` : `<div class="ph" style="background:${zona[c.z].colore}"></div>`}<span class="num">${k + 1}</span><b>${esc(zona[c.z].nome)}</b><small>${c.from === c.to ? `giorno ${c.from + 1}` : `giorni ${c.from + 1}–${c.to + 1}`} · ${short(DAYS[c.from])}</small></a>`).join("")}</div></div>` : ""}
       ${!before && !after ? `<div class="card"><div class="between"><h3 style="margin:0" id="wtitle">Meteo</h3><span class="muted small" id="wtime"></span></div><div class="weather" id="weather" style="margin-top:12px"><div>…</div></div></div>` : ""}
       <div class="card">
         <div class="between"><h3 style="margin:0">${icon("Ticket")} Da prenotare</h3><b class="small">${doneBook}/${toBook.length}</b></div>
-        <div class="progress" style="margin:10px 0 4px"><i style="width:${toBook.length ? doneBook / toBook.length * 100 : 0}%"></i></div>
-        <p class="muted small" style="margin:6px 0 4px">Wanderlog consiglia di prenotarli in anticipo. In ordine di data: prima quelli già in programma.</p>
+        <div class="progress bar-head"><i style="width:${toBook.length ? doneBook / toBook.length * 100 : 0}%"></i></div>
+        <p class="muted small" style="margin:8px 0 4px">Wanderlog consiglia di prenotarli in anticipo. In ordine di data: prima quelli già in programma.</p>
         <div id="booklist">${toBook.map((p, k) => `<label class="check${booked.has(p.id) ? " done" : ""}"${k >= 6 ? " data-more hidden" : ""}><input type="checkbox" data-book="${p.id}" ${booked.has(p.id) ? "checked" : ""}><span class="grow">${esc(p.n)}<small class="sub">${esc(zona[p.z].nome)}${dayOf(p.id).length ? " · " + dayOf(p.id).map(short).join(", ") : ""}</small></span><a class="iconbtn" href="${bookUrl(p)}" target="_blank" rel="noopener" aria-label="Cerca i biglietti">${icon("ExternalLink")}</a></label>`).join("")}</div>
-        ${toBook.length > 6 ? `<button class="btn small ghost" id="more" style="width:100%;margin-top:6px">Mostra tutti (${toBook.length})</button>` : ""}
+        ${toBook.length > 6 ? `<button class="btn small ghost" id="more" style="width:100%;margin-top:8px">Mostra tutti (${toBook.length})</button>` : ""}
       </div>
     `;
     $$("[data-book]").forEach(cb => cb.onchange = () => {
@@ -717,7 +717,7 @@
     }
     rows.push(row("a", 'href="#utility/checklist"', "Luggage", "#c89b3c", "Valigia e documenti", `${checks.size}/${tot}`, checks.size, tot));
     rows.push(row("a", 'href="#utility/mappe"', "CloudOff", "#1f9488", "Mappe offline", "…", 0, 1, "prep-maps"));
-    return `<div class="card"><h3 style="margin:0 0 6px">Prima di partire</h3>${rows.join("")}${code ? "" : `<p class="small muted" style="margin:8px 0 0">Con il codice del viaggio vedrete qui anche hotel e voli.</p>`}</div>`;
+    return `<div class="card"><h3 style="margin:0 0 2px">Prima di partire</h3>${rows.join("")}${code ? "" : `<p class="small muted" style="margin:8px 0 0">Con il codice del viaggio vedrete qui anche hotel e voli.</p>`}</div>`;
   }
   // in viaggio: la prossima tappa di oggi (in base agli orari, se li avete messi)
   // ——— Oggi in viaggio: tappe da timbrare, spesa veloce, sera, vicino a te ———
@@ -734,7 +734,7 @@
     return `<div class="card tripc"><div class="between"><h3 style="margin:0">${p ? (n ? "Prossima tappa" : "Prima tappa") : "Tappe di oggi fatte 🎉"}</h3>${quick}</div>
       <div class="bar"><i style="width:${n / ids.length * 100}%"></i></div><div class="small muted">${n} di ${ids.length} tappe</div>
       ${p ? `<div class="row" data-place="${p.id}" style="margin-top:12px">${photo(p.id, 330, "ns-ph")}<div class="grow"><b>${esc(p.n)}</b>${p.jp ? `<div class="small muted jp">${esc(p.jp)}</div>` : ""}<div class="small muted">${t[p.id] ? `${icon("Clock")} ${esc(t[p.id])} · ` : ""}${prev ? `a ${fmtKm(kmBetween(prev, p))} dalla tappa prima` : ""}</div></div></div>
-      <div class="btns" style="margin-top:10px"><a class="btn primary" href="${gmDir(p)}" target="_blank" rel="noopener">${icon("Navigation")} Portami qui</a><button class="btn" data-fatto="${p.id}">Fatto 済</button></div>` : ""}
+      <div class="btns"><a class="btn primary" href="${gmDir(p)}" target="_blank" rel="noopener">${icon("Navigation")} Portami qui</a><button class="btn" data-fatto="${p.id}">Fatto 済</button></div>` : ""}
       <div class="stops">${ids.map(id => `<label class="check${done.has(id) ? " done" : ""}"><input type="checkbox" data-stop="${id}" ${done.has(id) ? "checked" : ""}><span><b>${esc(byId[id].n)}</b>${t[id] ? ` <small class="muted">${esc(t[id])}</small>` : ""}</span></label>`).join("")}</div></div>`;
   }
   const onOggi = () => (location.hash || "#oggi") === "#oggi";
@@ -830,11 +830,11 @@
         const fatto = day.f?.includes(id);
         return `<li${fatto ? ' class="done"' : ""}>${editMode ? `<span class="n grip" data-grip="${k}" style="background:${zona[p.z].colore}" aria-label="Trascina per spostare">${icon("GripVertical")}</span>` : fatto ? `<span class="n done" aria-label="Fatta">済</span>` : `<span class="n" style="background:${zona[p.z].colore}">${k + 1}</span>`}<div class="sw">${editMode ? "" : `<div class="swipebg">${icon("Trash2")} Togli</div>`}${row}</div>${next ? `<div class="hop">${hop(p, next)}</div>` : ""}</li>`;
       }).join("")}</ul>` : `<div class="empty" style="margin-top:14px">Nessuna tappa per questo giorno.<br><button class="btn small primary" id="add2" style="margin-top:10px">${icon("Plus")} Aggiungi tappe</button></div>`}
-      <div class="btns" style="margin-top:20px">
+      <div class="btns daynav">
         ${i > 0 ? `<a class="btn" href="#giorni/${DAYS[i - 1]}">‹ Giorno ${i}</a>` : ""}
         ${i < DAYS.length - 1 ? `<a class="btn" href="#giorni/${DAYS[i + 1]}">Giorno ${i + 2} ›</a>` : ""}
       </div>
-      <div class="card" style="margin-top:22px">
+      <div class="card daysync">
         <div class="row"><span class="contact"><span class="ic">${icon(sync ? "Users" : "Smartphone")}</span></span><div class="grow small">${sync
           ? `<b>Programma condiviso</b> tra voi quattro<div class="muted">${syncStatus === "online" ? "Sincronizzato" : "In attesa di rete"}${editedBy}</div>`
           : `<b>Programma salvato su questo telefono</b><div class="muted">Per mandarlo agli altri usa Condividi.</div>`}</div></div>
@@ -932,7 +932,7 @@
     openSheet(`
       <h2>Giorno ${dayIndex(d) + 1}</h2><p class="lead">${cap1(fmtDay(d))} · tocca per aggiungere o togliere</p>
       <div class="searchbox">${icon("Search")}<input type="search" id="pk-q" placeholder="Cerca un luogo…" autocomplete="off"></div>
-      <div class="chips" style="margin-top:10px">${[["all", "Tutte"], ...ZONE.map(z => [z.id, z.nome])].map(([id, n]) => `<button class="chip${id === fz ? " on" : ""}" data-pz="${id}">${id !== "all" ? `<span class="dot" style="background:${zona[id].colore}"></span>` : ""}${esc(n)}</button>`).join("")}</div>
+      <div class="chips">${[["all", "Tutte"], ...ZONE.map(z => [z.id, z.nome])].map(([id, n]) => `<button class="chip${id === fz ? " on" : ""}" data-pz="${id}">${id !== "all" ? `<span class="dot" style="background:${zona[id].colore}"></span>` : ""}${esc(n)}</button>`).join("")}</div>
       <div id="pk-list"></div>
       <div style="position:sticky;bottom:0;padding-top:10px;background:linear-gradient(transparent, var(--bg) 30%)"><button class="btn primary" data-close style="width:100%">Fatto</button></div>
     `, el => {
@@ -997,7 +997,7 @@
       <div class="between"><h2>Luoghi</h2><button class="btn small primary" id="addl" data-top>${icon("Plus")} Aggiungi</button></div><p class="lead">${LUOGHI.filter(p => !p.out && !p.mine).length} posti dalla vostra lista Wanderlog${LUOGHI.length > BASE_N ? ` · ${LUOGHI.length - BASE_N} aggiunti da voi` : ""}</p>
 
       <div class="searchbox">${icon("Search")}<input type="search" id="lq" placeholder="Cerca templi, quartieri, cibo…" value="${esc(lf.q)}" autocomplete="off"></div>
-      <div class="chips" style="margin-top:12px">
+      <div class="chips">
         ${[["all", "Tutte"], ...ZONE.map(z => [z.id, z.nome])].map(([id, n]) => `<button class="chip${lf.z === id ? " on" : ""}" data-z="${id}">${id !== "all" ? `<span class="dot" style="background:${zona[id].colore}"></span>` : ""}${esc(n)}</button>`).join("")}
       </div>
       <div class="chips" style="padding-top:0">
@@ -1006,7 +1006,7 @@
         ${LUOGHI.length > BASE_N ? `<button class="chip${lf.mine ? " on" : ""}" id="fmine">${icon("UserRound")} Aggiunti da voi</button>` : ""}
         <button class="chip${lf.out ? " on" : ""}" id="fout">Scartati ed eliminati</button>
       </div>
-      <div class="between" style="margin:2px 0 4px"><span class="small muted" id="lcount"></span><div class="seg lview"><button data-lv="g">${icon("LayoutGrid")} Foto</button><button data-lv="l">${icon("ListChecks")} Elenco</button></div></div>
+      <div class="between" style="margin:0 0 4px"><span class="small muted" id="lcount"></span><div class="seg lview"><button data-lv="g">${icon("LayoutGrid")} Foto</button><button data-lv="l">${icon("ListChecks")} Elenco</button></div></div>
       <div id="llist"></div>`;
     const draw = () => {
       const qq = lf.q.toLowerCase().trim();
@@ -1547,7 +1547,7 @@
       return;
     }
     const g = GUIDE[sub];
-    if (g) { view.innerHTML = `${back}<h2>${g.titolo}</h2><div class="card prose" style="margin-top:12px">${g.html}</div>`; return; }
+    if (g) { view.innerHTML = `${back}<h2>${g.titolo}</h2><div class="card prose">${g.html}</div>`; return; }
     if (sub === "frasi") return renderFrasi(back);
     if (sub === "ricordi") return renderRicordi(back);
     if (sub === "yen") return renderYen(back);
@@ -1619,7 +1619,7 @@
 
   function renderChecklist(back) {
     const total = CHECKLIST.reduce((s, [, it]) => s + it.length, 0);
-    const head = () => `<div class="between small"><span class="muted">Salvata su questo telefono</span><b>${checks.size}/${total}</b></div><div class="progress" style="margin-top:8px"><i style="width:${checks.size / total * 100}%"></i></div>`;
+    const head = () => `<div class="between small"><span class="muted">Salvata su questo telefono</span><b>${checks.size}/${total}</b></div><div class="progress bar-head"><i style="width:${checks.size / total * 100}%"></i></div>`;
     view.innerHTML = `${back}<h2>Checklist</h2><div class="card" id="ckhead">${head()}</div>
       ${CHECKLIST.map(([g, items]) => `<div class="card"><h3 style="margin-top:0">${g}</h3>${items.map(t => `<label class="check${checks.has(t) ? " done" : ""}"><input type="checkbox" data-ck="${esc(t)}" ${checks.has(t) ? "checked" : ""}><span>${esc(t)}</span></label>`).join("")}</div>`).join("")}`;
     $$("[data-ck]").forEach(cb => cb.onchange = () => {
@@ -1655,7 +1655,7 @@
         <div class="grow"><b>${esc(p.titolo || tn)}</b><div class="muted small">${when}</div>${route}${p.indirizzo ? `<div class="small muted">${esc(p.indirizzo)}</div>` : ""}</div></div>
       ${p.codice ? `<div class="small" style="margin-top:8px">${icon("KeyRound")} Codice: <b class="copiabile">${esc(p.codice)}</b></div>` : ""}
       ${p.note ? `<div class="small muted" style="margin-top:4px">${esc(p.note)}</div>` : ""}
-      <div class="btns" style="margin-top:10px">
+      <div class="btns">
         ${p.tipo === "hotel" ? `<a class="btn small primary" href="${gmTo(addrQ(p))}" target="_blank" rel="noopener">${icon("Navigation")} Portami</a><button class="btn small" data-taxi="${p.id}">${icon("CarTaxiFront")} Al tassista</button>` : ""}
         ${p.link ? `<a class="btn small" href="${esc(p.link)}" target="_blank" rel="noopener">${icon("Link")} Apri</a>` : ""}
       </div>
@@ -1677,7 +1677,7 @@
         <div class="nights">${NIGHTS.map((d, i) => { const h = hotelFor(d); return `<i title="${short(d)}${h ? " · " + esc(h.titolo) : ""}" class="${h ? "ok" : ""}"></i>`; }).join("")}</div>
         ${covered < NIGHTS.length ? `<p class="small muted" style="margin:8px 0 0">Mancano: ${NIGHTS.filter(d => !hotelFor(d)).map(short).join(", ")}</p>` : `<p class="small" style="margin:8px 0 0;color:var(--ok)">Tutte le notti sono coperte ✓</p>`}
       </div>
-      <div class="section-h" style="margin-top:6px"><h3>Aggiungi</h3></div>
+      <div class="section-h"><h3>Aggiungi</h3></div>
       <div class="addgrid">${Object.entries(PTYPE).map(([k, [ic, col, tn]]) => `<button data-addp="${k}"><span class="pic" style="background:${col}">${icon(ic)}</span>${tn}</button>`).join("")}</div>
       ${all.length ? all.map((p, k) => (k === 0 || p.dal !== all[k - 1].dal ? `<h3>${p.dal ? cap1(fmtDay(p.dal)) : "Senza data"}</h3>` : "") + pcard(p)).join("") : `<p class="empty">Ancora nessuna prenotazione. Comincia dagli hotel e dai voli.</p>`}`;
     $$("[data-addp]").forEach(b => b.onclick = () => editPren({ tipo: b.dataset.addp }));
@@ -2169,7 +2169,7 @@
         ${big ? `<div class="row rline"><span class="pic" style="background:${catOf(big.cat).col}">${catOf(big.cat).html}</span><div class="grow"><small class="muted">La spesa più grande</small><b>${esc(big.desc || catOf(big.cat).n)} · ${eurF(big.eur)}</b></div></div>` : ""}
         ${topWho ? `<div class="row rline">${avatar(topWho[0], 40)}<div class="grow"><small class="muted">Ha anticipato di più</small><b>${esc(topWho[0])} · ${eurF(topWho[1])}</b></div></div>` : ""}</div>` : ""}
       ${pics.length ? `<h3>${anyDone ? "Dove siamo stati" : "Dove andremo"}</h3><div class="rpics">${pics.map(id => `<div class="ph" data-bg="${photoUrl(id, 330)}" data-place="${id}"></div>`).join("")}</div>` : ""}
-      ${navigator.share ? `<button class="btn primary" id="rshare" style="width:100%;margin-top:18px">${icon("Share2")} Condividi il riassunto</button>` : ""}`;
+      ${navigator.share ? `<button class="btn primary" id="rshare" style="width:100%;margin-top:16px">${icon("Share2")} Condividi il riassunto</button>` : ""}`;
     lazyScan();
     $("#rshare")?.addEventListener("click", () => navigator.share({ title: T.titolo, text: `${T.titolo}: ${DAYS.length} giorni, ${cities.map(z => zona[z].nome).join(", ")}${uniq.length ? `, ${uniq.length} tappe` : ""}${km >= 1 ? `, ~${Math.round(km)} km a piedi` : ""}${tot ? `, ${fmtInt(tot)} € in tutto` : ""}. 🇯🇵` }).catch(() => {}));
   }
