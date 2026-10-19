@@ -2,13 +2,14 @@
   "use strict";
 
   // ——— storage (protetto: in privato o con dati bloccati può fallire) ———
-  let dataVer = 0;   // cresce a ogni modifica salvata: le pagine tenute in memoria più vecchie si ricostruiscono
+  let dataVer = 0;
+  const UI_KEYS = new Set(["selDay", "lview", "mapMode", "notifyQ", "skipCode"]);   // solo preferenze di navigazione: non cambiano le pagine   // cresce a ogni modifica salvata: le pagine tenute in memoria più vecchie si ricostruiscono
   const LS = {
     get(k, d) { try { const v = localStorage.getItem("jp27:" + k); return v ? JSON.parse(v) : d; } catch { return d; } },
-    set(k, v) { dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
+    set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 51;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 52;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -85,7 +86,10 @@
   const seenPh = new Set();
   function showPhoto(el) {
     const u = el.dataset.bg; el.removeAttribute("data-bg");
-    const put = () => { el.style.backgroundImage = `url('${u}')`; el.classList.add("in"); };
+    const put = () => {
+      const img = document.createElement("img"); img.className = "phi"; img.alt = ""; img.decoding = "sync"; img.draggable = false; img.src = u;
+      el.prepend(img); el.classList.add("in");
+    };
     if (seenPh.has(u)) { el.classList.add("now"); return put(); }   // già scaricata: niente dissolvenza, niente lampeggio
     const img = new Image(); img.src = u;
     (img.decode ? img.decode() : Promise.resolve()).catch(() => {}).then(() => { seenPh.add(u); put(); });
