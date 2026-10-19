@@ -34,8 +34,8 @@
   --shadow-l: 0 10px 40px rgba(40, 25, 10, .18);
   --r: 20px; --r-s: 14px;
   --nav-h: 66px;
-  --font: "Plus Jakarta Sans", "Zen Kaku Gothic New", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --jp: "Zen Kaku Gothic New", "Hiragino Sans", sans-serif;
+  --font: "Plus Jakarta Sans", "Hiragino Sans", "Zen Kaku Gothic New", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --jp: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Zen Kaku Gothic New", sans-serif;   /* su iPhone e Mac c'è già Hiragino: il font web si scarica solo dove manca */
   --serif: "Shippori Mincho", "Hiragino Mincho ProN", Georgia, serif;
   --ease: cubic-bezier(.2, .8, .2, 1);
   color-scheme: light;

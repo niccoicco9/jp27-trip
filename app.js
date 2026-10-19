@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 54;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 55;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -92,7 +92,8 @@
   function showPhoto(el) {
     const u = el.dataset.bg; el.removeAttribute("data-bg");
     const put = () => {
-      const img = document.createElement("img"); img.className = "phi"; img.alt = ""; img.decoding = "sync"; img.draggable = false; img.src = u;
+      // foto grandi in cima alla pagina: decodificate subito (niente riquadro vuoto tornando); nelle liste e gallerie no, per non frenare lo scorrimento
+      const img = document.createElement("img"); img.className = "phi"; img.alt = ""; img.decoding = el.closest(".hero, .daycover") ? "sync" : "async"; img.draggable = false; img.src = u;
       el.prepend(img); el.classList.add("in");
     };
     if (seenPh.has(u)) { el.classList.add("now"); return put(); }   // già scaricata: niente dissolvenza, niente lampeggio
