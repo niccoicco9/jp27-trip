@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 67;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 68;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -601,8 +601,10 @@
     }, rerender);
   }
   document.addEventListener("click", e => {
-    const el = e.target.closest("[data-place]");
-    if (el && !e.target.closest("button, a, input, select, textarea")) openPlace(el.dataset.place);
+    // tocco su una card con un luogo: si apre la scheda. I pulsanti dentro la card fanno la loro azione,
+    // tranne quando il pulsante stesso porta il luogo (es. "Dettagli" nelle card della mappa)
+    const el = e.target.closest("[data-place]"), ctl = e.target.closest("button, a, input, select, textarea");
+    if (el && (!ctl || ctl === el)) openPlace(el.dataset.place);
   });
 
   // ——— OGGI ———
@@ -1369,7 +1371,8 @@
     eng.resize?.();
     $("#mmode") && ($("#mmode").innerHTML = eng.kind === "offline" ? `${icon("CloudOff")} Offline` : `${icon("Map")} Google`);
     $("#mmode")?.classList.toggle("on", eng.kind === "offline");
-    applyMapFilter(true);
+    // aperta da "Sulla mappa": niente inquadratura di tutto il Giappone (con Google arrivava dopo e copriva lo zoom sul luogo)
+    applyMapFilter(!mapFocus);
     if (mapFocus) { const id = mapFocus; mapFocus = null; eng.focus(id, true); }
   }
 

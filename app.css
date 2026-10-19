@@ -969,3 +969,9 @@ h3, .ugroup, .ugroup:first-of-type, .galh, .section-h { margin-top: var(--sp-6);
 /* tocco: le righe delle liste si schiariscono (niente rettangolo grigio), card e pulsanti si abbassano */
 .prep, label.check, .urow, .phrase { transition: opacity .25s ease-out; }
 :is(.prep, label.check, .urow, .phrase).pressed { transition-duration: .08s; }
+/* fumetto della mappa Google: Google impone i suoi colori al testo, qui si rimettono quelli dell'app (leggibili anche in scuro) */
+.gm-style .gm-iw, .gm-style .gm-iw b { color: var(--ink) !important; }
+.gm-style .gm-iw .jp { color: var(--muted) !important; }
+.gm-style .gm-style-iw-c, .gm-style .gm-style-iw-d { color: var(--ink) !important; }
+.gm-style .gm-iw { font-family: var(--font) !important; }
+.gm-style .gm-iw b { font-weight: 700 !important; }
