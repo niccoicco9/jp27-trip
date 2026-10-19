@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 48;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 49;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -492,18 +492,19 @@
 
   // ——— scheda luogo ———
   // la foto toccata "vola" e diventa la copertina della scheda (come nelle app Apple)
+  // from = foto toccata, misurata prima di aprire la scheda (aprendola la pagina sotto si blocca)
   function flyPhoto(from) {
-    if (reduceMotion()) return;
-    const src = from.querySelector(".ph:not(.none)"), cover = $("#sheet-body .cover:not(.none)");
-    if (!src || !cover) return;
-    const bg = getComputedStyle(src).backgroundImage; if (!bg || bg === "none") return;
-    sheetCard.classList.add("fly");   // la scheda compare sul posto: solo la foto si muove
-    const a = src.getBoundingClientRect(), r = cover.getBoundingClientRect();
-    const ty = new DOMMatrix(getComputedStyle(sheetCard).transform).m42 || 0;
+    if (reduceMotion() || !from) return;
+    const { a, bg, radius } = from, cover = $("#sheet-body .cover:not(.none)");
+    if (!cover) return;
+    // la posizione finale della copertina si misura con la scheda ferma, senza animazioni in corso
+    sheetCard.classList.add("fly"); sheetCard.style.animation = "none"; sheetCard.style.transform = "none";
+    const r = cover.getBoundingClientRect();
+    sheetCard.style.transform = ""; void sheetCard.offsetWidth; sheetCard.style.animation = "";   // la scheda compare sul posto: solo la foto si muove
     const fly = document.createElement("div"); fly.className = "flyph";
-    Object.assign(fly.style, { left: a.left + "px", top: a.top + "px", width: a.width + "px", height: a.height + "px", backgroundImage: bg, borderRadius: getComputedStyle(src).borderRadius });
+    Object.assign(fly.style, { left: a.left + "px", top: a.top + "px", width: a.width + "px", height: a.height + "px", backgroundImage: bg, borderRadius: radius });
     document.body.appendChild(fly); cover.style.visibility = "hidden";
-    requestAnimationFrame(() => requestAnimationFrame(() => Object.assign(fly.style, { left: r.left + "px", top: r.top - ty + "px", width: r.width + "px", height: r.height + "px", borderRadius: "26px 26px 0 0" })));
+    requestAnimationFrame(() => requestAnimationFrame(() => Object.assign(fly.style, { left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px", borderRadius: "26px 26px 0 0" })));
     const end = () => { cover.style.visibility = ""; fly.remove(); };
     fly.addEventListener("transitionend", end, { once: true }); setTimeout(end, 600);
   }
@@ -554,7 +555,11 @@
   }
   document.addEventListener("click", e => {
     const el = e.target.closest("[data-place]");
-    if (el && !e.target.closest("button, a, input, select, textarea")) { const wasOpen = sheetOpen(); openPlace(el.dataset.place); if (!wasOpen) flyPhoto(el); }
+    if (el && !e.target.closest("button, a, input, select, textarea")) {
+      const src = !sheetOpen() && el.querySelector(".ph:not(.none)"), cs = src && getComputedStyle(src);
+      const from = cs && cs.backgroundImage && cs.backgroundImage !== "none" ? { a: src.getBoundingClientRect(), bg: cs.backgroundImage, radius: cs.borderRadius } : null;
+      openPlace(el.dataset.place); flyPhoto(from);
+    }
   });
 
   // ——— OGGI ———
