@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 62;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 63;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -733,14 +733,16 @@
       <div class="btns" style="margin-top:10px"><a class="btn primary" href="${gmDir(p)}" target="_blank" rel="noopener">${icon("Navigation")} Portami qui</a><button class="btn" data-fatto="${p.id}">Fatto 済</button></div>` : ""}
       <div class="stops">${ids.map(id => `<label class="check${done.has(id) ? " done" : ""}"><input type="checkbox" data-stop="${id}" ${done.has(id) ? "checked" : ""}><span><b>${esc(byId[id].n)}</b>${t[id] ? ` <small class="muted">${esc(t[id])}</small>` : ""}</span></label>`).join("")}</div></div>`;
   }
+  const onOggi = () => (location.hash || "#oggi") === "#oggi";
   function bindTrip(today) {
     $("#qspesa")?.addEventListener("click", () => code ? editSpesa({ data: today }, true) : askWho(true));
-    $$("[data-stop]").forEach(c => c.onchange = () => { toggleDone(today, c.dataset.stop, c.checked); setTimeout(() => keepScroll(render), 420); });
+    $$("[data-stop]").forEach(c => c.onchange = () => { toggleDone(today, c.dataset.stop, c.checked); setTimeout(() => { if (onOggi()) keepScroll(render); }, 420); });
     $$("[data-fatto]").forEach(b => b.onclick = () => { buzz(); toggleDone(today, b.dataset.fatto, true); keepScroll(render); });
     $("#nearbtn")?.addEventListener("click", () => {
       if (!navigator.geolocation) return toast("Posizione non disponibile");
       toast("Cerco la tua posizione…");
-      navigator.geolocation.getCurrentPosition(pos => { nearPos = { lat: pos.coords.latitude, lng: pos.coords.longitude, at: Date.now() }; keepScroll(render); },
+      // la posizione può arrivare dopo qualche secondo: si ridisegna Oggi solo se è ancora sullo schermo
+      navigator.geolocation.getCurrentPosition(pos => { nearPos = { lat: pos.coords.latitude, lng: pos.coords.longitude, at: Date.now() }; dataVer++; if (onOggi()) keepScroll(render); },
         () => toast("Non riesco a leggere la posizione"), { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
     });
   }
@@ -912,6 +914,7 @@
 
   function openPicker(d) {
     let fz = dayZone(d) || "all", fq = "";
+    const v0 = dataVer;
     const draw = el => {
       const list = LUOGHI.filter(p => !p.out && (fz === "all" || p.z === fz) && (!fq || matches(p.n + " " + p.jp + " " + p.d, fq)));
       $("#pk-list", el).innerHTML = list.map(p => {
@@ -939,7 +942,7 @@
         if (k >= 0) day.i.splice(k, 1); else { day.i.push(id); markFresh(id); buzz(); if (closedOn(byId[id], d)) toast(`Attenzione: ${byId[id].n} è chiuso di ${byId[id].chiuso}`); }
         savePlan(); draw(el);
       };
-    }, () => { if (location.hash.startsWith("#giorni")) keepScroll(() => renderGiorni()); });
+    }, () => { if (dataVer !== v0 && location.hash.startsWith("#giorni")) keepScroll(render); });
   }
 
   // ——— condivisione programma via link (quando la sync non è attiva) ———
@@ -1044,7 +1047,7 @@
       if (lf.near) { lf.near = null; b.classList.remove("on"); return draw(); }
       if (!navigator.geolocation) return toast("Posizione non disponibile");
       toast("Cerco la tua posizione…");
-      navigator.geolocation.getCurrentPosition(pos => { lf.near = { lat: pos.coords.latitude, lng: pos.coords.longitude }; b.classList.add("on"); draw(); },
+      navigator.geolocation.getCurrentPosition(pos => { lf.near = { lat: pos.coords.latitude, lng: pos.coords.longitude }; dataVer++; if (!b.isConnected) return; b.classList.add("on"); draw(); },
         () => toast("Non riesco a leggere la posizione"), { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
     };
   }
@@ -1941,7 +1944,7 @@
           else {
             const b = e.currentTarget; b.disabled = true; b.textContent = "Salvo…";
             try { const u = (await (await fetch(c.ph.getURI({ maxWidth: 960 }) + "&skipHttpRedirect=true")).json()).photoUri; if (isPhotoUrl(u)) img = { u, g: c.gid, a: c.a }; } catch {}
-            if (!el.isConnected) return;
+            if (!sheetOpen() || !$("#l-save", el)) return;   // scheda chiusa nel frattempo: niente salvataggio
           }
         }
         item.img = img;
@@ -2573,6 +2576,7 @@
     const r = document.documentElement; r.dataset.vt = type;
     if (keys) nameItems(keys);
     const t = vtRun = document.startViewTransition(() => { update(); if (keys) nameItems(keys); });
+    t.ready.catch(() => {});   // transizione saltata (es. un tocco durante lo scorrimento): non è un errore
     t.finished.finally(() => { if (vtRun === t) { vtRun = null; delete r.dataset.vt; if (keys) nameItems(null); } });
   }
   // gli elementi delle liste (tappe, spese, prenotazioni, biglietti, luoghi) ricevono un nome: così, quando la lista
