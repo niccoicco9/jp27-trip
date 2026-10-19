@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 69;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 70;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2684,8 +2684,6 @@
   // tieni premuto: menu Copia sul testo da leggere; niente menu/anteprima su pulsanti, link, foto e schede toccabili
   document.addEventListener("contextmenu", e => { if (e.target.closest("a, img, button, label, .tabs, .place, .tl li, .ph, .cover, .viewer") && !e.target.closest("input, textarea, .copiabile")) e.preventDefault(); });
   if (!maybeImport()) render();
-  // logo d'avvio: resta un attimo (si deve vedere anche quando l'app si apre in un lampo), poi sfuma
-  (() => { const b = $("#boot"); if (!b) return; setTimeout(() => { b.classList.add("out"); setTimeout(() => b.remove(), 450); }, Math.max(0, 700 - performance.now())); })();
   // la sincronizzazione (Firebase, ~525 KB) parte dopo la prima schermata: l'app compare subito con i dati del telefono
   (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => startSync(), { timeout: 800 });
   setTimeout(() => { if (navigator.onLine) OfflineMap.warmup?.().catch(() => {}); }, 5000);
