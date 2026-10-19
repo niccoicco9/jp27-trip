@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 47;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 48;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -362,7 +362,7 @@
   let sheetT = null;
   const sheetOpen = () => !sheet.hidden && !sheet.classList.contains("closing");
   function openSheet(html, onMount, onClose) {
-    clearTimeout(sheetT); sheet.classList.remove("closing"); sheetCard.style.transition = "";
+    clearTimeout(sheetT); if (sheet.hidden) sheetCard.classList.remove("fly"); sheet.classList.remove("closing"); sheetCard.style.transition = "";
     if (!layers.includes(sheetLayer)) pushLayer(sheetLayer);
     $("#sheet-body").innerHTML = html; sheet.hidden = false; SC.classList.add("locked");
     sheetCard.scrollTop = 0; sheetCard.style.transform = "";
@@ -497,8 +497,9 @@
     const src = from.querySelector(".ph:not(.none)"), cover = $("#sheet-body .cover:not(.none)");
     if (!src || !cover) return;
     const bg = getComputedStyle(src).backgroundImage; if (!bg || bg === "none") return;
+    sheetCard.classList.add("fly");   // la scheda compare sul posto: solo la foto si muove
     const a = src.getBoundingClientRect(), r = cover.getBoundingClientRect();
-    const ty = new DOMMatrix(getComputedStyle(sheetCard).transform).m42 || 0;   // la scheda sta ancora salendo
+    const ty = new DOMMatrix(getComputedStyle(sheetCard).transform).m42 || 0;
     const fly = document.createElement("div"); fly.className = "flyph";
     Object.assign(fly.style, { left: a.left + "px", top: a.top + "px", width: a.width + "px", height: a.height + "px", backgroundImage: bg, borderRadius: getComputedStyle(src).borderRadius });
     document.body.appendChild(fly); cover.style.visibility = "hidden";
@@ -641,9 +642,9 @@
     $$("[data-book]").forEach(cb => cb.onchange = () => {
       cb.checked ? booked.add(cb.dataset.book) : booked.delete(cb.dataset.book);
       savePlan(); cb.closest(".check").classList.toggle("done", cb.checked);
-      const n = toBook.filter(p => booked.has(p.id)).length;
-      $(".card .progress i").style.width = n / toBook.length * 100 + "%";
-      cb.closest(".card").querySelector(".between b").textContent = `${n}/${toBook.length}`;
+      const n = toBook.filter(p => booked.has(p.id)).length, w = n / toBook.length * 100 + "%";
+      const card = cb.closest(".card"); card.querySelector(".progress i").style.width = w; card.querySelector(".between b").textContent = `${n}/${toBook.length}`;
+      const pr = $('[data-goto="booklist"]'); if (pr) { pr.querySelector("small").textContent = `${n}/${toBook.length}`; pr.querySelector(".progress i").style.width = w; }
     });
     $("#more")?.addEventListener("click", e => { $$("[data-more]").forEach(x => (x.hidden = false)); e.currentTarget.remove(); });
     $("[data-goto]")?.addEventListener("click", e => { $("#" + e.currentTarget.dataset.goto)?.closest(".card")?.scrollIntoView({ behavior: "smooth", block: "start" }); });
@@ -1602,7 +1603,7 @@
   }
 
   function renderPren(back) {
-    if (!code) { view.innerHTML = `${back}<h2>Prenotazioni</h2>${needCodeBox("Le prenotazioni")}`; bindPcards(); return; }
+    if (!code) { view.innerHTML = `${back}<h2>Prenotazioni</h2><p class="lead">Hotel, voli, treni e biglietti, condivisi tra voi quattro.</p>${needCodeBox("Le prenotazioni")}`; bindPcards(); return; }
     const all = [...lists.prenotazioni].sort((a, b) => (a.dal || "9").localeCompare(b.dal || "9") || (a.ora || "").localeCompare(b.ora || ""));
     const covered = NIGHTS.filter(hotelFor).length;
     view.innerHTML = `${back}<h2>Prenotazioni</h2><p class="lead">Hotel, voli, treni e biglietti, condivisi tra voi quattro.</p>
@@ -1852,7 +1853,7 @@
   }
 
   function renderSpese(back) {
-    if (!code) { view.innerHTML = `${back}<h2>Spese</h2>${needCodeBox("Le spese")}`; bindPcards(); return; }
+    if (!code) { view.innerHTML = `${back}<h2>Spese</h2><p class="lead">Chi ha pagato cosa, e alla fine chi deve quanto a chi.</p>${needCodeBox("Le spese")}`; bindPcards(); return; }
     const { net, total, cn } = balances();   // cn: saldo di ogni coppia
     const debt = Math.abs(cn[0]) < .5 ? null : cn[0] > 0 ? [COPPIE[1], COPPIE[0], cn[0]] : [COPPIE[0], COPPIE[1], -cn[0]];
     const items = [...lists.spese].filter(s => !spFilter || catOf(s.cat).k === spFilter).sort((a, b) => (b.data || "").localeCompare(a.data || "") || (b.ts || 0) - (a.ts || 0));

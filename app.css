@@ -847,3 +847,5 @@ main#view { will-change: auto; }
 /* riquadri dei numeri (Spese, Budget): tinta piena calda al posto dell'illustrazione, con il kanji in trasparenza */
 .hero.solid { background: linear-gradient(150deg, #c8402f 0%, #8f2a22 55%, #3b1d1a 100%); }
 .hero.solid::after { display: none; }
+/* scheda aperta da una foto: la foto vola, il resto compare sul posto (niente scatto sotto la foto) */
+.sheet-card.fly { animation: fade .3s ease-out; }
