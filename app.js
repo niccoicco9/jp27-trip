@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 60;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 61;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -345,9 +345,8 @@
       show(0); requestAnimationFrame(step);
       setTimeout(() => { done = true; show(to); }, dur + 60);   // valore giusto garantito anche se i fotogrammi si fermano
     });
-    const bars = $$(".progress i", root).map(el => [el, el.style.width]);
-    bars.forEach(([el]) => { el.style.transition = "none"; el.style.width = "0"; });
-    if (bars.length) { void root.offsetWidth; bars.forEach(([el]) => (el.style.transition = "")); setTimeout(() => bars.forEach(([el, w]) => (el.style.width = w)), 30); }
+    if (root.animate) $$(".progress i", root).forEach((el, i) => el.animate([{ transform: "scaleX(0)" }, { transform: "scaleX(1)" }],
+      { duration: 700, delay: 60 + i * 40, easing: "cubic-bezier(.32, .72, 0, 1)", fill: "backwards" }));
   }
 
   // ——— ui helpers ———
@@ -2456,7 +2455,11 @@
     if (top.classList.contains("compact") !== on) top.classList.toggle("compact", on);
   }
   SC.addEventListener("scroll", checkTitle, { passive: true });
-  function rerender() { dataVer++; const [tab] = (location.hash.slice(1) || "oggi").split("/"); if (tab !== "mappa") keepScroll(render); }
+  function rerender() {
+    dataVer++; const [tab] = (location.hash.slice(1) || "oggi").split("/"); if (tab === "mappa") return;
+    if (canVT() && !sheetOpen() && $(LIST_SEL)) runVT("update", () => keepScroll(render), true);
+    else keepScroll(render);
+  }
   // è un'app: niente zoom della pagina con due dita (iOS ignora user-scalable=no, serve bloccarlo a mano).
   // La mappa resta libera: ha il suo zoom
   const onMap = e => !!e.target?.closest?.(".mapwrap, .mapel");
@@ -2543,12 +2546,51 @@
     // ferma l'inerzia della pagina di prima (su iPhone continuerebbe a scorrere la pagina nuova)
     SC.style.overflowY = "hidden"; setTimeout(() => { SC.style.overflowY = ""; }, 30);
     lastHash = to;
-    if (!to.startsWith("#mappa")) SC.scrollTop = 0;
-    render();
-    if (!to.startsWith("#mappa") && (kind === "tab" || kind === "pop")) restoreScroll(scrollMem[location.hash || "#oggi"] || 0);
-    view.classList.remove("enter", "nav-tab", "nav-push", "nav-pop", "nav-next", "nav-prev", "nav-fade"); void view.offsetWidth;
-    view.classList.add("enter", "nav-" + kind);
-    if (!restored) playIntro();
+    view.classList.remove("enter", "nav-push", "nav-pop", "nav-next", "nav-prev", "nav-fade");
+    const show = () => {
+      if (!to.startsWith("#mappa")) SC.scrollTop = 0;
+      render();
+      if (!to.startsWith("#mappa") && (kind === "tab" || kind === "pop")) restoreScroll(scrollMem[location.hash || "#oggi"] || 0);
+      if (!restored) { playIntro(); if (kind === "tab") enterItems(); }
+    };
+    // come su iPhone: le schede in basso cambiano all'istante; entrare/uscire da una pagina (o passare al giorno dopo)
+    // fa scorrere la pagina intera, con la tecnica nativa di Safari (View Transitions) quando c'è
+    const slide = kind === "push" || kind === "pop" || kind === "next" || kind === "prev";
+    if (slide && canVT()) runVT(kind === "next" ? "push" : kind === "prev" ? "pop" : kind, show);
+    else {
+      show();
+      if (slide || kind === "fade") { void view.offsetWidth; view.classList.add("enter", "nav-" + kind); }
+    }
+  }
+  // ——— transizioni native (View Transitions): pagine che scorrono e liste che si riordinano da sole ———
+  const canVT = () => !!document.startViewTransition && !reduceMotion() && !document.hidden;
+  let vtRun = null;
+  function runVT(type, update, keys) {
+    vtRun?.skipTransition?.();
+    const r = document.documentElement; r.dataset.vt = type;
+    if (keys) nameItems(keys);
+    const t = vtRun = document.startViewTransition(() => { update(); if (keys) nameItems(keys); });
+    t.finished.finally(() => { if (vtRun === t) { vtRun = null; delete r.dataset.vt; if (keys) nameItems(null); } });
+  }
+  // gli elementi delle liste (tappe, spese, prenotazioni, biglietti, luoghi) ricevono un nome: così, quando la lista
+  // cambia, ognuno scivola nella nuova posizione, quelli nuovi compaiono e quelli tolti spariscono
+  const LIST_SEL = "#view .tl > li, #view .card.spesa, #view .card.pcard, #view #booklist > .check, #view .place[data-place], #view .gcard[data-place]";
+  const itemKey = el => el.dataset.spesa || el.dataset.pren || el.dataset.place || el.querySelector("[data-place],[data-book],[data-stop]")?.dataset.place
+    || el.querySelector("[data-book]")?.dataset.book || el.querySelector("[data-stop]")?.dataset.stop || "";
+  function nameItems(on) {
+    const seen = new Set();
+    for (const el of $$(LIST_SEL)) {
+      const k = on && itemKey(el), n = k && "it-" + k.replace(/[^\w-]/g, "_");
+      if (!n || seen.has(n) || seen.size > 60 || el.offsetParent === null) { el.style.viewTransitionName = ""; continue; }
+      seen.add(n); el.style.viewTransitionName = n;
+    }
+  }
+  // prima volta che si apre una pagina: le card salgono una dopo l'altra (solo trasformazioni, leggere da disegnare)
+  function enterItems() {
+    if (reduceMotion() || !view.animate) return;
+    const els = [...view.children].filter(el => el.offsetParent !== null && el.getBoundingClientRect().top < innerHeight).slice(0, 8);
+    els.forEach((el, i) => el.animate([{ opacity: 0, transform: "translate3d(0, 14px, 0)" }, { opacity: 1, transform: "none" }],
+      { duration: 420, delay: 25 + i * 35, easing: "cubic-bezier(.32, .72, 0, 1)", fill: "backwards" }));
   }
   // indietro/avanti di sistema: cambia pagina se l'indirizzo è cambiato (una volta sola, chiunque arrivi prima)
   const syncNav = () => { if ((location.hash || "#oggi") !== lastHash) navigate(); };

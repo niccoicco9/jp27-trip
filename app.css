@@ -37,7 +37,7 @@
   --font: "Plus Jakarta Sans", "Hiragino Sans", "Zen Kaku Gothic New", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --jp: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Zen Kaku Gothic New", sans-serif;   /* su iPhone e Mac c'è già Hiragino: il font web si scarica solo dove manca */
   --serif: "Shippori Mincho", "Hiragino Mincho ProN", Georgia, serif;
-  --ease: cubic-bezier(.2, .8, .2, 1);
+  --ease: cubic-bezier(.32, .72, 0, 1);   /* la curva delle animazioni di iOS, uguale ovunque */
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -452,7 +452,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: color-m
 .gtags svg.i { width: 12px; height: 12px; }
 .check.done span { text-decoration: line-through; color: var(--muted); }
 .progress { height: 8px; border-radius: 99px; background: var(--card-2); overflow: hidden; }
-.progress i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--gold), var(--shu)); transition: width .4s var(--ease); }
+.progress i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--gold), var(--shu)); transition: width .45s var(--ease); transform-origin: left center; }
 
 table.budget { width: 100%; border-collapse: collapse; font-size: .88rem; }
 table.budget td { padding: 9px 0; border-top: 1px solid var(--line); }
@@ -771,9 +771,10 @@ main.enter.nav-fade { animation: fade .2s ease-out; }
 
 /* effetto pressione su tutto quello che si tocca */
 .ucard, .qa, .dchip, .chip, .mini, .prep, .mcard, .chapter, .lres button, .whos button, .who button, .addgrid button, .dayact > *, .iconbtn, .seg button, .card.pcard, .card.spesa, .nextstop .row {
-  transition: transform .14s var(--ease), background-color .2s, box-shadow .2s;
+  transition: transform .5s cubic-bezier(.34, 1.56, .64, 1), background-color .2s, box-shadow .2s;   /* rilascio con un piccolo rimbalzo */
   -webkit-tap-highlight-color: transparent;
 }
+:is(.ucard, .qa, .dchip, .chip, .mini, .prep, .mcard, .chapter, .lres button, .whos button, .who button, .addgrid button, .dayact > *, .iconbtn, .seg button, .card.pcard, .card.spesa, .nextstop .row, .gcard, .place, .btn):active { transition-duration: .1s; transition-timing-function: ease-out; }
 .ucard:active, .qa:active, .mini:active, .mcard:active, .chapter:active, .lres button:active, .whos button:active, .who button:active, .addgrid button:active, .dayact > :active:not(:disabled), .card.pcard:active, .card.spesa:active, .nextstop .row:active { transform: scale(.97); }
 .dchip:active, .chip:active, .iconbtn:active, .seg button:active { transform: scale(.92); }
 .prep:active, label.check:active { background-color: color-mix(in srgb, var(--ink) 5%, transparent); }
@@ -884,3 +885,28 @@ main#view { will-change: auto; }
 @keyframes toast-time { to { transform: scaleX(0); } }
 :root[data-theme="dark"] .toast { background: rgba(58, 52, 47, .94); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .toast { background: rgba(58, 52, 47, .94); } }
+/* ——— animazioni: numeri che non ballano, card che si premono, pagine che scorrono ——— */
+.big-n, .stat b, .gpill, [data-count] { font-variant-numeric: tabular-nums; }
+.gcard, .place, .btn { transition: transform .5s cubic-bezier(.34, 1.56, .64, 1), background-color .2s, box-shadow .2s, opacity .2s; }
+.gcard:active { transform: scale(.97); }
+.place:active { transform: scale(.98); }
+.btn:active:not(:disabled) { transform: scale(.96); }
+
+/* View Transitions (Safari 18 e successivi): barra in basso e testata restano ferme, la pagina scorre */
+.tabs { view-transition-name: tabbar; }
+.top { view-transition-name: topbar; }
+::view-transition-group(*) { animation-duration: .42s; animation-timing-function: cubic-bezier(.32, .72, 0, 1); }
+::view-transition-old(tabbar), ::view-transition-new(tabbar) { animation: none; }
+::view-transition-old(topbar), ::view-transition-new(topbar) { animation-duration: .22s; }
+html[data-vt="push"]::view-transition-old(root) { animation: vt-out-left .42s cubic-bezier(.32, .72, 0, 1) both; }
+html[data-vt="push"]::view-transition-new(root) { animation: vt-in-right .42s cubic-bezier(.32, .72, 0, 1) both; box-shadow: -12px 0 32px rgba(20, 12, 6, .14); }
+html[data-vt="pop"]::view-transition-old(root) { animation: vt-out-right .42s cubic-bezier(.32, .72, 0, 1) both; z-index: 1; box-shadow: -12px 0 32px rgba(20, 12, 6, .14); }
+html[data-vt="pop"]::view-transition-new(root) { animation: vt-in-left .42s cubic-bezier(.32, .72, 0, 1) both; }
+@keyframes vt-out-left { to { transform: translate3d(-28%, 0, 0); opacity: .6; } }
+@keyframes vt-in-right { from { transform: translate3d(100%, 0, 0); } }
+@keyframes vt-out-right { to { transform: translate3d(100%, 0, 0); } }
+@keyframes vt-in-left { from { transform: translate3d(-28%, 0, 0); opacity: .6; } }
+/* lista che cambia: la pagina resta, solo gli elementi si spostano, entrano o escono */
+html[data-vt="update"]::view-transition-old(root) { display: none; }
+html[data-vt="update"]::view-transition-new(root) { animation: none; }
+html[data-vt="update"]::view-transition-group(*) { animation-duration: .45s; }
