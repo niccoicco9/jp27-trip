@@ -42,6 +42,20 @@
   <link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: dark)" href="avvio/scuro-1242x2208.png">
   <link rel="apple-touch-startup-image" media="(device-width: 360px) and (device-height: 780px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: light)" href="avvio/chiaro-1080x2340.png">
   <link rel="apple-touch-startup-image" media="(device-width: 360px) and (device-height: 780px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: dark)" href="avvio/scuro-1080x2340.png">
+  <!-- riserva: stessa immagine senza la condizione chiaro/scuro (non tutte le versioni di iOS la riconoscono qui) -->
+  <link rel="apple-touch-startup-image" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="avvio/chiaro-1320x2868.png">
+  <link rel="apple-touch-startup-image" media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="avvio/chiaro-1206x2622.png">
+  <link rel="apple-touch-startup-image" media="(device-width: 420px) and (device-height: 912px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="avvio/chiaro-1260x2736.png">
+  <link rel="apple-touch-startup-image" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="avvio/chiaro-1290x2796.png">
+  <link rel="apple-touch-startup-image" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="avvio/chiaro-1179x2556.png">
+  <link rel="apple-touch-startup-image" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="avvio/chiaro-1284x2778.png">
+  <link rel="apple-touch-startup-image" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="avvio/chiaro-1170x2532.png">
+  <link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="avvio/chiaro-1125x2436.png">
+  <link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="avvio/chiaro-1242x2688.png">
+  <link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="avvio/chiaro-828x1792.png">
+  <link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="avvio/chiaro-750x1334.png">
+  <link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="avvio/chiaro-1242x2208.png">
+  <link rel="apple-touch-startup-image" media="(device-width: 360px) and (device-height: 780px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="avvio/chiaro-1080x2340.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preload" href="fonts/jakarta-latin.woff2" as="font" type="font/woff2" crossorigin>
@@ -50,8 +64,19 @@
   <noscript><link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@800&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet"></noscript>
   <link rel="stylesheet" href="app.css">
   <script>try { const t = JSON.parse(localStorage.getItem("jp27:theme") || '""'); if (t) document.documentElement.dataset.theme = t; } catch {}</script>
+  <style>
+    /* logo d'avvio: disegnato subito, prima ancora che arrivino app.css e app.js; uguale all'immagine d'avvio di iOS */
+    #boot { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; padding-bottom: 6.2dvh; background: #f5f1ea; transition: opacity .4s ease; }
+    #boot img { width: 120px; height: 120px; border-radius: 27px; box-shadow: 0 10px 30px rgba(40, 20, 10, .18); transition: transform .45s cubic-bezier(.32, .72, 0, 1); }
+    #boot.out { opacity: 0; pointer-events: none; }
+    #boot.out img { transform: scale(1.08); }
+    @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) #boot { background: #0e0d0c; } }
+    :root[data-theme="dark"] #boot { background: #0e0d0c; }
+  </style>
 </head>
 <body>
+  <div id="boot" aria-hidden="true"><img src="icon-512.png" alt=""></div>
+  <div id="rotate" aria-hidden="true"><div><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></svg><b>Ruota il telefono</b><span>L'app è pensata per l'uso in verticale</span></div></div>
   <div id="scroller" class="scroller">
   <header class="top">
     <div class="tb-l" id="tbl"></div>

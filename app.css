@@ -975,3 +975,17 @@ h3, .ugroup, .ugroup:first-of-type, .galh, .section-h { margin-top: var(--sp-6);
 .gm-style .gm-style-iw-c, .gm-style .gm-style-iw-d { color: var(--ink) !important; }
 .gm-style .gm-iw { font-family: var(--font) !important; }
 .gm-style .gm-iw b { font-weight: 700 !important; }
+
+/* solo in verticale: iOS non permette alle app web di bloccare la rotazione, quindi in orizzontale
+   compare l'invito a ruotare (le foto a schermo intero restano libere di girare) */
+html, body, .scroller { overscroll-behavior-x: none; }
+#rotate { display: none; }
+@media (orientation: landscape) and (max-height: 520px) {
+  #rotate { display: grid; position: fixed; inset: 0; z-index: 9000; place-items: center; background: var(--bg); color: var(--ink); text-align: center; padding: 24px; }
+  #rotate > div { display: grid; gap: 6px; justify-items: center; }
+  #rotate svg { color: var(--shu); margin-bottom: 10px; animation: rot-hint 2.6s var(--ease) infinite; }
+  #rotate b { font-size: 1.15rem; }
+  #rotate span { color: var(--muted); font-size: .9rem; }
+  body:has(.viewer) #rotate { display: none; }
+}
+@keyframes rot-hint { 0%, 15% { transform: rotate(-90deg); } 45%, 85% { transform: rotate(0); } 100% { transform: rotate(-90deg); } }
