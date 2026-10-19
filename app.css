@@ -490,7 +490,7 @@ table.budget td:last-child { text-align: right; font-variant-numeric: tabular-nu
 .sheet { position: fixed; inset: 0; z-index: 50; }
 .sheet-bg { position: absolute; inset: 0; background: rgba(10, 6, 3, .45); animation: fade .35s; transition: opacity var(--close-ms, .34s); will-change: opacity; }
 .sheet-card {
-  position: absolute; left: 0; right: 0; bottom: 0; max-height: 92dvh; overflow: auto; background: var(--bg);
+  position: absolute; left: 0; right: 0; bottom: 0; max-height: 92dvh; overflow-x: hidden; overflow-y: auto; background: var(--bg);
   border-radius: 26px 26px 0 0; padding: 0 0 calc(20px + env(safe-area-inset-bottom)); animation: sheet-up .5s cubic-bezier(.32, .72, 0, 1);
   max-width: 640px; margin: 0 auto; box-shadow: var(--shadow-l); overscroll-behavior: contain; will-change: transform;
 }
@@ -864,3 +864,8 @@ main#view { will-change: auto; }
 .lphb.on { border-color: var(--shu); box-shadow: 0 0 0 2px var(--shu-soft); }
 .lphb.none { display: grid; place-items: center; color: var(--muted); font-size: .76rem; font-weight: 700; border: 1.5px dashed var(--line); }
 .lphb.none.on { border: 2px solid var(--shu); color: var(--shu); }
+/* dentro una scheda: il contenuto nuovo entra da destra (avanti) o da sinistra (indietro), come nei fogli di iOS */
+.sheet-body.push { animation: sheet-push .32s cubic-bezier(.32, .72, 0, 1); }
+.sheet-body.pop { animation: sheet-pop .32s cubic-bezier(.32, .72, 0, 1); }
+@keyframes sheet-push { from { opacity: 0; transform: translate3d(36px, 0, 0); } }
+@keyframes sheet-pop { from { opacity: 0; transform: translate3d(-36px, 0, 0); } }

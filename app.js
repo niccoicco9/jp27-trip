@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 58;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 59;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -401,11 +401,16 @@
   });
   let sheetT = null, sheetVer = 0;
   const sheetOpen = () => !sheet.hidden && !sheet.classList.contains("closing");
+  // dentro una scheda già aperta: "push" (avanti, es. Modifica) o "pop" (indietro, es. Annulla/Salva) fanno scorrere il contenuto
+  let sheetNav = "";
+  const inSheet = (dir, fn) => { sheetNav = dir; fn(); sheetNav = ""; };
   function openSheet(html, onMount, onClose) {
+    const nav = sheetOpen() ? sheetNav : ""; sheetNav = "";
     if (!sheetOpen()) sheetVer = dataVer;   // riaperta da dentro (es. dopo una modifica): conta da quando si è aperta la prima volta
     clearTimeout(sheetT); if (sheet.hidden) sheetCard.style.animation = ""; sheet.classList.remove("closing"); $(".sheet-bg").style.opacity = ""; sheetCard.style.transition = "";
     if (!layers.includes(sheetLayer)) pushLayer(sheetLayer);
     $("#sheet-body").innerHTML = html; sheet.hidden = false; SC.classList.add("locked");
+    if (nav) { const b = $("#sheet-body"); b.classList.remove("push", "pop"); void b.offsetWidth; b.classList.add(nav); }
     sheetCard.scrollTop = 0; sheetCard.style.transform = "";
     lazyScan();
     sheetOnClose = onClose || null;
@@ -580,7 +585,7 @@
       $("#delp", el)?.addEventListener("click", () => deletePlace(p));
       $("#restp", el)?.addEventListener("click", () => { delItem("luoghi", "h" + id); toast("Luogo ripristinato"); closeSheet(); rerender(); });
       $("#bk", el)?.addEventListener("change", e => { e.target.checked ? booked.add(id) : booked.delete(id); savePlan(); openPlace(id); });
-      $("#editl", el)?.addEventListener("click", () => p.mine ? editLuogo(lists.luoghi.find(x => x.id === id) || p) : editBase(p));
+      $("#editl", el)?.addEventListener("click", () => inSheet("push", () => p.mine ? editLuogo(lists.luoghi.find(x => x.id === id) || p, null, true) : editBase(p)));
       if ($("#showjp", el)) $("#showjp", el).onclick = () => showBig(p.jp, `${esc(p.n)}<br><span class="jp" style="font-size:1.3rem;color:var(--ink)">ここに行きたいです</span><br><small>"Vorrei andare qui"</small>`);
       $("#onmap", el).onclick = () => { mapFocus = id; go("#mappa"); };
       if ($("#addday", el)) $("#addday", el).onchange = e => {
@@ -1794,7 +1799,7 @@
       </div>
       <label class="check" style="border:none;padding:0 0 12px"><input type="checkbox" id="b-pren" ${p.pren ? "checked" : ""}><span>Da prenotare in anticipo</span></label>
       ${ed ? `<button class="btn" id="b-orig" style="width:100%;margin-bottom:10px">${icon("Undo2")} Ripristina com'era su Wanderlog</button>` : ""}
-      <div class="btns"><button class="btn" data-close>Annulla</button><button class="btn primary" id="b-save">Salva</button></div>
+      <div class="btns"><button class="btn" id="b-cancel">Annulla</button><button class="btn primary" id="b-save">Salva</button></div>
     `, el => {
       const v = id => $("#" + id, el).value.trim();
       $("#b-save", el).onclick = () => {
@@ -1805,12 +1810,13 @@
         if (!now.pren) booked.delete(p.id), savePlan();
         if (Object.keys(diff).length) putItem("luoghi", { id: "e" + p.id, edit: p.id, ...diff });
         else if (ed) delItem("luoghi", ed.id);
-        mergeCustom(); closeSheet(); rerender(); toast("Salvato ✓"); setTimeout(() => openPlace(p.id), 50);
+        mergeCustom(); rerender(); toast("Salvato ✓"); inSheet("pop", () => openPlace(p.id));
       };
-      $("#b-orig", el)?.addEventListener("click", () => { delItem("luoghi", ed.id); mergeCustom(); closeSheet(); rerender(); toast("Ripristinato com'era su Wanderlog"); setTimeout(() => openPlace(p.id), 50); });
+      $("#b-cancel", el).onclick = () => inSheet("pop", () => openPlace(p.id));
+      $("#b-orig", el)?.addEventListener("click", () => { delItem("luoghi", ed.id); mergeCustom(); rerender(); toast("Ripristinato com'era su Wanderlog"); inSheet("pop", () => openPlace(p.id)); });
     });
   }
-  function editLuogo(p, day) {
+  function editLuogo(p, day, fromPlace) {
     const isNew = !p.id;
     let st = { c: p.c || "cibo", z: p.z || "", lat: p.lat, lng: p.lng, where: p.lat ? (p.addr || `${(+p.lat).toFixed(5)}, ${(+p.lng).toFixed(5)}`) : "", pren: !!p.pren,
       gid: "", sel: isPhotoUrl(p.img?.u) ? "cur" : -1, picked: isPhotoUrl(p.img?.u) };   // sel: "cur" = foto già salvata, numero = proposta, -1 = nessuna
@@ -1874,7 +1880,8 @@
         <label class="fl"><span>Costo a persona (€)</span><input id="l-eur" inputmode="decimal" value="${p.eur ?? ""}" placeholder="Facoltativo"></label>
       </div>
       <label class="check" style="border:none;padding:0 0 12px"><input type="checkbox" id="l-pren" ${st.pren ? "checked" : ""}><span>Da prenotare in anticipo</span></label>
-      <div class="btns">${isNew ? `<button class="btn" data-close>Annulla</button>` : `<button class="btn" id="l-del" style="color:var(--shu)">${icon("Trash2")} Elimina</button>`}<button class="btn primary" id="l-save">Salva</button></div>
+      ${isNew ? "" : `<button class="btn" id="l-del" style="width:100%;margin-bottom:10px;color:var(--shu)">${icon("Trash2")} Elimina luogo</button>`}
+      <div class="btns"><button class="btn" ${fromPlace ? 'id="l-cancel"' : "data-close"}>Annulla</button><button class="btn primary" id="l-save">Salva</button></div>
     `, el => {
       draw(el); drawPh(el);
       if (!isNew && !st.picked && st.lat != null) findPh(el);   // luogo già salvato senza foto: propone qualcosa
@@ -1938,8 +1945,10 @@
         const saved = putItem("luoghi", item);
         toast(isNew ? "Luogo aggiunto ✓" : "Salvato ✓");
         if (day) { const dd = getDay(day); if (!dd.i.includes(saved.id)) dd.i.push(saved.id); savePlan(); openPicker(day); }
-        else { closeSheet(); rerender(); if (isNew) setTimeout(() => openPlace(saved.id), 50); }
+        else if (isNew || fromPlace) { rerender(); inSheet("pop", () => openPlace(saved.id)); }
+        else { closeSheet(); rerender(); }
       };
+      $("#l-cancel", el)?.addEventListener("click", () => inSheet("pop", () => openPlace(p.id)));
       $("#l-del", el)?.addEventListener("click", () => deletePlace(byId[p.id] || { ...p, mine: true }));
     });
   }
