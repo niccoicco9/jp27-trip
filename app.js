@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 43;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 44;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -125,16 +125,11 @@
   const isDark = () => theme === "dark" || (theme !== "light" && mq.matches);
   function applyTheme() {
     if (theme) document.documentElement.dataset.theme = theme; else delete document.documentElement.dataset.theme;
-    $$('meta[name="theme-color"]').forEach(m => m.setAttribute("content", isDark() ? "#000000" : "#ffffff"));
-    $("#theme").innerHTML = icon(theme === "dark" ? "Moon" : theme === "light" ? "Sun" : "SunMoon");
-    $("#theme").title = "Tema: " + (theme === "dark" ? "scuro" : theme === "light" ? "chiaro" : "automatico");
+    // barra di stato dello stesso colore del fondo dell'app (la testata non ha più una tinta sua)
+    $$('meta[name="theme-color"]').forEach(m => m.setAttribute("content", isDark() ? "#0e0d0c" : "#f5f1ea"));
     for (const e of Object.values(engines)) e.theme();
   }
-  $("#theme").onclick = () => {
-    theme = theme === "" ? (mq.matches ? "light" : "dark") : theme === "light" && !mq.matches ? "dark" : theme === "dark" && mq.matches ? "light" : "";
-    LS.set("theme", theme); applyTheme(); rerender();
-    toast("Tema " + (theme === "dark" ? "scuro" : theme === "light" ? "chiaro" : "automatico"));
-  };
+  function setTheme(t) { theme = t; LS.set("theme", theme); applyTheme(); rerender(); }
   mq.addEventListener?.("change", () => { if (!theme) { applyTheme(); rerender(); } });
 
   // ——— date ———
@@ -583,17 +578,24 @@
     const firstDay = id => dayOf(id)[0] || "9999";
     const toBook = LUOGHI.filter(p => p.pren && !p.out).sort((a, b) => firstDay(a.id).localeCompare(firstDay(b.id)) || zoneOrder[a.z] - zoneOrder[b.z]);
     const doneBook = toBook.filter(p => booked.has(p.id)).length;
-    const hi = me ? `Ciao ${esc(me)}! ` : "";
+    const hh = new Date().getHours(), hi = "";
+    const saluto = (hh >= 5 && hh < 13 ? "Buongiorno" : hh >= 13 && hh < 18 ? "Buon pomeriggio" : "Buonasera") + (me ? ", " + esc(me) : "");
+    const KANJI = { tokyo: "東京", vicino: "鎌倉", kyoto: "京都", osaka: "大阪", nara: "奈良", fuji: "箱根", kanazawa: "金沢" };
+    const z0 = dayZone(T.inizio) || "tokyo", zNow = (!before && !after && dayZone(today)) || z0;
+    const greet = `<div class="greet"><h2>${saluto}</h2><div class="gpills">
+      <span class="gpill"><em style="color:#c8402f">JP</em><span data-clock="Asia/Tokyo"></span></span>
+      <span class="gpill"><em style="color:#3f8a4f">IT</em><span data-clock="Europe/Rome"></span></span>
+      <span class="gpill" id="wpill" hidden></span></div></div>`;
 
     let hero;
-    if (before || after) hero = `<div class="hero">${art()}<div class="hero-in">
+    if (before || after) hero = `<div class="hero">${before && photoUrl(HERO_PLACE[z0]) ? `<div class="ph" data-bg="${photoUrl(HERO_PLACE[z0], 960)}"></div>` : art()}${before && KANJI[z0] ? `<span class="kanji" aria-hidden="true">${KANJI[z0]}</span>` : ""}<div class="hero-in">
         <span class="kicker">${before ? hi + (daysTo === 1 ? "Manca" : "Mancano") : "Okaeri!"}</span>
         ${before ? `<div class="big-n" data-count="${daysTo}">${daysTo}</div><div class="title">${daysTo === 1 ? "giorno" : "giorni"} al Giappone</div>` : `<div class="title">Viaggio concluso.<br>Arigatō, Giappone!</div>`}
         <p>${fmtDay(T.inizio, { day: "numeric", month: "long" })} – ${fmtDay(T.fine, { day: "numeric", month: "long", year: "numeric" })} · Niccolò & Antonella · Miriam & Paolo</p>
       </div></div>`;
     else {
       const d = getDay(today), first = d.i[0] && byId[d.i[0]], nst = d.i.filter(id => byId[id]).length;
-      hero = `<div class="hero">${first && photoUrl(first.id) ? `<div class="ph" data-bg="${photoUrl(first.id, 960)}"></div>` : art()}<div class="hero-in">
+      hero = `<div class="hero">${first && photoUrl(first.id) ? `<div class="ph" data-bg="${photoUrl(first.id, 960)}"></div>` : art()}${KANJI[zNow] ? `<span class="kanji" aria-hidden="true">${KANJI[zNow]}</span>` : ""}<div class="hero-in">
         <span class="kicker">${hi}Giorno ${idx + 1} di ${DAYS.length} · ${fmtDay(today, { weekday: "long", day: "numeric", month: "long" })}</span>
         <div class="title">${esc(d.l || "Oggi")}</div>
         ${nst ? `<p>${nst} ${nst === 1 ? "tappa" : "tappe"} in programma</p>` : ""}
@@ -603,6 +605,7 @@
 
     const ch = chapters();
     view.innerHTML = `
+      ${greet}
       ${hero}
       <div class="quick">${QUICK.map(([k, ic, c, t]) => `<a class="qa" href="#utility/${k}"><span class="ic" style="background:${c}">${icon(ic)}</span>${t}</a>`).join("")}</div>
       ${before ? prepCard(toBook, doneBook) : ""}
@@ -630,7 +633,7 @@
     $("[data-goto]")?.addEventListener("click", e => { $("#" + e.currentTarget.dataset.goto)?.closest(".card")?.scrollIntoView({ behavior: "smooth", block: "start" }); });
     if (before) window.OfflineMap?.status?.().then(st => { const n = Object.values(st).filter(Boolean).length, el = $("#prep-maps"); if (el) { el.querySelector("small").textContent = `${n}/${OfflineMap.ZONE.length} zone`; el.querySelector(".progress i").style.width = n / OfflineMap.ZONE.length * 100 + "%"; } }).catch(() => {});
     bindPcards();
-    if (!before && !after) loadWeather(today);
+    loadWeather(today); tick();
   }
 
   const bookUrl = p => `https://www.google.com/search?q=${encodeURIComponent(p.n + " official tickets booking")}`;
@@ -669,6 +672,7 @@
     const [city, lat, lng] = ZCOORD[dayZone(today) || "tokyo"];
     const key = city + today;
     const paint = w => {
+      const pill = $("#wpill"); if (pill && w) { pill.hidden = false; pill.innerHTML = `${WMO(w.cur[1])} ${esc(city)} ${Math.round(w.cur[0])}°`; }
       const el = $("#weather"); if (!el || !w) return;
       $("#wtitle").textContent = "Meteo a " + city;
       el.innerHTML = `<div>Adesso<b>${WMO(w.cur[1])} ${Math.round(w.cur[0])}°</b></div>` + w.days.map(([n, c, mx, mn, pr]) => `<div>${n}<b>${WMO(c)} ${Math.round(mx)}°</b><small>min ${Math.round(mn)}° · pioggia ${pr ?? 0}%</small></div>`).join("");
@@ -874,7 +878,7 @@
   let lf = { z: "all", q: "", out: false, pren: false, mine: false, near: null };
   function renderLuoghi() {
     view.innerHTML = `
-      <div class="between"><h2>Luoghi</h2><button class="btn small primary" id="addl">${icon("Plus")} Aggiungi</button></div><p class="lead">${LUOGHI.filter(p => !p.out && !p.mine).length} posti dalla vostra lista Wanderlog${LUOGHI.length > BASE_N ? ` · ${LUOGHI.length - BASE_N} aggiunti da voi` : ""}</p>
+      <div class="between"><h2>Luoghi</h2><button class="btn small primary" id="addl" data-top>${icon("Plus")} Aggiungi</button></div><p class="lead">${LUOGHI.filter(p => !p.out && !p.mine).length} posti dalla vostra lista Wanderlog${LUOGHI.length > BASE_N ? ` · ${LUOGHI.length - BASE_N} aggiunti da voi` : ""}</p>
 
       <div class="searchbox">${icon("Search")}<input type="search" id="lq" placeholder="Cerca templi, quartieri, cibo…" value="${esc(lf.q)}" autocomplete="off"></div>
       <div class="chips" style="margin-top:12px">
@@ -1386,6 +1390,9 @@
         <h3 class="ugroup">Impostazioni</h3>
         <div class="card row"><div class="grow"><b>Accesso</b><div class="muted small">${me ? esc(me) : "Nome non scelto"} · ${code ? "dati condivisi attivi" : "codice del viaggio non inserito"}</div></div><button class="btn small${code ? "" : " primary"}" id="whoami">${icon(code ? "UserRound" : "KeyRound")} ${code ? "Cambia" : "Inserisci"}</button></div>`;
       $("#whoami").onclick = askWho;
+      view.insertAdjacentHTML("beforeend", `<div class="card row"><div class="grow"><b>Tema</b><div class="muted small">Auto segue l'iPhone</div></div>
+        <div class="seg">${[["", "Auto"], ["light", "Chiaro"], ["dark", "Scuro"]].map(([k, t]) => `<button data-theme="${k}" class="${theme === k ? "on" : ""}">${t}</button>`).join("")}</div></div>`);
+      $$("[data-theme]", view).forEach(b => b.onclick = () => { buzz(); setTheme(b.dataset.theme); });
       notifCard();
       view.insertAdjacentHTML("beforeend", `<div class="card row"><div class="grow"><b>Versione ${APP_VERSION}</b><div class="muted small">Se qualcosa non sembra aggiornato, scarica di nuovo l'app (le mappe offline restano).</div></div><button class="btn small" id="forceupd">${icon("RotateCcw")} Aggiorna adesso</button></div>`);
       $("#forceupd").onclick = forceUpdate;
@@ -1767,7 +1774,7 @@
     const debt = Math.abs(cn[0]) < .5 ? null : cn[0] > 0 ? [COPPIE[1], COPPIE[0], cn[0]] : [COPPIE[0], COPPIE[1], -cn[0]];
     const items = [...lists.spese].filter(s => !spFilter || catOf(s.cat).k === spFilter).sort((a, b) => (b.data || "").localeCompare(a.data || "") || (b.ts || 0) - (a.ts || 0));
     let lastD = null;
-    view.innerHTML = `${back}<div class="between"><h2>Spese</h2><button class="btn small primary" id="adds">${icon("Plus")} Aggiungi</button></div><p class="lead">Chi ha pagato cosa, e alla fine chi deve quanto a chi.</p>
+    view.innerHTML = `${back}<div class="between"><h2>Spese</h2><button class="btn small primary" id="adds" data-top>${icon("Plus")} Aggiungi</button></div><p class="lead">Chi ha pagato cosa, e alla fine chi deve quanto a chi.</p>
       <div class="hero" style="min-height:0">${art()}<div class="hero-in" style="min-height:190px">
         <span class="kicker">Spesa totale del gruppo</span><div class="big-n" style="font-size:2.6rem" data-count="${total}" data-fmt="eur">${eurF(total)}</div>
         <p>${debt ? `<b>${coupleName(debt[0])}</b> devono <b>${eurF(debt[2])}</b> a ${coupleName(debt[1])}` : "Siete in pari 🤝"}</p>
@@ -1991,10 +1998,9 @@
   // ——— orologi ———
   function tick() {
     const f = tz => new Date().toLocaleTimeString("it-IT", { timeZone: tz, hour: "2-digit", minute: "2-digit" });
-    $("#clocks").innerHTML = `🇯🇵 <b>${f("Asia/Tokyo")}</b><br>🇮🇹 ${f("Europe/Rome")}`;
+    $$("[data-clock]").forEach(el => { el.textContent = f(el.dataset.clock); });
   }
-  tick(); setInterval(tick, 30e3);
-  $("#sub").textContent = `${short(T.inizio)} – ${short(T.fine)} · ${DAYS.length} giorni`;
+  setInterval(tick, 30e3);
 
   // ——— router ———
   const TABS = [["oggi", "Sun", "Oggi"], ["giorni", "CalendarDays", "Giorni"], ["luoghi", "MapPin", "Luoghi"], ["mappa", "Map", "Mappa"], ["utility", "LayoutGrid", "Utility"]];
@@ -2110,9 +2116,17 @@
   }
   // titolo compatto nella testata quando quello grande della pagina scorre via
   let pageTitle = null;
+  // testata: "‹ indietro" o la data a sinistra, azione principale (+) a destra, titolo piccolo al centro
   function watchTitle() {
+    const [tab] = (location.hash.slice(1) || "oggi").split("/"), top = $(".top");
+    const back = $("#view > a.back"), act = $("#view [data-top]");
     pageTitle = $("#view > h2, #view > .between > h2");
-    if (pageTitle) $("#ctitle").textContent = pageTitle.textContent;
+    $("#tbl").innerHTML = tab === "oggi" ? `<span class="tbdate">${fmtDay(todayJP(), { weekday: "long", day: "numeric", month: "long" }).replace(/^./, c => c.toUpperCase())}</span>`
+      : back ? `<a class="tbback" href="${back.getAttribute("href")}">${icon("ChevronLeft")}${esc(back.textContent.trim())}</a>` : "";
+    $("#tbact").innerHTML = act ? `<button class="tbplus" aria-label="${esc(act.textContent.trim())}">${icon("Plus")}</button>` : "";
+    if (act) $("#tbact button").onclick = () => { buzz(); act.click(); };
+    $("#ctitle").textContent = pageTitle ? pageTitle.textContent.trim() : tab === "oggi" ? "" : (TABS.find(t => t[0] === tab)?.[2] || "");
+    top.classList.toggle("always", !pageTitle && tab !== "oggi");
     checkTitle();
   }
   function checkTitle() {
