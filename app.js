@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 64;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 65;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -152,6 +152,9 @@
   const DAYS = [];
   for (let d = new Date(T.inizio + "T00:00:00Z"); d <= new Date(T.fine + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + 1)) DAYS.push(d.toISOString().slice(0, 10));
   const fmtDay = (iso, opts = { weekday: "long", day: "numeric", month: "long" }) => new Date(iso + "T00:00:00Z").toLocaleDateString("it-IT", { timeZone: "UTC", ...opts });
+  // orario: su iPhone un campo vuoto sembra rotto, quindi mostra "--:--" finché non si sceglie
+  const timeIn = attrs => `<span class="tin"><input type="time" required ${attrs}><i aria-hidden="true">--:--</i></span>`;
+  const cap1 = t => t.charAt(0).toUpperCase() + t.slice(1);   // "lunedì 22 febbraio" → "Lunedì 22 febbraio"
   const fakeToday = new URLSearchParams(location.search).get("oggi");
   const todayJP = () => fakeToday || new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo" }).format(new Date());
   const nowJP = () => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Tokyo", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date());
@@ -532,7 +535,7 @@
     const m = [];
     if (!opts.noZone) m.push(zonePill(p.z));
     if (p.dur) m.push(`<span class="pill ghost">${icon("Clock")} ${esc(p.dur)}</span>`);
-    if (p.eur && !opts.compact) m.push(`<span class="pill ghost">~${p.eur.toLocaleString("it-IT")} €</span>`);
+    if (p.eur && !opts.compact) m.push(`<span class="pill ghost">~${Math.max(1, Math.round(p.eur))} €</span>`);
     if (p.pren) m.push(booked.has(p.id) ? `<span class="pill ok">${icon("Check")} prenotato</span>` : `<span class="pill warn">${icon("Ticket")} da prenotare</span>`);
     if (p.chiuso) m.push(`<span class="pill ghost">chiuso ${esc(p.chiuso)}</span>`);
     const ds = dayOf(p.id);
@@ -640,8 +643,9 @@
     const firstDay = id => dayOf(id)[0] || "9999";
     const toBook = LUOGHI.filter(p => p.pren && !p.out).sort((a, b) => firstDay(a.id).localeCompare(firstDay(b.id)) || zoneOrder[a.z] - zoneOrder[b.z]);
     const doneBook = toBook.filter(p => booked.has(p.id)).length;
-    const hh = new Date().getHours(), hi = "";
-    const saluto = (hh >= 5 && hh < 13 ? "Buongiorno" : hh >= 13 && hh < 18 ? "Buon pomeriggio" : "Buonasera") + (me ? ", " + esc(me) : "");
+    // il saluto segue l'ora di dove siete: in viaggio quella del Giappone
+    const hh = !before && !after ? +nowJP().slice(0, 2) : new Date().getHours(), hi = "";
+    const saluto = (hh >= 5 && hh < 13 ? "Buongiorno" : hh >= 13 && hh < 18 ? "Buon pomeriggio" : hh >= 18 && hh < 23 ? "Buonasera" : "Buonanotte") + (me ? ", " + esc(me) : "");
     const KANJI = { tokyo: "東京", vicino: "鎌倉", kyoto: "京都", osaka: "大阪", nara: "奈良", fuji: "箱根", kanazawa: "金沢" };
     const z0 = dayZone(T.inizio) || "tokyo", zNow = (!before && !after && dayZone(today)) || z0;
     const greet = `<div class="greet"><h2>${saluto}</h2><div class="gpills">
@@ -658,7 +662,7 @@
     else {
       const d = getDay(today), first = d.i[0] && byId[d.i[0]], nst = d.i.filter(id => byId[id]).length;
       hero = `<div class="hero">${first && photoUrl(first.id) ? `<div class="ph" data-bg="${photoUrl(first.id, 960)}"></div>` : art()}${KANJI[zNow] ? `<span class="kanji" aria-hidden="true">${KANJI[zNow]}</span>` : ""}<div class="hero-in">
-        <span class="kicker">${hi}Giorno ${idx + 1} di ${DAYS.length} · ${fmtDay(today, { weekday: "long", day: "numeric", month: "long" })}</span>
+        <span class="kicker">${hi}Giorno ${idx + 1} di ${DAYS.length}</span>
         <div class="title">${esc(d.l || "Oggi")}</div>
         ${nst ? `<p>${nst} ${nst === 1 ? "tappa" : "tappe"} in programma</p>` : ""}
         <div class="btns"><a class="btn primary" href="#giorni/${today}">${icon("CalendarDays")} Programma</a>${first ? `<a class="btn" href="${gmDir(first)}" target="_blank" rel="noopener">${icon("Navigation")} Portami</a>` : ""}</div>
@@ -680,7 +684,7 @@
         <div class="between"><h3 style="margin:0">${icon("Ticket")} Da prenotare</h3><b class="small">${doneBook}/${toBook.length}</b></div>
         <div class="progress" style="margin:10px 0 4px"><i style="width:${toBook.length ? doneBook / toBook.length * 100 : 0}%"></i></div>
         <p class="muted small" style="margin:6px 0 4px">Wanderlog consiglia di prenotarli in anticipo. In ordine di data: prima quelli già in programma.</p>
-        <div id="booklist">${toBook.map((p, k) => `<label class="check${booked.has(p.id) ? " done" : ""}"${k >= 6 ? " data-more hidden" : ""}><input type="checkbox" data-book="${p.id}" ${booked.has(p.id) ? "checked" : ""}><span class="grow">${esc(p.n)} <span class="muted small">· ${esc(zona[p.z].nome)}${dayOf(p.id).length ? " · " + dayOf(p.id).map(short).join(", ") : ""}</span></span><a class="iconbtn" href="${bookUrl(p)}" target="_blank" rel="noopener" aria-label="Cerca i biglietti">${icon("ExternalLink")}</a></label>`).join("")}</div>
+        <div id="booklist">${toBook.map((p, k) => `<label class="check${booked.has(p.id) ? " done" : ""}"${k >= 6 ? " data-more hidden" : ""}><input type="checkbox" data-book="${p.id}" ${booked.has(p.id) ? "checked" : ""}><span class="grow">${esc(p.n)}<small class="sub">${esc(zona[p.z].nome)}${dayOf(p.id).length ? " · " + dayOf(p.id).map(short).join(", ") : ""}</small></span><a class="iconbtn" href="${bookUrl(p)}" target="_blank" rel="noopener" aria-label="Cerca i biglietti">${icon("ExternalLink")}</a></label>`).join("")}</div>
         ${toBook.length > 6 ? `<button class="btn small ghost" id="more" style="width:100%;margin-top:6px">Mostra tutti (${toBook.length})</button>` : ""}
       </div>
     `;
@@ -821,7 +825,7 @@
       ${day.i.length ? `<ul class="tl${editMode ? " editing" : ""}">${day.i.map((id, k) => {
         const p = byId[id]; if (!p) return "";
         const next = byId[day.i[k + 1]], tm = day.t?.[id];
-        const right = editMode ? `<div class="edit"><input type="time" class="ttime" data-time="${id}" value="${esc(tm || "")}" aria-label="Orario"><button class="iconbtn danger" data-rm="${k}" aria-label="Rimuovi">${icon("Trash2")}</button></div>` : "";
+        const right = editMode ? `<div class="edit">${timeIn(`class="ttime" data-time="${id}" value="${esc(tm || "")}" aria-label="Orario"`)}<button class="iconbtn danger" data-rm="${k}" aria-label="Rimuovi">${icon("Trash2")}</button></div>` : "";
         const row = placeRow(p, { noDays: true, compact: true, noZone: true, right }).replace('<div class="meta">', `<div class="meta">${closedOn(p, d) ? closedPill(p) : ""}${tm ? `<span class="pill">${icon("Clock")} ${esc(tm)}</span>` : ""}`);
         const fatto = day.f?.includes(id);
         return `<li${fatto ? ' class="done"' : ""}>${editMode ? `<span class="n grip" data-grip="${k}" style="background:${zona[p.z].colore}" aria-label="Trascina per spostare">${icon("GripVertical")}</span>` : fatto ? `<span class="n done" aria-label="Fatta">済</span>` : `<span class="n" style="background:${zona[p.z].colore}">${k + 1}</span>`}<div class="sw">${editMode ? "" : `<div class="swipebg">${icon("Trash2")} Togli</div>`}${row}</div>${next ? `<div class="hop">${hop(p, next)}</div>` : ""}</li>`;
@@ -926,7 +930,7 @@
       }).join("") + `<button class="btn addl" data-newl style="width:100%;margin-top:6px">${icon("Plus")} ${fq ? `Non c'è? Aggiungi «${esc($("#pk-q", el).value.trim())}»` : "Aggiungi un luogo che non è in lista"}</button>`;
     };
     openSheet(`
-      <h2>Giorno ${dayIndex(d) + 1}</h2><p class="lead" style="text-transform:capitalize">${fmtDay(d)} · tocca per aggiungere o togliere</p>
+      <h2>Giorno ${dayIndex(d) + 1}</h2><p class="lead">${cap1(fmtDay(d))} · tocca per aggiungere o togliere</p>
       <div class="searchbox">${icon("Search")}<input type="search" id="pk-q" placeholder="Cerca un luogo…" autocomplete="off"></div>
       <div class="chips" style="margin-top:10px">${[["all", "Tutte"], ...ZONE.map(z => [z.id, z.nome])].map(([id, n]) => `<button class="chip${id === fz ? " on" : ""}" data-pz="${id}">${id !== "all" ? `<span class="dot" style="background:${zona[id].colore}"></span>` : ""}${esc(n)}</button>`).join("")}</div>
       <div id="pk-list"></div>
@@ -1032,7 +1036,8 @@
         last = key; html += placeRow(p, { noZone: lf.z !== "all" || true });
       }
       $("#lcount").textContent = `${list.length} ${list.length === 1 ? "posto" : "posti"}`;
-      putProgressive($("#llist"), html || `<p class="empty">Nessun risultato</p>`);
+      putProgressive($("#llist"), html || (qq ? `<div class="empty">Nessun luogo trovato per «${esc(lf.q.trim())}».<br><button class="btn small primary" id="addq" style="margin-top:10px">${icon("Plus")} Aggiungilo</button></div>` : `<p class="empty">Nessun risultato</p>`));
+      $("#addq")?.addEventListener("click", () => editLuogo({ n: lf.q.trim() }));
     };
     $$("[data-lv]").forEach(b => b.onclick = () => { lf.view = b.dataset.lv; LS.set("lview", lf.view); buzz(); draw(); });
     draw();
@@ -1674,7 +1679,7 @@
       </div>
       <div class="section-h" style="margin-top:6px"><h3>Aggiungi</h3></div>
       <div class="addgrid">${Object.entries(PTYPE).map(([k, [ic, col, tn]]) => `<button data-addp="${k}"><span class="pic" style="background:${col}">${icon(ic)}</span>${tn}</button>`).join("")}</div>
-      ${all.length ? all.map(pcard).join("") : `<p class="empty">Ancora nessuna prenotazione. Comincia dagli hotel e dai voli.</p>`}`;
+      ${all.length ? all.map((p, k) => (k === 0 || p.dal !== all[k - 1].dal ? `<h3>${p.dal ? cap1(fmtDay(p.dal)) : "Senza data"}</h3>` : "") + pcard(p)).join("") : `<p class="empty">Ancora nessuna prenotazione. Comincia dagli hotel e dai voli.</p>`}`;
     $$("[data-addp]").forEach(b => b.onclick = () => editPren({ tipo: b.dataset.addp }));
     bindPcards();
   }
@@ -1683,7 +1688,8 @@
     const isNew = !p.id, t = p.tipo || "altro";
     const [ic, col, tn] = PTYPE[t] || PTYPE.altro;
     const dayOpts = sel => `<option value="">Scegli il giorno</option>` + BOOK_DAYS.map(d => `<option value="${d}" ${d === sel ? "selected" : ""}>${fmtDay(d, { weekday: "short", day: "numeric", month: "short" })}${d < T.inizio ? " · prima del viaggio" : d > T.fine ? " · dopo il viaggio" : ""}</option>`).join("");
-    const f = (id, label, val, attrs = "", ph = "") => `<label class="fl"><span>${label}</span><input id="${id}" value="${esc(val || "")}" ${attrs}${ph ? ` placeholder="${esc(ph)}"` : ""}></label>`;
+    const f = (id, label, val, attrs = "", ph = "") => /type="time"/.test(attrs) ? `<label class="fl"><span>${label}</span>${timeIn(`id="${id}" value="${esc(val || "")}"`)}</label>`
+      : `<label class="fl"><span>${label}</span><input id="${id}" value="${esc(val || "")}" ${attrs}${ph ? ` placeholder="${esc(ph)}"` : ""}></label>`;
     const titolo = t === "hotel" ? "Nuovo hotel" : t === "volo" ? "Nuovo volo" : t === "treno" ? "Nuovo treno" : t === "biglietto" ? "Nuovo biglietto" : "Nuova prenotazione";
     openSheet(`
       <div class="ttl"><span class="pic" style="background:${col}">${icon(ic)}</span><h2>${isNew ? titolo : "Modifica " + tn.toLowerCase()}</h2></div>
@@ -2046,7 +2052,7 @@
       ${spFilter ? `<div class="row" style="margin-top:14px"><span class="grow small muted">Solo le spese <b>${esc(catOf(spFilter).n)}</b></span><button class="chip on" id="spclr">Mostra tutte ✕</button></div>` : ""}
       ${items.length ? items.map(s => {
         const c = catOf(s.cat), cl = c.n;
-        const head = s.data !== lastD ? `<h3>${s.data ? fmtDay(s.data, { weekday: "long", day: "numeric", month: "long" }) : "Senza data"}</h3>` : ""; lastD = s.data;
+        const head = s.data !== lastD ? `<h3>${s.data ? cap1(fmtDay(s.data, { weekday: "long", day: "numeric", month: "long" })) : "Senza data"}</h3>` : ""; lastD = s.data;
         return `${head}<div class="card spesa${s.id === freshId ? " fresh" : ""}" data-spesa="${s.id}"><div class="row">
           <span class="pic" style="background:${c.col}">${c.html}</span>
           <div class="grow"><b>${esc(s.desc || cl)}</b><div class="small muted">${s.cat === "rimborso" ? `${esc(s.pagatoDa)} → ${esc(splitLabel(s.perChi))}` : `pagato da ${esc(s.pagatoDa)} · per ${esc(splitLabel(s.perChi))}`}</div></div>
@@ -2149,7 +2155,7 @@
     const byWho = {}; for (const x of sp) byWho[x.pagatoDa] = (byWho[x.pagatoDa] || 0) + x.eur;
     const topWho = Object.entries(byWho).sort((a, b) => b[1] - a[1])[0];
     const big = [...sp].sort((a, b) => b.eur - a.eur)[0];
-    const pics = uniq.filter(id => photoUrl(id)).slice(0, 9);
+    const seenU = new Set(), pics = uniq.filter(id => { const u = photoUrl(id); if (!u || seenU.has(u)) return false; seenU.add(u); return true; }).slice(0, 9);   // stessa foto su più luoghi: una volta sola
     const stat = (n, l, c) => `<div class="rstat" style="--c:${c}"><b>${n}</b><small>${l}</small></div>`;
     view.innerHTML = `${back}<h2>Il nostro Giappone</h2><p class="lead">${before ? "Anteprima: si completa durante il viaggio, man mano che timbrate le tappe e segnate le spese." : after ? "Com'è andata, in numeri." : "Il viaggio fin qui, in numeri."}</p>
       <div class="rgrid">

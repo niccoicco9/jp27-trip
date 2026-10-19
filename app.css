@@ -910,3 +910,16 @@ html[data-vt="pop"]::view-transition-new(root) { animation: vt-in-left .42s cubi
 html[data-vt="update"]::view-transition-old(root) { display: none; }
 html[data-vt="update"]::view-transition-new(root) { animation: none; }
 html[data-vt="update"]::view-transition-group(*) { animation-duration: .45s; }
+
+/* ——— rifiniture UX (v65) ——— */
+/* orario vuoto: "--:--" al posto del campo bianco */
+.tin { position: relative; display: block; }
+.tin > i { position: absolute; inset: 0; display: flex; align-items: center; padding: 0 14px; font-style: normal; color: var(--muted); opacity: .8; pointer-events: none; }
+.tin > input:valid + i { display: none; }
+.tin > input:invalid { color: transparent; }
+.tl .tin > i { padding: 0 9px; font-size: .85rem; }
+/* dettagli sotto il nome nelle liste con spunta */
+.check .sub { display: block; font-size: .8rem; color: var(--muted); margin-top: 1px; }
+/* nome del giorno in modifica: si capisce che è un campo da scrivere */
+.daycover input { background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.35); border-radius: 12px; padding: 6px 10px; font-size: 1.2rem; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.daycover input:focus { border: 1px solid rgba(255,255,255,.8); box-shadow: none; }
