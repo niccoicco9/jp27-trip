@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 38;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 39;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -52,7 +52,7 @@
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const view = $("#view");
+  const view = $("#view"), SC = $("#scroller");   // SC: il contenitore che scorre (non la finestra)
 
   // ——— icone (Lucide, generate come stringhe SVG) ———
   const TORII = [["path", { d: "M2 5.5c4 1.3 16 1.3 20 0" }], ["path", { d: "M4 9.5h16" }], ["path", { d: "M6.5 6.6V21" }], ["path", { d: "M17.5 6.6V21" }], ["path", { d: "M12 6.9v2.6" }]];
@@ -342,7 +342,7 @@
   function go(h) {
     const cur = location.hash || "#oggi";
     // stessa pagina: chiude la scheda aperta, altrimenti torna in cima (come ritoccare la scheda attiva su iPhone)
-    if (h === cur) { if (sheetOpen()) closeSheet(); else scrollTo({ top: 0, behavior: reduceMotion() ? "auto" : "smooth" }); return; }
+    if (h === cur) { if (sheetOpen()) closeSheet(); else SC.scrollTo({ top: 0, behavior: reduceMotion() ? "auto" : "smooth" }); return; }
     if (cur === "#utility" && isSub(h)) { subPushed = true; setUrl(h, true); return; }
     if (!subPushed) { land(h); return; }
     subPushed = false; pendingGo = h; history.back();
@@ -363,7 +363,7 @@
   function openSheet(html, onMount, onClose) {
     clearTimeout(sheetT); sheet.classList.remove("closing"); sheetCard.style.transition = "";
     if (!layers.includes(sheetLayer)) pushLayer(sheetLayer);
-    $("#sheet-body").innerHTML = html; sheet.hidden = false; document.body.style.overflow = "hidden";
+    $("#sheet-body").innerHTML = html; sheet.hidden = false; SC.classList.add("locked");
     sheetCard.scrollTop = 0; sheetCard.style.transform = "";
     lazyScan();
     sheetOnClose = onClose || null;
@@ -373,7 +373,7 @@
   function closeSheet(instant, fromHistory) {
     if (!sheetOpen()) return;
     if (!fromHistory) dropLayer(sheetLayer);
-    document.body.style.overflow = "";
+    SC.classList.remove("locked");
     if (instant || reduceMotion()) { sheet.hidden = true; sheetCard.style.transform = ""; }
     else {
       sheet.classList.add("closing");
@@ -793,7 +793,7 @@
       if (Math.abs(dx) > 60) { const j = i + (dx < 0 ? 1 : -1); if (DAYS[j]) go("#giorni/" + DAYS[j]); }
     });
   }
-  function keepScroll(fn) { const y = scrollY; fn(); scrollTo(0, y); }
+  function keepScroll(fn) { const y = SC.scrollTop; fn(); SC.scrollTop = y; }
 
   function openPicker(d) {
     let fz = dayZone(d) || "all", fq = "";
@@ -1971,7 +1971,7 @@
     const top = $(".top"), on = !!pageTitle?.isConnected && pageTitle.getBoundingClientRect().bottom < top.offsetHeight;
     if (top.classList.contains("compact") !== on) top.classList.toggle("compact", on);
   }
-  addEventListener("scroll", checkTitle, { passive: true });
+  SC.addEventListener("scroll", checkTitle, { passive: true });
   function rerender() { const [tab] = (location.hash.slice(1) || "oggi").split("/"); if (tab !== "mappa") keepScroll(render); }
   // è un'app: niente zoom della pagina con due dita (iOS ignora user-scalable=no, serve bloccarlo a mano).
   // La mappa resta libera: ha il suo zoom
@@ -2048,16 +2048,18 @@
     if (sa && !sb) return "pop";
     return "tab";
   }
-  function restoreScroll(y) { scrollTo(0, y); if (y && Math.abs(scrollY - y) > 2) [80, 250].forEach(ms => setTimeout(() => { if (scrollY < y) scrollTo(0, y); }, ms)); }
+  function restoreScroll(y) { SC.scrollTop = y; if (y && Math.abs(SC.scrollTop - y) > 2) [80, 250].forEach(ms => setTimeout(() => { if (SC.scrollTop < y) SC.scrollTop = y; }, ms)); }
   function navigate() {
     if (!isSub(location.hash)) subPushed = false;   // indietro di sistema da una sottopagina: non si è più "dentro"
     layers.length = 0;   // la pagina cambia: le schede aperte si chiudono
     closeSheet(true, true); hideBig(true);
     if (maybeImport()) return;
     const to = location.hash || "#oggi", kind = navKind(lastHash, to);
-    if (!lastHash.startsWith("#mappa")) scrollMem[lastHash] = scrollY;
+    if (!lastHash.startsWith("#mappa")) scrollMem[lastHash] = SC.scrollTop;
+    // ferma l'inerzia della pagina di prima (su iPhone continuerebbe a scorrere la pagina nuova)
+    SC.style.overflowY = "hidden"; setTimeout(() => { SC.style.overflowY = ""; }, 30);
     lastHash = to;
-    if (!to.startsWith("#mappa")) scrollTo(0, 0);
+    if (!to.startsWith("#mappa")) SC.scrollTop = 0;
     render();
     if (!to.startsWith("#mappa") && (kind === "tab" || kind === "pop")) restoreScroll(scrollMem[location.hash || "#oggi"] || 0);
     view.classList.remove("enter", "nav-tab", "nav-push", "nav-pop", "nav-next", "nav-prev", "nav-fade"); void view.offsetWidth;

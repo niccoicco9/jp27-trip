@@ -52,6 +52,7 @@
   <script>try { const t = JSON.parse(localStorage.getItem("jp27:theme") || '""'); if (t) document.documentElement.dataset.theme = t; } catch {}</script>
 </head>
 <body>
+  <div id="scroller" class="scroller">
   <header class="top">
     <a class="brand" href="#oggi"><img class="hanko" src="icon.svg" alt="" width="36" height="36"><div><h1>Giappone 2027 <span id="syncdot" class="sync-dot" hidden></span></h1><p id="sub">20 feb – 7 mar</p><div class="ctitle" id="ctitle" aria-hidden="true"></div></div></a>
     <div class="clocks" id="clocks"></div>
@@ -59,6 +60,7 @@
   </header>
 
   <main id="view"></main>
+  </div>
 
   <nav class="tabs" id="tabs"></nav>
 

@@ -60,7 +60,12 @@
 /* ——— Base ——— */
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html, body { margin: 0; touch-action: pan-x pan-y; }   /* niente zoom con due dita; il rimbalzo in cima e in fondo resta, come nelle app di iPhone */
+html, body { margin: 0; height: 100%; overflow: hidden; touch-action: pan-x pan-y; }   /* niente zoom con due dita */
+/* scorre solo il contenuto (testata compresa), le barre restano fuori: come nelle app di iPhone, la barra in basso
+   risponde subito anche mentre la pagina scorre ancora per inerzia; il rimbalzo in cima e in fondo resta */
+.scroller { position: fixed; inset: 0; overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding-bottom: calc(var(--nav-h) + 24px + env(safe-area-inset-bottom)); }
+.scroller.locked { overflow: hidden; }
 html { background: var(--bg); font-synthesis: none; -webkit-font-synthesis: none; -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }   /* mai grassetto/corsivo finti */
 /* è un'app, non un sito: niente selezione del testo, niente menu/anteprima tenendo premuto, niente doppio tocco per zoomare */
@@ -75,7 +80,6 @@ input, textarea, select, [contenteditable="true"] { -webkit-user-select: text; u
 body {
   background: var(--bg); color: var(--ink); font-family: var(--font); font-size: .97rem; line-height: 1.5;
   -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent;
-  padding-bottom: calc(var(--nav-h) + 24px + env(safe-area-inset-bottom));
   transition: background-color .3s;
 }
 a { color: var(--ai); }
