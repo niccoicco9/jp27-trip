@@ -351,7 +351,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: color-m
 .daycover { position: relative; border-radius: 24px; overflow: hidden; height: 190px; color: #fff; margin-bottom: 14px; box-shadow: var(--shadow); isolation: isolate; }
 .daycover .ph, .daycover svg.art { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -2; }
 .daycover::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, rgba(0,0,0,.05) 20%, rgba(10,6,4,.7) 100%); }
-.daycover .in { position: absolute; left: 16px; right: 16px; bottom: 14px; }
+.daycover .dtxt { position: absolute; left: 16px; right: 16px; bottom: 14px; }
 .daycover .kicker { font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; opacity: .9; }
 .daycover .dtitle { font-size: 1.45rem; font-weight: 800; line-height: 1.2; text-shadow: 0 1px 12px rgba(0,0,0,.35); }
 .daycover input {
@@ -479,7 +479,7 @@ table.budget td:last-child { text-align: right; font-variant-numeric: tabular-nu
 .gm-style .gm-style-iw-chr { position: absolute; right: 0; top: 0; z-index: 2; }
 .gm-iw { font-family: var(--font); color: var(--ink); width: 220px; }
 .gm-iw .ph { height: 100px; }
-.gm-iw .in { padding: 10px 12px 12px; }
+.gm-iw .iwtxt { padding: 10px 12px 12px; }
 .gm-iw b { font-size: .95rem; display: block; line-height: 1.25; }
 .gm-iw .jp { color: var(--muted); font-size: .76rem; }
 .gm-iw button { margin-top: 8px; border: none; background: linear-gradient(135deg, #ef6a4f, #d4442f); color: #fff; border-radius: 10px; padding: 8px 10px; font-size: .82rem; font-weight: 700; width: 100%; }
