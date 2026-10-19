@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 34;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 35;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -335,13 +335,15 @@
   // risale dentro la sezione e non salta mai a sezioni o giorni visti prima
   let subPushed = false, pendingGo = null;
   const isSub = h => /^#utility\/./.test(h);
+  // cambia indirizzo e pagina subito, senza aspettare "hashchange" (su iPhone non sempre arriva)
+  function setUrl(h, push) { history[push ? "pushState" : "replaceState"](null, "", h); navigate(); }
   function land(h) {
-    if (isSub(h)) { if (location.hash !== "#utility") history.replaceState(null, "", "#utility"); subPushed = true; location.hash = h; }
-    else location.replace(h);
+    if (isSub(h)) { if (location.hash !== "#utility") history.replaceState(null, "", "#utility"); subPushed = true; setUrl(h, true); }
+    else setUrl(h, false);
   }
   function go(h) {
     const cur = location.hash || "#oggi";
-    if (!layers.length && cur === "#utility" && isSub(h)) { subPushed = true; location.hash = h; return; }
+    if (!layers.length && cur === "#utility" && isSub(h)) { subPushed = true; setUrl(h, true); return; }
     const depth = layers.length + (subPushed ? 1 : 0);
     if (!depth) { if (h !== cur) land(h); return; }
     while (layers.length) layers.pop()(true);   // chiude le schede aperte e toglie i loro passi dalla cronologia
@@ -349,8 +351,6 @@
     // rete di sicurezza: se la cronologia non risponde (passo già tolto), si va comunque alla pagina
     setTimeout(() => { if (pendingGo === h) { pendingGo = null; land(h); } }, 700);
   }
-  // indietro di sistema da una sottopagina: non si è più "dentro"
-  addEventListener("hashchange", () => { if (!isSub(location.hash)) subPushed = false; });
   addEventListener("popstate", () => {
     if (pendingGo) { const h = pendingGo; pendingGo = null; if (h !== (location.hash || "#oggi")) land(h); return; }
     if (skipPop) { skipPop--; return; }
@@ -2040,6 +2040,7 @@
   }
   function restoreScroll(y) { scrollTo(0, y); if (y && Math.abs(scrollY - y) > 2) [80, 250].forEach(ms => setTimeout(() => { if (scrollY < y) scrollTo(0, y); }, ms)); }
   function navigate() {
+    if (!isSub(location.hash)) subPushed = false;   // indietro di sistema da una sottopagina: non si è più "dentro"
     layers.length = 0;   // la pagina cambia: i passi delle schede restano indietro, senza effetti
     closeSheet(true, true); hideBig(true);
     if (maybeImport()) return;
@@ -2053,7 +2054,9 @@
     view.classList.add("enter", "nav-" + kind);
     playIntro();
   }
-  addEventListener("hashchange", navigate);
+  // indietro/avanti di sistema: cambia pagina se l'indirizzo è cambiato (una volta sola, chiunque arrivi prima)
+  const syncNav = () => { if ((location.hash || "#oggi") !== lastHash) navigate(); };
+  addEventListener("hashchange", syncNav); addEventListener("popstate", syncNav);
 
   applyTheme();
   // cambio ¥/€ aggiornato all'avvio (serve anche alle spese), al massimo ogni 12 ore
