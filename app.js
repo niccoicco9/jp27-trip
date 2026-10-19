@@ -7,7 +7,7 @@
     set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 39;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 40;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -177,10 +177,14 @@
 
   // luoghi aggiunti da voi (condivisi): si uniscono a quelli di Wanderlog
   const BASE_N = LUOGHI.length;
+  const BASE_OUT = new Set(LUOGHI.filter(p => p.out).map(p => p.id));   // scartati già in Wanderlog
   function mergeCustom() {
     LUOGHI.length = BASE_N;
     for (const k of Object.keys(byId)) if (byId[k].mine) delete byId[k];
+    for (let i = 0; i < BASE_N; i++) { const b = LUOGHI[i]; b.out = BASE_OUT.has(b.id); delete b.gone; }
     for (const x of lists.luoghi) {
+      // luogo di Wanderlog eliminato da voi: resta solo tra gli scartati (si può ripristinare), per tutti e quattro
+      if (x.hide) { const b = byId[x.hide]; if (b && !b.mine) { b.out = true; b.gone = true; } continue; }
       if (!x.n || !isFinite(x.lat) || !isFinite(x.lng)) continue;
       const p = { jp: "", d: "", c: "esperienza", ...x, z: zona[x.z] ? x.z : "altre", mine: true };
       LUOGHI.push(p); byId[p.id] = p;
@@ -476,7 +480,7 @@
     if (p.chiuso) m.push(`<span class="pill ghost">chiuso ${esc(p.chiuso)}</span>`);
     const ds = dayOf(p.id);
     if (ds.length && !opts.noDays) m.push(`<span class="pill">${icon("CalendarDays")} ${ds.map(short).join(", ")}</span>`);
-    if (p.out) m.push(`<span class="pill ghost">scartato</span>`);
+    if (p.out) m.push(`<span class="pill ghost">${p.gone ? "eliminato" : "scartato"}</span>`);
     if (p.mine && !opts.compact) m.push(`<span class="pill ghost">${icon("UserRound")} ${esc(p.chi || "aggiunto")}</span>`);
     return m.join("");
   }
@@ -518,14 +522,18 @@
         ${p.pren ? `<dt>Biglietti</dt><dd><label class="check" style="border:none;padding:0"><input type="checkbox" id="bk" ${booked.has(id) ? "checked" : ""}><span>Da prenotare in anticipo: <b>${booked.has(id) ? "fatto ✓" : "segna quando è fatto"}</b></span></label></dd>` : ""}
         <dt>In programma</dt><dd>${ds.length ? ds.map(d => `<a href="#giorni/${d}">Giorno ${dayIndex(d) + 1} · ${fmtDay(d)}</a>`).join("<br>") : "<span class='muted'>non ancora</span>"}</dd>
       </dl>
-      <h3>Aggiungi a un giorno</h3>
-      <select id="addday"><option value="">Scegli il giorno…</option>${DAYS.map((d, i) => `<option value="${d}" ${plan[d]?.i?.includes(id) ? "disabled" : ""}>Giorno ${i + 1} · ${fmtDay(d, { weekday: "short", day: "numeric", month: "short" })}${plan[d]?.l ? " — " + esc(plan[d].l) : ""}</option>`).join("")}</select>
+      ${p.gone ? "" : `<h3>Aggiungi a un giorno</h3>
+      <select id="addday"><option value="">Scegli il giorno…</option>${DAYS.map((d, i) => `<option value="${d}" ${plan[d]?.i?.includes(id) ? "disabled" : ""}>Giorno ${i + 1} · ${fmtDay(d, { weekday: "short", day: "numeric", month: "short" })}${plan[d]?.l ? " — " + esc(plan[d].l) : ""}</option>`).join("")}</select>`}
+      ${p.gone ? `<button class="btn primary" id="restp" style="width:100%;margin-top:20px">${icon("Undo2")} Ripristina il luogo</button>`
+        : `<button class="btn" id="delp" style="width:100%;margin-top:20px;color:var(--shu)">${icon("Trash2")} Elimina luogo</button>`}
     `, el => {
+      $("#delp", el)?.addEventListener("click", () => deletePlace(p));
+      $("#restp", el)?.addEventListener("click", () => { delItem("luoghi", "h" + id); toast("Luogo ripristinato"); closeSheet(); rerender(); });
       $("#bk", el)?.addEventListener("change", e => { e.target.checked ? booked.add(id) : booked.delete(id); savePlan(); openPlace(id); });
       $("#editl", el)?.addEventListener("click", () => editLuogo(lists.luoghi.find(x => x.id === id) || p));
       if ($("#showjp", el)) $("#showjp", el).onclick = () => showBig(p.jp, `${esc(p.n)}<br><span class="jp" style="font-size:1.3rem;color:var(--ink)">ここに行きたいです</span><br><small>"Vorrei andare qui"</small>`);
       $("#onmap", el).onclick = () => { mapFocus = id; go("#mappa"); };
-      $("#addday", el).onchange = e => {
+      if ($("#addday", el)) $("#addday", el).onchange = e => {
         const d = e.target.value; if (!d) return;
         getDay(d).i.push(id); savePlan(); toast(closedOn(p, d) ? `Attenzione: quel giorno è chiuso (${p.chiuso})` : `Aggiunto al giorno ${dayIndex(d) + 1}`); openPlace(id);
       };
@@ -865,7 +873,7 @@
   let lf = { z: "all", q: "", out: false, pren: false, mine: false, near: null };
   function renderLuoghi() {
     view.innerHTML = `
-      <div class="between"><h2>Luoghi</h2><button class="btn small primary" id="addl">${icon("Plus")} Aggiungi</button></div><p class="lead">${LUOGHI.filter(p => !p.out && !p.mine).length} posti dalla vostra lista Wanderlog${lists.luoghi.length ? ` · ${LUOGHI.length - BASE_N} aggiunti da voi` : ""}</p>
+      <div class="between"><h2>Luoghi</h2><button class="btn small primary" id="addl">${icon("Plus")} Aggiungi</button></div><p class="lead">${LUOGHI.filter(p => !p.out && !p.mine).length} posti dalla vostra lista Wanderlog${LUOGHI.length > BASE_N ? ` · ${LUOGHI.length - BASE_N} aggiunti da voi` : ""}</p>
 
       <div class="searchbox">${icon("Search")}<input type="search" id="lq" placeholder="Cerca templi, quartieri, cibo…" value="${esc(lf.q)}" autocomplete="off"></div>
       <div class="chips" style="margin-top:12px">
@@ -875,7 +883,7 @@
         <button class="chip${lf.near ? " on" : ""}" id="fnear">${icon("LocateFixed")} Vicino a me</button>
         <button class="chip${lf.pren ? " on" : ""}" id="fpren">${icon("Ticket")} Da prenotare</button>
         ${LUOGHI.length > BASE_N ? `<button class="chip${lf.mine ? " on" : ""}" id="fmine">${icon("UserRound")} Aggiunti da voi</button>` : ""}
-        <button class="chip${lf.out ? " on" : ""}" id="fout">Mostra scartati</button>
+        <button class="chip${lf.out ? " on" : ""}" id="fout">Scartati ed eliminati</button>
       </div>
       <div id="llist"></div>`;
     const draw = () => {
@@ -889,7 +897,7 @@
       }
       for (const p of list) {
         const key = p.out ? "out" : p.z;
-        if (key !== last && lf.z === "all") html += `<h3>${p.out ? "Scartati" : `<span class="dot" style="background:${zona[p.z].colore};margin-right:6px"></span>${esc(zona[p.z].nome)}`}</h3>`;
+        if (key !== last && lf.z === "all") html += `<h3>${p.out ? "Scartati ed eliminati" : `<span class="dot" style="background:${zona[p.z].colore};margin-right:6px"></span>${esc(zona[p.z].nome)}`}</h3>`;
         last = key; html += placeRow(p, { noZone: lf.z !== "all" || true });
       }
       putProgressive($("#llist"), html || `<p class="empty">Nessun risultato</p>`);
@@ -1682,18 +1690,23 @@
         if (day) { const dd = getDay(day); if (!dd.i.includes(saved.id)) dd.i.push(saved.id); savePlan(); openPicker(day); }
         else { closeSheet(); rerender(); if (isNew) setTimeout(() => openPlace(saved.id), 50); }
       };
-      $("#l-del", el)?.addEventListener("click", () => {
-        const old = { ...p }, wasBooked = booked.has(p.id), pos = dayOf(p.id).map(d => [d, plan[d].i.indexOf(p.id)]);
-        for (const [d] of pos) plan[d].i = plan[d].i.filter(x => x !== p.id);
-        booked.delete(p.id); savePlan();
-        delItem("luoghi", p.id); closeSheet(); rerender();
-        toast("Luogo eliminato", () => {
-          putItem("luoghi", old);
-          for (const [d, k] of pos) getDay(d).i.splice(k, 0, p.id);
-          if (wasBooked) booked.add(p.id);
-          savePlan(); rerender();
-        });
-      });
+      $("#l-del", el)?.addEventListener("click", () => deletePlace(byId[p.id] || { ...p, mine: true }));
+    });
+  }
+  // elimina un luogo per tutti: i vostri spariscono, quelli di Wanderlog finiscono tra gli eliminati (ripristinabili).
+  // Viene tolto anche dai giorni in cui era in programma; "Annulla" rimette tutto com'era
+  function deletePlace(p) {
+    const id = p.id, wasBooked = booked.has(id), pos = dayOf(id).map(d => [d, plan[d].i.indexOf(id)]);
+    const old = p.mine ? lists.luoghi.find(x => x.id === id) : null;
+    for (const [d] of pos) plan[d].i = plan[d].i.filter(x => x !== id);
+    booked.delete(id); savePlan();
+    if (p.mine) delItem("luoghi", id); else putItem("luoghi", { id: "h" + id, hide: id });
+    closeSheet(); rerender(); buzz();
+    toast(pos.length ? `Luogo eliminato e tolto da ${pos.length === 1 ? "1 giorno" : pos.length + " giorni"}` : "Luogo eliminato", () => {
+      if (old) putItem("luoghi", old); else delItem("luoghi", "h" + id);
+      for (const [d, k] of pos) getDay(d).i.splice(k, 0, id);
+      if (wasBooked) booked.add(id);
+      savePlan(); rerender();
     });
   }
 
