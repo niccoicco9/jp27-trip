@@ -2,12 +2,13 @@
   "use strict";
 
   // ——— storage (protetto: in privato o con dati bloccati può fallire) ———
+  let dataVer = 0;   // cresce a ogni modifica salvata: le pagine tenute in memoria più vecchie si ricostruiscono
   const LS = {
     get(k, d) { try { const v = localStorage.getItem("jp27:" + k); return v ? JSON.parse(v) : d; } catch { return d; } },
-    set(k, v) { try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
+    set(k, v) { dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 50;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 51;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const byId = Object.fromEntries(LUOGHI.map(p => [p.id, p]));
@@ -307,7 +308,9 @@
       show(0); requestAnimationFrame(step);
       setTimeout(() => { done = true; show(to); }, dur + 60);   // valore giusto garantito anche se i fotogrammi si fermano
     });
-    $$(".progress i", root).forEach(el => { const w = el.style.width; el.style.transition = "none"; el.style.width = "0"; void el.offsetWidth; el.style.transition = ""; setTimeout(() => (el.style.width = w), 30); });
+    const bars = $$(".progress i", root).map(el => [el, el.style.width]);
+    bars.forEach(([el]) => { el.style.transition = "none"; el.style.width = "0"; });
+    if (bars.length) { void root.offsetWidth; bars.forEach(([el]) => (el.style.transition = "")); setTimeout(() => bars.forEach(([el, w]) => (el.style.width = w)), 30); }
   }
 
   // ——— ui helpers ———
@@ -359,9 +362,10 @@
     if (!a || e.defaultPrevented || a.target || e.metaKey || e.ctrlKey) return;
     e.preventDefault(); go(a.getAttribute("href"));
   });
-  let sheetT = null;
+  let sheetT = null, sheetVer = 0;
   const sheetOpen = () => !sheet.hidden && !sheet.classList.contains("closing");
   function openSheet(html, onMount, onClose) {
+    if (!sheetOpen()) sheetVer = dataVer;   // riaperta da dentro (es. dopo una modifica): conta da quando si è aperta la prima volta
     clearTimeout(sheetT); sheet.classList.remove("closing"); $(".sheet-bg").style.opacity = ""; sheetCard.style.transition = "";
     if (!layers.includes(sheetLayer)) pushLayer(sheetLayer);
     $("#sheet-body").innerHTML = html; sheet.hidden = false; SC.classList.add("locked");
@@ -384,7 +388,8 @@
       sheet.style.setProperty("--close-ms", ms + "ms");
       sheetT = setTimeout(() => { sheet.hidden = true; sheet.classList.remove("closing"); sheetCard.style.transition = ""; sheetCard.style.transform = ""; }, ms);
     }
-    const f = sheetOnClose; sheetOnClose = null; f?.();
+    // chiusa senza aver cambiato niente: la pagina sotto resta com'è (niente ricostruzione, foto già pronte)
+    const f = sheetOnClose === rerender && dataVer === sheetVer ? null : sheetOnClose; sheetOnClose = null; f?.();
     if (pendingRemote) { pendingRemote = false; rerender(); }
   }
   document.addEventListener("focusout", () => setTimeout(() => {
@@ -915,12 +920,13 @@
 
   // ——— LUOGHI ———
   // liste lunghe: si disegnano subito le prime righe (quelle che si vedono), il resto al frame successivo
-  let progTok = 0;
+  let progTok = 0, progRest = null;
   function putProgressive(el, html) {
     const tok = ++progTok, cut = html.split(/(?=<h3>|<div class="place)/);
     if (cut.length <= 30) { el.innerHTML = html; lazyScan(); return; }
     el.innerHTML = cut.slice(0, 26).join(""); lazyScan();
-    setTimeout(() => { if (tok !== progTok || !el.isConnected) return; el.insertAdjacentHTML("beforeend", cut.slice(26).join("")); lazyScan(); }, 40);
+    const rest = () => { progRest = null; if (tok !== progTok) return; el.insertAdjacentHTML("beforeend", cut.slice(26).join("")); lazyScan(); };
+    progRest = rest; setTimeout(() => progRest === rest && rest(), 40);
   }
   let lf = { z: "all", q: "", out: false, pren: false, mine: false, near: null, view: LS.get("lview", "g") };
   // galleria: per ogni città una fila di card a foto piena da sfogliare (come Apple Maps); l'elenco resta per cercare e filtrare
@@ -2223,17 +2229,40 @@
     nav.addEventListener("contextmenu", e => e.preventDefault());
   })();
 
+  // memoria delle pagine (come le app con le schede in basso): tornando su una pagina già vista, se nel frattempo
+  // non è cambiato niente si rimette quella di prima, con foto già pronte e senza ricostruirla
+  const pages = new Map();   // indirizzo → { frag, stamp }
+  let shown = null;          // { key, stamp } della pagina sullo schermo
+  const stampNow = () => `${dataVer}|${todayJP()}|${new Date().getHours()}|${code ? 1 : 0}|${me}|${isDark()}`;
+  function stashPage() {
+    if (!shown || shown.key.startsWith("#mappa") || !view.firstChild) { shown = null; return; }
+    progRest?.();
+    const frag = document.createDocumentFragment(); while (view.firstChild) frag.appendChild(view.firstChild);
+    pages.delete(shown.key); pages.set(shown.key, { frag, stamp: shown.stamp });
+    while (pages.size > 6) pages.delete(pages.keys().next().value);   // al massimo 6 pagine in memoria
+    shown = null;
+  }
+  let restored = false;
   function render() {
     let [tab, sub] = (location.hash.slice(1) || "oggi").split("/");
     if (!TABS.some(t => t[0] === tab)) { tab = "oggi"; sub = undefined; history.replaceState(null, "", "#oggi"); }   // indirizzo sconosciuto
+    const key = location.hash || "#oggi";
+    if (shown && shown.key !== key) stashPage(); else shown = null;
     view.classList.remove("full");
     document.body.classList.toggle("on-map", tab === "mappa");
-    document.documentElement.style.setProperty("--head", ($(".top")?.offsetHeight || 60) + "px");
+    setHead();
     tabLinks().forEach(a => a.classList.toggle("on", a.dataset.tab === tab));
     syncInd(!L.raf && L.x === 0);
-    ({ oggi: renderOggi, giorni: () => renderGiorni(sub), luoghi: renderLuoghi, mappa: renderMappa, utility: () => renderUtility(sub) }[tab] || renderOggi)();
+    const kept = pages.get(key); pages.delete(key);
+    restored = !!kept && kept.stamp === stampNow();
+    if (restored) { view.replaceChildren(kept.frag); if (tab === "oggi") tick(); }
+    else ({ oggi: renderOggi, giorni: () => renderGiorni(sub), luoghi: renderLuoghi, mappa: renderMappa, utility: () => renderUtility(sub) }[tab] || renderOggi)();
+    shown = { key, stamp: stampNow() };
     watchTitle();
   }
+  // altezza della testata come variabile CSS: si scrive solo se cambia (scriverla ricalcola lo stile di tutta la pagina)
+  let headPx = "";
+  function setHead() { const v = ($(".top")?.offsetHeight || 60) + "px"; if (v !== headPx) { headPx = v; document.documentElement.style.setProperty("--head", v); } }
   // titolo compatto nella testata quando quello grande della pagina scorre via
   let pageTitle = null;
   // testata: "‹ indietro" o la data a sinistra, azione principale (+) a destra, titolo piccolo al centro
@@ -2254,7 +2283,7 @@
     if (top.classList.contains("compact") !== on) top.classList.toggle("compact", on);
   }
   SC.addEventListener("scroll", checkTitle, { passive: true });
-  function rerender() { const [tab] = (location.hash.slice(1) || "oggi").split("/"); if (tab !== "mappa") keepScroll(render); }
+  function rerender() { dataVer++; const [tab] = (location.hash.slice(1) || "oggi").split("/"); if (tab !== "mappa") keepScroll(render); }
   // è un'app: niente zoom della pagina con due dita (iOS ignora user-scalable=no, serve bloccarlo a mano).
   // La mappa resta libera: ha il suo zoom
   const onMap = e => !!e.target?.closest?.(".mapwrap, .mapel");
@@ -2346,7 +2375,7 @@
     if (!to.startsWith("#mappa") && (kind === "tab" || kind === "pop")) restoreScroll(scrollMem[location.hash || "#oggi"] || 0);
     view.classList.remove("enter", "nav-tab", "nav-push", "nav-pop", "nav-next", "nav-prev", "nav-fade"); void view.offsetWidth;
     view.classList.add("enter", "nav-" + kind);
-    playIntro();
+    if (!restored) playIntro();
   }
   // indietro/avanti di sistema: cambia pagina se l'indirizzo è cambiato (una volta sola, chiunque arrivi prima)
   const syncNav = () => { if ((location.hash || "#oggi") !== lastHash) navigate(); };
@@ -2366,7 +2395,7 @@
     document.body.appendChild(probe); const px = parseFloat(getComputedStyle(probe).fontSize); probe.remove();
     const r = px ? Math.min(1.3, Math.max(.9, px / 17)) : 1;   // 17 = dimensione standard di iPhone; limiti perché l'impaginazione regga
     document.documentElement.style.fontSize = Math.abs(r - 1) < .01 ? "" : 16 * r + "px";
-    document.documentElement.style.setProperty("--head", ($(".top")?.offsetHeight || 60) + "px");
+    setHead();
   }
   textScale();
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") textScale(); });

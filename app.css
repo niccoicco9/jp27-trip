@@ -445,7 +445,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: color-m
 .gin b { display: block; font-size: 1.1rem; font-weight: 800; line-height: 1.2; text-shadow: 0 1px 10px rgba(0,0,0,.35); }
 .gin small { display: block; font-size: .78rem; opacity: .85; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gtags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
-.gtags span { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 99px; background: rgba(255,255,255,.2); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); font-size: .72rem; font-weight: 700; }
+.gtags span { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 99px; background: rgba(20,14,10,.42); font-size: .72rem; font-weight: 700; }
 .gtags span.ok { background: rgba(212,68,47,.85); }
 .gtags svg.i { width: 12px; height: 12px; }
 .check.done span { text-decoration: line-through; color: var(--muted); }
