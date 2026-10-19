@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 61;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 62;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2541,6 +2541,9 @@
     layers.length = 0;   // la pagina cambia: le schede aperte si chiudono
     closeSheet(true, true); hideBig(true);
     if (maybeImport()) return;
+    // un tocco durante uno scorrimento di pagina: lo scorrimento finisce subito (altrimenti resterebbe sullo schermo
+    // la "fotografia" della pagina di prima sopra quella nuova)
+    vtRun?.skipTransition?.();
     const to = location.hash || "#oggi", kind = navKind(lastHash, to);
     if (!lastHash.startsWith("#mappa")) scrollMem[lastHash] = SC.scrollTop;
     // ferma l'inerzia della pagina di prima (su iPhone continuerebbe a scorrere la pagina nuova)
@@ -2585,12 +2588,14 @@
       seen.add(n); el.style.viewTransitionName = n;
     }
   }
-  // prima volta che si apre una pagina: le card salgono una dopo l'altra (solo trasformazioni, leggere da disegnare)
+  // prima volta che si apre una pagina: le card salgono una dopo l'altra (solo trasformazioni, leggere da disegnare).
+  // Non partono mai da trasparenti: se il telefono è impegnato a costruire la pagina, l'animazione parte in ritardo
+  // e con le card invisibili si vedrebbe una pagina vuota
   function enterItems() {
     if (reduceMotion() || !view.animate) return;
     const els = [...view.children].filter(el => el.offsetParent !== null && el.getBoundingClientRect().top < innerHeight).slice(0, 8);
-    els.forEach((el, i) => el.animate([{ opacity: 0, transform: "translate3d(0, 14px, 0)" }, { opacity: 1, transform: "none" }],
-      { duration: 420, delay: 25 + i * 35, easing: "cubic-bezier(.32, .72, 0, 1)", fill: "backwards" }));
+    els.forEach((el, i) => el.animate([{ opacity: .55, transform: "translate3d(0, 12px, 0)" }, { opacity: 1, transform: "none" }],
+      { duration: 380, delay: i * 30, easing: "cubic-bezier(.32, .72, 0, 1)", fill: "backwards" }));
   }
   // indietro/avanti di sistema: cambia pagina se l'indirizzo è cambiato (una volta sola, chiunque arrivi prima)
   const syncNav = () => { if ((location.hash || "#oggi") !== lastHash) navigate(); };
