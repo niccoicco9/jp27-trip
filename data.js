@@ -1,11 +1,12 @@
-// Dati del viaggio, estratti dal piano Wanderlog "Viaggio a Japan" (20/2 – 7/3/2027).
+// Dati del viaggio, estratti dal piano Wanderlog "Viaggio a Japan" (partenza 20/2, in Giappone 21/2 – 7/3/2027).
 // Campi luogo: id, n (nome), jp (nome giapponese), z (zona), lat, lng, c (categoria),
 // d (descrizione), dur (durata), pren (prenotare in anticipo), chiuso, eur (costo stimato a persona), note, out (scartato)
 
 window.TRIP = {
   titolo: "Giappone 2027",
-  inizio: "2027-02-20",
-  fine: "2027-03-07",
+  partenza: "2027-02-20",   // volo da Roma (si arriva a Narita il 21 alle 15:10)
+  inizio: "2027-02-21",     // primo giorno in Giappone
+  fine: "2027-03-07",       // ultimo giorno: volo da Kansai alle 9:00
   viaggiatori: ["Niccolò", "Antonella", "Miriam", "Paolo"],
   budgetWanderlog: 643.10,
   mapsKey: "AIzaSyBwcY9sg8fPJvxad05hlcvIdade0aQserA",
@@ -218,26 +219,8 @@ window.LUOGHI = [
   { id: "x36", out: true, n: "Kashima Jingū", jp: "鹿島神宮", z: "altre", lat: 35.9690, lng: 140.6310, c: "santuario", d: "Santuario storico con parco dei cervi." },
 ];
 
-// Bozza di itinerario proposta (ipotesi: arrivo a Tokyo, partenza da Osaka/KIX).
-// Usata solo finché non esiste un programma salvato o condiviso. "n" = nota del giorno.
-window.BOZZA = {
-  "2027-02-20": { l: "Arrivo · Shinjuku by night", n: "Check-in e prima serata tra le luci di Shinjuku.", i: ["t5", "t38", "t29"] },
-  "2027-02-21": { l: "Mercatino, Ginza e Akihabara", n: "Il 21 è la 3ª domenica del mese: in genere c'è l'Oedo Antique Market (verificate il calendario).", i: ["t23", "t36", "t31", "t19", "t34", "t6", "t22"] },
-  "2027-02-22": { l: "Meiji Jingu, Harajuku e Shibuya", n: "Prenotate lo Shibuya Sky all'ora del tramonto.", i: ["t35", "t11", "t16", "t39", "t41", "t32", "t9", "t4", "t28"] },
-  "2027-02-23": { l: "Asakusa e Ueno", n: "Festa nazionale (compleanno dell'Imperatore): più folla, partite presto.", i: ["t37", "t10", "t14", "t3", "t8"] },
-  "2027-02-24": { l: "Tokyo DisneySea", n: "Giornata intera. Biglietti a data fissa da comprare in anticipo.", i: ["t2"] },
-  "2027-02-25": { l: "Tsukiji, teamLab e Tokyo Tower", n: "Tsukiji la mattina presto. Tokyo Tower al tramonto, poi cena a Roppongi.", i: ["t40", "t24", "t20", "t25", "t33", "t30"] },
-  "2027-02-26": { l: "Gatti portafortuna e Harry Potter", n: "Gōtokuji la mattina, Studio Tour nel pomeriggio (orario d'ingresso prenotato).", i: ["t12", "t26", "t18"] },
-  "2027-02-27": { l: "Gita a Kamakura", n: "Treno da Tokyo (~1 h). Grande Buddha e mare.", i: ["v6", "v7", "v10", "v4", "v5", "v11"] },
-  "2027-02-28": { l: "Gita a Nikko", n: "Partite presto: ~2 h di treno. Il lago Chūzenji a fine febbraio può essere innevato.", i: ["v1", "v2", "v9", "v3"] },
-  "2027-03-01": { l: "Monte Fuji · Kawaguchiko", n: "Bus da Shinjuku (~2 h). La mattina il Fuji è più visibile.", i: ["h3", "h5", "h10", "h9", "h6"] },
-  "2027-03-02": { l: "Hakone · notte in ryokan", n: "Onsen e cena kaiseki. Spedite le valigie grandi a Kyoto con il takkyubin.", i: ["h1", "h2"] },
-  "2027-03-03": { l: "Shinkansen per Kyoto · Higashiyama", n: "Da Odawara a Kyoto ~2 h. È Hinamatsuri, la festa delle bambole.", i: ["k11", "k3", "k4", "k15"] },
-  "2027-03-04": { l: "Arashiyama e il Padiglione d'oro", n: "La foresta di bambù prima delle 8!", i: ["k14", "k6", "k8", "k9", "k2", "k5"] },
-  "2027-03-05": { l: "Fushimi Inari e Nara", n: "Fushimi Inari all'alba, poi Nara. La sera c'è l'Omizutori al Tōdai-ji (1–14 marzo).", i: ["k1", "n1", "n3", "n7", "n6", "n2"] },
-  "2027-03-06": { l: "Universal Studios Japan", n: "Sabato = folla: valutate l'Express Pass. La sera Dōtonbori.", i: ["o9", "o19", "o7"] },
-  "2027-03-07": { l: "Osaka · ultimo giro e partenza", n: "Castello la mattina, poi Kuromon e lo shopping prima del volo. Treno Haruka/Nankai per KIX.", i: ["o6", "o13", "o11", "o18"] },
-};
+// Il programma lo costruite voi: si parte con tutti i giorni vuoti.
+window.BOZZA = {};
 
 // Sincronizzazione del programma tra i 4 telefoni (Firebase Firestore).
 // Lasciare null finché non è configurato: l'app funziona lo stesso (salvataggio locale + link di condivisione).

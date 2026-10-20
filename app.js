@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 78;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 79;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -233,7 +233,8 @@
   const listSig = items => sig([...items].sort((a, b) => String(a.id).localeCompare(String(b.id))));
   function localChanges() {
     const days = {};
-    for (const d of new Set([...Object.keys(plan), ...Object.keys(synced.plan)])) if (!same(plan[d], synced.plan[d])) days[d] = plan[d] || { l: "", n: "", i: [] };
+    const blank = v => !v || (!v.l && !v.n && !v.i?.length && !v.f?.length && !Object.keys(v.t || {}).length);   // giorno vuoto = come se non ci fosse
+    for (const d of new Set([...Object.keys(plan), ...Object.keys(synced.plan)])) if (!same(plan[d], synced.plan[d]) && !(blank(plan[d]) && blank(synced.plan[d]))) days[d] = plan[d] || { l: "", n: "", i: [] };
     return { days, add: [...booked].filter(x => !synced.booked.includes(x)), rem: synced.booked.filter(x => !booked.has(x)) };
   }
   function pushChanges() {
@@ -310,7 +311,7 @@
   function startSync() {
     if (!window.FIREBASE || !code || sync || syncStarting) return;
     syncStarting = true;
-    import("./sync.js").then(m => { sync = m.start(window.FIREBASE, code, { main: onRemote, list: onList, status: setSync, recreate: () => sync.pushMain({ plan, booked: [...booked], by: me || "?" }) }, { memory: syncMemory }); }).catch(err => { syncStarting = false; setSync("error", err); });
+    import("./sync.js").then(m => { sync = m.start(window.FIREBASE, code, { main: onRemote, list: onList, status: setSync, recreate: () => sync.pushMain({ plan, booked: [...booked], by: me || "?" }) }, { memory: syncMemory }); dataVer++; if (location.hash.startsWith("#giorni") && !sheetOpen()) keepScroll(render); }).catch(err => { syncStarting = false; setSync("error", err); });
   }
 
   // ricerca tollerante: ignora accenti (ō → o), trattini, apostrofi e maiuscole; ogni parola deve comparire
@@ -653,7 +654,7 @@
     const today = todayJP();
     const idx = dayIndex(today);
     const before = today < T.inizio, after = today > T.fine;
-    const daysTo = Math.ceil((new Date(T.inizio + "T00:00:00Z") - new Date(today + "T00:00:00Z")) / 864e5);
+    const daysTo = Math.ceil((new Date((T.partenza || T.inizio) + "T00:00:00Z") - new Date(today + "T00:00:00Z")) / 864e5);   // alla partenza dall'Italia
     const firstDay = id => dayOf(id)[0] || "9999";
     const toBook = LUOGHI.filter(p => p.pren && !p.out).sort((a, b) => firstDay(a.id).localeCompare(firstDay(b.id)) || zoneOrder[a.z] - zoneOrder[b.z]);
     const doneBook = toBook.filter(p => booked.has(p.id)).length;
@@ -669,9 +670,9 @@
 
     let hero;
     if (before || after) hero = `<div class="hero">${before && photoUrl(HERO_PLACE[z0]) ? `<div class="ph" data-bg="${photoUrl(HERO_PLACE[z0], 960)}"></div>` : art()}${before && KANJI[z0] ? `<span class="kanji" aria-hidden="true">${KANJI[z0]}</span>` : ""}<div class="hero-in">
-        <span class="kicker">${before ? hi + (daysTo === 1 ? "Manca" : "Mancano") : "Okaeri!"}</span>
-        ${before ? `<div class="big-n" data-count="${daysTo}">${daysTo}</div><div class="title">${daysTo === 1 ? "giorno" : "giorni"} al Giappone</div>` : `<div class="title">Viaggio concluso.<br>Arigatō, Giappone!</div>`}
-        <p>${fmtDay(T.inizio, { day: "numeric", month: "long" })} – ${fmtDay(T.fine, { day: "numeric", month: "long", year: "numeric" })} · Niccolò & Antonella · Miriam & Paolo</p>
+        <span class="kicker">${before ? hi + (daysTo <= 0 ? "Si parte!" : daysTo === 1 ? "Manca" : "Mancano") : "Okaeri!"}</span>
+        ${before && daysTo <= 0 ? `<div class="title">In volo verso il Giappone ✈️</div>` : before ? `<div class="big-n" data-count="${daysTo}">${daysTo}</div><div class="title">${daysTo === 1 ? "giorno" : "giorni"} alla partenza</div>` : `<div class="title">Viaggio concluso.<br>Arigatō, Giappone!</div>`}
+        <p>In Giappone dal ${fmtDay(T.inizio, { day: "numeric", month: "long" })} al ${fmtDay(T.fine, { day: "numeric", month: "long", year: "numeric" })} · Niccolò & Antonella · Miriam & Paolo</p>
       </div></div>`;
     else {
       const d = getDay(today), first = d.i[0] && byId[d.i[0]], nst = d.i.filter(id => byId[id]).length;
@@ -821,7 +822,7 @@
     const editedBy = lastEdit?.by && lastEdit.by !== "?" ? ` · ultima modifica di ${esc(lastEdit.by)}` : "";
 
     view.innerHTML = `
-      <div class="daystrip" id="strip">${DAYS.map((x, k) => { const z = dayZone(x), prev = k ? dayZone(DAYS[k - 1]) : null, move = z && prev && z !== prev; return `<a class="dchip${x === d ? " on" : ""}${x === today ? " today" : ""}" href="#giorni/${x}" style="--c:${z ? zona[z].colore : "var(--muted)"}" aria-label="Giorno ${k + 1}${z ? ", " + zona[z].nome : flightOn(x) ? ", volo" : ""}${move ? ", trasferimento" : ""}"><small>${fmtDay(x, { weekday: "short" }).replace(".", "")}</small><b>${fmtDay(x, { day: "numeric" })}</b><em>${move ? icon("TrainFront") : ""}${z ? ZSHORT[z] : flightOn(x) ? "volo" : "libero"}</em></a>`; }).join("")}</div>
+      <div class="daystrip" id="strip">${DAYS.map((x, k) => { const z = dayZone(x), prev = k ? dayZone(DAYS[k - 1]) : null, move = z && prev && z !== prev; return `<a class="dchip${x === d ? " on" : ""}${x === today ? " today" : ""}" href="#giorni/${x}" style="--c:${z ? zona[z].colore : "var(--muted)"}" aria-label="Giorno ${k + 1}${z ? ", " + zona[z].nome : landsOn(x) ? ", arrivo" : flightOn(x) ? ", partenza" : ""}${move ? ", trasferimento" : ""}"><small>${fmtDay(x, { weekday: "short" }).replace(".", "")}</small><b>${fmtDay(x, { day: "numeric" })}</b><em>${move ? icon("TrainFront") : ""}${z ? ZSHORT[z] : landsOn(x) ? "arrivo" : flightOn(x) ? "partenza" : "libero"}</em></a>`; }).join("")}</div>
       <div class="daycover" id="cover">${first ? `<div class="ph" data-bg="${photoUrl(first.id, 960)}"></div>` : art()}
         <span class="dn">Giorno ${i + 1} / ${DAYS.length}</span>
         <div class="dtxt"><div class="kicker">${fmtDay(d)}</div>${editMode ? `<input id="dlabel" value="${esc(day.l)}" placeholder="Dai un nome al giorno…" aria-label="Nome del giorno">` : `<div class="dtitle">${esc(day.l) || "Giorno libero"}</div>`}</div>
@@ -843,7 +844,8 @@
         const row = placeRow(p, { noDays: true, compact: true, noZone: true, right }).replace('<div class="meta">', `<div class="meta">${closedOn(p, d) ? closedPill(p) : ""}${tm ? `<span class="pill">${icon("Clock")} ${esc(tm)}</span>` : ""}`);
         const fatto = day.f?.includes(id);
         return `<li${fatto ? ' class="done"' : ""}>${editMode ? `<span class="n grip" data-grip="${k}" style="background:${zona[p.z].colore}" aria-label="Trascina per spostare">${icon("GripVertical")}</span>` : fatto ? `<span class="n done" aria-label="Fatta">済</span>` : `<span class="n" style="background:${zona[p.z].colore}">${k + 1}</span>`}<div class="sw">${editMode ? "" : `<div class="swipebg">${icon("Trash2")} Togli</div>`}${row}</div>${next ? `<div class="hop">${hop(p, next)}</div>` : ""}</li>`;
-      }).join("")}</ul>` : flightOn(d) ? `<div class="empty" style="margin-top:14px">Giornata di viaggio: niente tappe in programma.<br><button class="btn small" id="add2" style="margin-top:10px">${icon("Plus")} Aggiungi una tappa</button></div>`
+      }).join("")}</ul>` : landsOn(d) ? `<div class="empty" style="margin-top:14px">Si atterra${landsOn(d).oraA ? " alle " + esc(landsOn(d).oraA) : ""}: il resto della giornata è vostro.<br><button class="btn small primary" id="add2" style="margin-top:10px">${icon("Plus")} Aggiungi tappe</button></div>`
+        : flightOn(d) ? `<div class="empty" style="margin-top:14px">Giorno della partenza: niente tappe in programma.<br><button class="btn small" id="add2" style="margin-top:10px">${icon("Plus")} Aggiungi una tappa</button></div>`
         : `<div class="empty" style="margin-top:14px">Nessuna tappa per questo giorno.<br><button class="btn small primary" id="add2" style="margin-top:10px">${icon("Plus")} Aggiungi tappe</button></div>`}
       <div class="btns daynav">
         ${i > 0 ? `<a class="btn" href="#giorni/${DAYS[i - 1]}">‹ Giorno ${i}</a>` : ""}
@@ -853,7 +855,7 @@
         <div class="row"><span class="contact"><span class="ic">${icon(sync ? "Users" : "Smartphone")}</span></span><div class="grow small">${sync
           ? `<b>Programma condiviso</b> tra voi quattro<div class="muted">${syncStatus === "online" ? "Sincronizzato" : "In attesa di rete"}${editedBy}</div>`
           : `<b>Programma salvato su questo telefono</b><div class="muted">Per mandarlo agli altri usa Condividi.</div>`}</div></div>
-        <div class="btns">${sync ? "" : `<button class="btn small" id="share">${icon("Share2")} Condividi</button>`}<button class="btn small ghost" id="reset">${icon("RotateCcw")} Ripristina bozza</button></div>
+        ${sync ? "" : `<div class="btns"><button class="btn small" id="share">${icon("Share2")} Condividi</button></div>`}
       </div>
     `;
     $("#strip .on")?.scrollIntoView({ inline: "center", block: "nearest" });
@@ -917,10 +919,6 @@
       });
     });
     $("#share")?.addEventListener("click", sharePlan);
-    $("#reset").onclick = async () => {
-      if (!(await ask({ title: "Ripristinare la bozza?", text: `Il programma torna alla bozza proposta (arrivo a Tokyo, partenza da Osaka). Le modifiche andranno perse${sync ? " per tutti e quattro" : ""}.`, ok: "Ripristina", danger: true, icon: "RotateCcw" }))) return;
-      plan = clone(window.BOZZA || {}); savePlan(); toast("Bozza ripristinata"); render();
-    };
     // swipe orizzontale sulla copertina per cambiare giorno
     let x0 = null;
     $("#cover").addEventListener("touchstart", e => { x0 = e.touches[0].clientX; }, { passive: true });
@@ -1784,6 +1782,7 @@
   const inFlight = d => lists.prenotazioni.some(p => p.tipo === "volo" && p.dal && p.al && p.dal <= d && d < p.al);
   const nights = () => DAYS.slice(0, -1).filter(d => !inFlight(d));
   const flightOn = d => lists.prenotazioni.find(p => p.tipo === "volo" && (p.dal === d || p.al === d));
+  const landsOn = d => lists.prenotazioni.find(p => p.tipo === "volo" && p.al === d && p.dal !== d);   // si arriva oggi (partiti ieri)
   // per le prenotazioni (voli soprattutto) si possono scegliere anche 3 giorni prima e dopo il viaggio
   const BOOK_DAYS = (() => { const out = [], a = new Date(T.inizio + "T00:00:00Z"), b = new Date(T.fine + "T00:00:00Z"); a.setUTCDate(a.getUTCDate() - 3); b.setUTCDate(b.getUTCDate() + 3); for (const d = a; d <= b; d.setUTCDate(d.getUTCDate() + 1)) out.push(d.toISOString().slice(0, 10)); return out; })();   // l'ultimo giorno si parte
   const hotelFor = d => lists.prenotazioni.find(p => p.tipo === "hotel" && p.dal <= d && d < (p.al || p.dal));
