@@ -219,6 +219,38 @@ window.LUOGHI = [
   { id: "x36", out: true, n: "Kashima Jingū", jp: "鹿島神宮", z: "altre", lat: 35.9690, lng: 140.6310, c: "santuario", d: "Santuario storico con parco dei cervi." },
 ];
 
+// Quando prenotare (ricerca di ottobre 2026, da ricontrollare sui siti ufficiali).
+// da = quando aprono le vendite / da quando muoversi, entro = ultimo giorno utile prima di rischiare il tutto esaurito
+// (date italiane; le vendite giapponesi alle 14:00 JST = 6:00 in Italia d'inverno). come = cosa fare
+window.PRENOTA = {
+  k17: { da: "2026-12-01", entro: "2026-12-31", come: "Lotteria sul sito Nintendo (serve un Nintendo Account): iscrizioni per le visite di marzo durante tutto dicembre, esito il 1° febbraio, pagamento entro il 7" },
+  a3:  { da: "2026-12-10", entro: "2026-12-10", come: "In vendita il 10 del mese alle 14:00 giapponesi (6:00 in Italia) per le visite di due mesi dopo: 10 dicembre per febbraio, 10 gennaio per marzo. Finiscono in poche ore, quindi va comprato il giorno stesso" },
+  k13: { da: "2026-12-01", entro: "2026-12-31", come: "Visita guidata gratuita, solo su prenotazione dal sito dell'Agenzia della Casa Imperiale. I posti sono pochi: controllate da inizio dicembre quando si apre marzo. Il pomeriggio qualche posto si libera sul posto dalle 11" },
+  t26: { da: "2026-12-01", entro: "2026-12-20", come: "Solo online, con orario d'ingresso. Weekend e festivi finiscono 1-3 mesi prima, i giorni feriali 2-4 settimane prima" },
+  t2:  { da: "2026-12-21", entro: "2026-12-31", come: "Biglietti a data fissa, in vendita 2 mesi prima alle 14:00 giapponesi (6:00 in Italia). Non si comprano all'ingresso: prendeteli il giorno in cui si apre la vostra data" },
+  o9:  { da: "2026-12-01", entro: "2027-01-06", come: "Il 6 marzo è sabato: biglietto ed Express Pass con Super Nintendo World vanno comprati circa 2 mesi prima, l'Express Pass finisce" },
+  t24: { da: "2026-12-01", entro: "2026-12-15", come: "Le date escono il 1° del mese, circa 2 mesi prima: il 1° dicembre per febbraio, il 1° gennaio per marzo. I weekend finiscono anche in pochi minuti" },
+  t25: { da: "2026-12-01", entro: "2026-12-15", come: "Circa 2 mesi prima sul sito teamLab. Weekend e festivi finiscono presto; su Klook a volte restano posti" },
+  t28: { da: "2027-02-06", entro: "2027-02-08", come: "Si apre 14 giorni prima a mezzanotte giapponese (16:00 in Italia). L'orario del tramonto finisce in pochi minuti" },
+  t31: { da: "2027-01-20", entro: "2027-02-07", come: "Laboratorio a orari fissi con pochi posti: 2-3 settimane prima" },
+  t20: { da: "2027-01-25", entro: "2027-02-14", come: "Biglietto a orario online, 1-2 settimane prima (nei weekend prima)" },
+  t19: { da: "2027-01-25", entro: "2027-02-14", come: "Biglietto a orario online, 1-2 settimane prima. Nei giorni feriali si trova anche in cassa" },
+  o14: { da: "2027-02-01", entro: "2027-02-25", come: "Online sul sito del parco, qualche giorno prima. Si vende anche sul posto se non è esaurito" },
+  h4:  { da: "2027-02-01", entro: "2027-02-25", come: "Pass giornaliero online qualche giorno prima, oppure in cassa" },
+  v8:  { da: "2027-02-01", entro: "2027-02-25", come: "Online o in cassa, raramente esaurito (chiuso martedì e mercoledì)" },
+  t33: { da: "2027-02-01", entro: "2027-02-20", come: "Online qualche giorno prima per l'orario del tramonto, altrimenti in cassa" },
+  o1:  { da: "2027-02-01", entro: "2027-02-28", come: "In cassa o online qualche giorno prima" },
+  o10: { da: "2027-02-01", entro: "2027-02-28", come: "In cassa o online qualche giorno prima (l'osservatorio al 16° piano è gratis)" },
+  o6:  { da: "2027-02-01", entro: "2027-02-28", come: "Online per saltare la fila alla cassa, anche il giorno stesso" },
+  h1:  { da: "2027-02-01", entro: "2027-02-25", come: "In cassa o online qualche giorno prima" },
+  n3:  { da: "2027-02-01", entro: "2027-03-01", come: "Ingresso al santuario interno in cassa" },
+  n8:  { da: "2027-02-01", entro: "2027-03-01", come: "Ingresso in cassa" },
+  v5:  { da: "2027-02-01", entro: "2027-02-25", come: "Ingresso in cassa" },
+  t3:  { da: "2027-02-01", entro: "2027-02-20", come: "In cassa; nei weekend conviene il biglietto online qualche giorno prima" },
+  t15: { da: "2027-02-01", entro: "2027-02-20", come: "Online o in cassa, anche il giorno stesso (chiuso il lunedì)" },
+  t1:  { da: "2027-02-01", entro: "2027-02-20", come: "La serra è inclusa nel biglietto dello Shinjuku Gyoen" },
+};
+
 // Il programma lo costruite voi: si parte con tutti i giorni vuoti.
 window.BOZZA = {};
 

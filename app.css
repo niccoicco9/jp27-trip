@@ -1016,3 +1016,9 @@ html, body, .scroller { overscroll-behavior-x: none; }
 .docrow { display: flex; align-items: center; gap: var(--sp-2); }
 .docrow .doc { flex: 1; background: var(--card); }
 .doc-hint { display: block; margin-top: 6px; }
+
+/* da prenotare: entro quando */
+.bkw { font-style: normal; font-weight: 600; color: var(--muted); }
+.bkw.now { color: #b8860b; }
+.bkw.late { color: var(--shu); }
+.check .bkn { cursor: pointer; }

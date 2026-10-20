@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 79;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 80;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -593,6 +593,7 @@
         ${p.eur ? `<dt>Costo</dt><dd>~${p.eur.toLocaleString("it-IT", { minimumFractionDigits: 2 })} € a persona <span class="muted">(${p.mine ? "stima vostra" : "stima Wanderlog"})</span></dd>` : ""}
         ${p.chiuso ? `<dt>Chiuso</dt><dd>${esc(p.chiuso)}</dd>` : ""}
         ${p.pren ? `<dt>Biglietti</dt><dd><label class="check" style="border:none;padding:0"><input type="checkbox" id="bk" ${booked.has(id) ? "checked" : ""}><span>${booked.has(id) ? "<b>Prenotato</b>" : "Da prenotare in anticipo: <b>segna quando è fatto</b>"}</span></label></dd>` : ""}
+        ${p.pren && PREN[p.id] && !booked.has(id) ? `<dt>Quando</dt><dd><b class="bkw ${bookWhen(p)?.cls || ""}">${esc(cap1(bookWhen(p).txt))}</b><div class="small muted" style="margin-top:2px">${esc(PREN[p.id].come)}</div></dd>` : ""}
         <dt>In programma</dt><dd>${ds.length ? ds.map(d => `<a href="#giorni/${d}">Giorno ${dayIndex(d) + 1} · ${fmtDay(d)}</a>`).join("<br>") : "<span class='muted'>non ancora</span>"}</dd>
       </dl>
       ${p.gone ? "" : `<h3>Aggiungi a un giorno</h3>
@@ -656,7 +657,8 @@
     const before = today < T.inizio, after = today > T.fine;
     const daysTo = Math.ceil((new Date((T.partenza || T.inizio) + "T00:00:00Z") - new Date(today + "T00:00:00Z")) / 864e5);   // alla partenza dall'Italia
     const firstDay = id => dayOf(id)[0] || "9999";
-    const toBook = LUOGHI.filter(p => p.pren && !p.out).sort((a, b) => firstDay(a.id).localeCompare(firstDay(b.id)) || zoneOrder[a.z] - zoneOrder[b.z]);
+    // prima quelli da prenotare prima (scadenza più vicina), in fondo quelli già fatti
+    const toBook = LUOGHI.filter(p => p.pren && !p.out).sort((a, b) => booked.has(a.id) - booked.has(b.id) || bookBy(a).localeCompare(bookBy(b)) || firstDay(a.id).localeCompare(firstDay(b.id)) || zoneOrder[a.z] - zoneOrder[b.z]);
     const doneBook = toBook.filter(p => booked.has(p.id)).length;
     // il saluto segue l'ora di dove siete: in viaggio quella del Giappone
     const hh = !before && !after ? +nowJP().slice(0, 2) : new Date().getHours(), hi = "";
@@ -698,11 +700,12 @@
       <div class="card">
         <div class="between"><h3 style="margin:0">${icon("Ticket")} Da prenotare</h3><b class="small">${doneBook}/${toBook.length}</b></div>
         <div class="progress bar-head"><i style="width:${toBook.length ? doneBook / toBook.length * 100 : 0}%"></i></div>
-        <p class="muted small" style="margin:8px 0 4px">Wanderlog consiglia di prenotarli in anticipo. In ordine di data: prima quelli già in programma.</p>
-        <div id="booklist">${toBook.map((p, k) => `<label class="check${booked.has(p.id) ? " done" : ""}"${k >= 6 ? " data-more hidden" : ""}><input type="checkbox" data-book="${p.id}" ${booked.has(p.id) ? "checked" : ""}><span class="grow">${esc(p.n)}<small class="sub">${esc(zona[p.z].nome)}${dayOf(p.id).length ? " · " + dayOf(p.id).map(short).join(", ") : ""}</small></span><a class="iconbtn" href="${bookUrl(p)}" target="_blank" rel="noopener" aria-label="Cerca i biglietti">${icon("ExternalLink")}</a></label>`).join("")}</div>
+        <p class="muted small" style="margin:8px 0 4px">In ordine di urgenza: in cima quello da prenotare prima. Tocca il nome per sapere come.</p>
+        <div id="booklist">${toBook.map((p, k) => `<label class="check${booked.has(p.id) ? " done" : ""}"${k >= 6 ? " data-more hidden" : ""}><input type="checkbox" data-book="${p.id}" ${booked.has(p.id) ? "checked" : ""}><span class="grow"><span class="bkn" data-place="${p.id}">${esc(p.n)}</span><small class="sub">${(() => { const w = !booked.has(p.id) && bookWhen(p); return w ? `<em class="bkw ${w.cls}">${esc(w.txt)}</em> · ` : ""; })()}${esc(zona[p.z].nome)}${dayOf(p.id).length ? " · " + dayOf(p.id).map(short).join(", ") : ""}</small></span><a class="iconbtn" href="${bookUrl(p)}" target="_blank" rel="noopener" aria-label="Cerca i biglietti">${icon("ExternalLink")}</a></label>`).join("")}</div>
         ${toBook.length > 6 ? `<button class="btn small ghost" id="more" style="width:100%;margin-top:8px">Mostra tutti (${toBook.length})</button>` : ""}
       </div>
     `;
+    $$("#booklist .bkn").forEach(b => b.addEventListener("click", e => e.preventDefault()));   // il nome apre la scheda, non spunta
     $$("[data-book]").forEach(cb => cb.onchange = () => {
       cb.checked ? booked.add(cb.dataset.book) : booked.delete(cb.dataset.book);
       savePlan(); cb.closest(".check").classList.toggle("done", cb.checked);
@@ -719,6 +722,17 @@
   }
 
   const bookUrl = p => `https://www.google.com/search?q=${encodeURIComponent(p.n + " official tickets booking")}`;
+  // quando prenotare (data.js › PRENOTA): "da" apre le vendite, "entro" è l'ultimo giorno sicuro. Data di oggi in Italia
+  const PREN = window.PRENOTA || {};
+  const bookBy = p => PREN[p.id]?.entro || "9999-12-31";
+  function bookWhen(p, today = new Date().toLocaleDateString("sv-SE")) {
+    const w = PREN[p.id]; if (!w) return null;
+    const left = Math.round((new Date(w.entro + "T00:00:00Z") - new Date(today + "T00:00:00Z")) / 864e5);
+    const fd = d => fmtDay(d, { day: "numeric", month: "short" });
+    if (left < 0) return { txt: `entro il ${fd(w.entro)}: controllate se c'è ancora posto`, cls: "late" };
+    if (today >= w.da) return { txt: left === 0 ? "entro oggi" : left === 1 ? "entro domani" : `entro il ${fd(w.entro)} · ${left} giorni`, cls: left <= 14 ? "late" : "now" };
+    return { txt: w.da === w.entro ? `il ${fd(w.da)}, appena apre` : `dal ${fd(w.da)} · entro il ${fd(w.entro)}`, cls: "" };
+  }
   // prima di partire: a che punto siete con i preparativi
   function prepCard(toBook, doneBook) {
     const bar = (n, tot) => `<div class="progress"><i style="width:${tot ? Math.min(1, n / tot) * 100 : 0}%"></i></div>`;
