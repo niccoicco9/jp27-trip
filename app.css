@@ -907,24 +907,10 @@ html[data-vt="push"]::view-transition-old(root) { animation: vt-out-left .42s cu
 html[data-vt="push"]::view-transition-new(root) { animation: vt-in-right .42s cubic-bezier(.32, .72, 0, 1) both; box-shadow: -12px 0 32px rgba(20, 12, 6, .14); }
 html[data-vt="pop"]::view-transition-old(root) { animation: vt-out-right .42s cubic-bezier(.32, .72, 0, 1) both; z-index: 1; box-shadow: -12px 0 32px rgba(20, 12, 6, .14); }
 html[data-vt="pop"]::view-transition-new(root) { animation: vt-in-left .42s cubic-bezier(.32, .72, 0, 1) both; }
-/* cambio giorno (Giorni): titolo e fila dei giorni restano fermi; il contenuto scorre come le pagine di un'app
-   (il giorno vecchio esce tutto da un lato mentre il nuovo entra dall'altro, senza sovrapporsi: niente immagini doppie) */
-html[data-vt^="day"] .daystrip { view-transition-name: daystrip; }
-/* durante lo scorrimento i tocchi passano alla pagina vera (la fila dei giorni è già quella nuova): si può
-   toccare subito un altro giorno, senza tocchi persi */
-html[data-vt^="day"]::view-transition { pointer-events: none; }
-::view-transition-old(daystrip) { display: none; }
-::view-transition-new(daystrip), ::view-transition-group(daystrip) { animation: none; }
-html[data-vt^="day"]::view-transition-old(topbar), html[data-vt^="day"]::view-transition-new(topbar) { animation: none; }
-html[data-vt^="day"]::view-transition-old(root), html[data-vt^="day"]::view-transition-new(root) { animation-duration: .38s; animation-timing-function: cubic-bezier(.32, .72, 0, 1); animation-fill-mode: both; mix-blend-mode: normal; }
-html[data-vt="day-next"]::view-transition-old(root) { animation-name: vt-page-out-l; }
-html[data-vt="day-next"]::view-transition-new(root) { animation-name: vt-page-in-r; }
-html[data-vt="day-prev"]::view-transition-old(root) { animation-name: vt-page-out-r; }
-html[data-vt="day-prev"]::view-transition-new(root) { animation-name: vt-page-in-l; }
-@keyframes vt-page-out-l { to { transform: translate3d(-100%, 0, 0); } }
-@keyframes vt-page-in-r { from { transform: translate3d(100%, 0, 0); } }
-@keyframes vt-page-out-r { to { transform: translate3d(100%, 0, 0); } }
-@keyframes vt-page-in-l { from { transform: translate3d(-100%, 0, 0); } }
+/* cambio giorno (Giorni): il contenuto vecchio, staccato, esce di lato mentre il nuovo entra (vedi slideDay) */
+main.sliding { position: relative; overflow-x: clip; }
+.dayghost { position: absolute; pointer-events: none; will-change: transform; }
+main.sliding > :not(#strip):not(.dayghost) { will-change: transform; }
 @keyframes vt-out-left { to { transform: translate3d(-28%, 0, 0); opacity: .6; } }
 @keyframes vt-in-right { from { transform: translate3d(100%, 0, 0); } }
 @keyframes vt-out-right { to { transform: translate3d(100%, 0, 0); } }

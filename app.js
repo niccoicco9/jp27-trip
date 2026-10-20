@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 83;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 84;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -936,28 +936,32 @@
     });
     $("#share")?.addEventListener("click", sharePlan);
   }
-  // Giorni: scorrimento sulla copertina e tocchi sulla fila dei giorni, ascoltati su tutto il documento.
-  // Durante lo scorrimento tra due giorni Safari non fa arrivare i tocchi alla pagina (c'è la "fotografia" animata):
-  // così un gesto fatto in quel momento non va perso e porta sempre al giorno giusto
+  // Giorni: tocchi sui giorni e scorrimento sulla copertina, ascoltati su tutto il documento così valgono anche
+  // mentre il contenuto sta ancora scorrendo (la copertina sotto il dito può essere quella del giorno che sta uscendo)
   (() => {
     let g = null;
-    const inside = (el, x, y) => { const r = el?.getBoundingClientRect(); return !!r && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; };
+    const inBand = (el, y) => { const r = el?.getBoundingClientRect(); return !!r && y >= r.top && y <= r.bottom; };   // solo in altezza: mentre scorre di lato la copertina è spostata
     const curDay = () => { const c = location.hash.split("/")[1]; return DAYS.includes(c) ? c : selDay; };
     document.addEventListener("touchstart", e => {
       g = null; if (!location.hash.startsWith("#giorni") || e.touches.length !== 1 || sheetOpen()) return;
-      const t = e.touches[0]; g = { x: t.clientX, y: t.clientY, cover: inside($("#cover"), t.clientX, t.clientY) && !editMode };
+      const t = e.touches[0]; g = { x: t.clientX, y: t.clientY, at: performance.now(), cover: inBand($("#cover"), t.clientY) && !editMode };
     }, { passive: true });
     document.addEventListener("touchend", e => {
       if (!g) return; const t = e.changedTouches[0], dx = t.clientX - g.x, dy = t.clientY - g.y, s0 = g; g = null;
+      // tocco su un giorno (fila in alto o "Giorno N ›"): si cambia appena il dito si alza. Se si aspettasse il click,
+      // iOS scarterebbe i tocchi ravvicinati (li tratta come doppio tocco) e cambiare giorno di corsa non funzionerebbe
+      const day = Math.hypot(dx, dy) < 10 && performance.now() - s0.at < 600 && e.target.closest?.("#strip .dchip, .daynav a");
+      if (day) {
+        e.preventDefault();   // niente click dopo: il giorno è già cambiato
+        const h = day.getAttribute("href");
+        if (day.classList.contains("dchip") && h !== location.hash) { $("#strip .on")?.classList.remove("on"); day.classList.add("on"); }
+        if (h !== location.hash) { buzz(); go(h); }
+        return;
+      }
       if (s0.cover && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
         const j = DAYS.indexOf(curDay()) + (dx < 0 ? 1 : -1); if (DAYS[j]) go("#giorni/" + DAYS[j]); return;
       }
-      // tocco sulla fila dei giorni mentre il contenuto sta ancora scorrendo: il click non arriverebbe
-      if (document.documentElement.dataset.vt?.startsWith("day") && Math.hypot(dx, dy) < 10) {
-        const c = $$("#strip .dchip").find(a => inside(a, t.clientX, t.clientY));
-        if (c && c.getAttribute("href") !== location.hash) { $("#strip .on")?.classList.remove("on"); c.classList.add("on"); buzz(); go(c.getAttribute("href")); }
-      }
-    }, { passive: true });
+    }, { passive: false });
   })();
   function keepScroll(fn) { const y = SC.scrollTop; fn(); SC.scrollTop = y; }
 
@@ -2831,15 +2835,41 @@
     };
     // come su iPhone: le schede in basso cambiano all'istante; entrare/uscire da una pagina (o passare al giorno dopo)
     // fa scorrere la pagina intera, con la tecnica nativa di Safari (View Transitions) quando c'è
-    // il giorno dopo/prima non è una pagina nuova: resta ferma la pagina (titolo e fila dei giorni),
-    // cambia solo il contenuto, con un breve scorrimento nella direzione del giorno
+    // il giorno dopo/prima non è una pagina nuova: titolo e fila dei giorni restano fermi, scorre solo il contenuto
+    // (animazione sugli elementi veri, interrompibile: si può cambiare giorno di nuovo in qualunque momento)
     const slide = kind === "push" || kind === "pop" || kind === "next" || kind === "prev";
-    if (slide && canVT()) runVT(kind === "next" ? "day-next" : kind === "prev" ? "day-prev" : kind, show);
+    if (day) slideDay(kind === "next" ? 1 : -1, show);
+    else if (slide && canVT()) runVT(kind, show);
     else {
       show();
       if (slide || kind === "fade") { void view.offsetWidth; view.classList.add("enter", "nav-" + kind); }
     }
   }
+  // ——— cambio giorno: il giorno vecchio esce da un lato mentre il nuovo entra dall'altro, come le pagine di un'app ———
+  // Niente "fotografie" (View Transitions): si animano gli elementi veri, quindi i tocchi arrivano sempre e un nuovo
+  // cambio ferma all'istante quello in corso e riparte da dove si è
+  let dayAnim = null;
+  function slideDay(dir, update) {
+    dayAnim?.stop();
+    const strip = $("#strip"), old = [...view.children].filter(n => n !== strip);
+    update();
+    if (reduceMotion() || !old.length || !$("#strip")) return;
+    const fresh = [...view.children].filter(n => n.id !== "strip");
+    if (!fresh.length) return;
+    const vr = view.getBoundingClientRect(), fr = fresh[0].getBoundingClientRect();
+    const ghost = document.createElement("div");
+    ghost.className = "dayghost"; ghost.setAttribute("aria-hidden", "true"); ghost.inert = true;
+    ghost.style.cssText = `left:${fr.left - vr.left}px;width:${fr.width}px;top:${fr.top - vr.top}px`;
+    old.forEach(n => { n.removeAttribute?.("id"); n.querySelectorAll?.("[id]").forEach(e => e.removeAttribute("id")); });
+    ghost.append(...old); view.append(ghost); view.classList.add("sliding");
+    const W = view.clientWidth, o = { duration: 340, easing: "cubic-bezier(.32, .72, 0, 1)" };
+    const anims = [ghost.animate([{ transform: "translate3d(0,0,0)" }, { transform: `translate3d(${-dir * W}px,0,0)` }], { ...o, fill: "forwards" }),
+      ...fresh.map(n => n.animate([{ transform: `translate3d(${dir * W}px,0,0)` }, { transform: "translate3d(0,0,0)" }], o))];
+    const h = { stop() { anims.forEach(a => a.cancel()); ghost.remove(); view.classList.remove("sliding"); if (dayAnim === h) dayAnim = null; } };
+    dayAnim = h;
+    anims[0].finished.then(() => h.stop(), () => {});
+  }
+
   // ——— transizioni native (View Transitions): pagine che scorrono e liste che si riordinano da sole ———
   const canVT = () => !!document.startViewTransition && !reduceMotion() && !document.hidden;
   let vtRun = null;
