@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 86;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 87;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -261,9 +261,11 @@
     lists[name] = lists[name].filter(x => x.id !== id); LS.set(name, lists[name]); sync?.del(name, id);
     if (name === "luoghi") mergeCustom();
   }
+  // si sta scrivendo in un campo della pagina: l'aggiornamento aspetta, per non perdere il testo
+  const typingNow = () => { const a = document.activeElement; return !!a && a.isConnected && (a.tagName === "TEXTAREA" || a.tagName === "SELECT" || (a.tagName === "INPUT" && !/checkbox|radio|button|submit|range|switch/.test(a.type))); };
   function remoteChanged() {
     const a = document.activeElement;
-    if (!(a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) && !sheetOpen()) rerender(); else pendingRemote = true;
+    if (!typingNow() && !sheetOpen()) rerender(); else pendingRemote = true;
   }
   function onRemote(data, first) {
     if (!data) { if (first) { sync.pushMain({ plan, booked: [...booked], by: me || "?" }); synced = { plan: clone(plan), booked: [...booked] }; } return; }
@@ -475,7 +477,7 @@
   }
   document.addEventListener("focusout", () => setTimeout(() => {
     const a = document.activeElement;
-    if (pendingRemote && !sheetOpen() && !(a && /INPUT|TEXTAREA|SELECT/.test(a.tagName))) { pendingRemote = false; rerender(); }
+    if (pendingRemote && !sheetOpen() && !typingNow()) { pendingRemote = false; rerender(); }
   }, 300));
   sheet.addEventListener("click", e => { if (e.target.closest("[data-close]")) closeSheet(); });
   document.addEventListener("keydown", e => { if (e.key === "Escape") { closeSheet(); hideBig(); } });
@@ -2961,7 +2963,12 @@
     vtRun?.skipTransition?.();
     const r = document.documentElement; r.dataset.vt = type;
     if (keys) nameItems(keys);
-    const t = vtRun = document.startViewTransition(() => { update(); if (keys) nameItems(keys); });
+    // l'aggiornamento della pagina non deve mai dipendere dall'animazione: se Safari non la fa partire subito
+    // (telefono che non sta disegnando, altra transizione in corso) si salta e si aggiorna comunque
+    let done = false;
+    const apply = () => { if (done) return; done = true; update(); if (keys) nameItems(keys); };
+    const t = vtRun = document.startViewTransition(apply);
+    setTimeout(() => { if (!done) { t.skipTransition?.(); apply(); if (vtRun === t) { vtRun = null; delete r.dataset.vt; if (keys) nameItems(null); } } }, 250);
     t.ready.catch(() => {});   // transizione saltata (es. un tocco durante lo scorrimento): non è un errore
     t.finished.finally(() => { if (vtRun === t) { vtRun = null; delete r.dataset.vt; if (keys) nameItems(null); } });
   }
