@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 75;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 76;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -350,7 +350,7 @@
     if (reduceMotion()) return;
     $$("[data-count]", root).forEach(el => {
       const to = +el.dataset.count, fmt = el.dataset.fmt, t0 = performance.now(), dur = 750;
-      const show = v => el.textContent = fmt === "eur" ? eurF(v) : fmt === "eur±" ? (to > 0 ? "+" : "") + eurF(v) : fmtInt(v);
+      const show = v => el.textContent = fmt === "eur" ? eurF(v) : fmt === "eur±" ? eurPM(v) : fmtInt(v);
       if (!to) return;
       let done = false;
       const step = () => { if (done) return; const k = Math.min(1, Math.max(0, (performance.now() - t0) / dur)), e = 1 - Math.pow(1 - k, 3); show(to * e); if (k < 1) requestAnimationFrame(step); else done = true; };
@@ -632,16 +632,17 @@
   function dayPren(d) {
     if (!code) return "";
     const h = hotelFor(d), bs = bookingsOn(d), ci = lists.prenotazioni.filter(p => p.tipo === "hotel" && p.dal === d);
-    if (!h && !bs.length && d !== T.fine) return `<a class="mini" href="#utility/prenotazioni">${icon("BedDouble")} <span class="grow">Nessun hotel per questa notte</span><b>Aggiungi</b></a>`;
-    return `${h ? `<div class="mini hotel" data-pren="${h.id}">${icon("BedDouble")}<span class="grow"><small>${ci.includes(h) ? "Check-in" + (h.ora ? " " + esc(h.ora) : "") : "Notte"}</small><b>${esc(h.titolo)}</b></span>
+    const arr = lists.prenotazioni.filter(p => p.tipo === "volo" && p.al === d && p.dal !== d);   // atterraggi di oggi (partiti ieri)
+    const noHotel = !h && d !== T.fine && !inFlight(d) ? `<a class="mini" href="#utility/prenotazioni">${icon("BedDouble")} <span class="grow">Nessun hotel per questa notte</span><b>Aggiungi</b></a>` : "";
+    return `${arr.map(p => `<div class="mini" data-pren="${p.id}"><span style="color:${PTYPE.volo[1]}">${icon("Plane")}</span><span class="grow"><small>Atterraggio${p.oraA ? " " + esc(p.oraA) : ""}${p.a ? " · " + esc(p.a) : ""}</small><b>${esc(p.titolo)}</b></span></div>`).join("")}${noHotel}${h ? `<div class="mini hotel" data-pren="${h.id}">${icon("BedDouble")}<span class="grow"><small>${ci.includes(h) ? "Check-in" + (h.ora ? " " + esc(h.ora) : "") : "Notte"}</small><b>${esc(h.titolo)}</b></span>
         <a class="btn small primary" href="${gmTo(addrQ(h))}" target="_blank" rel="noopener">${icon("Navigation")}</a><button class="btn small" data-taxi="${h.id}" aria-label="Mostra al tassista">${icon("CarTaxiFront")}</button></div>` : ""}
-      ${bs.map(p => { const [ic, col] = PTYPE[p.tipo] || PTYPE.altro; return `<div class="mini" data-pren="${p.id}"><span style="color:${col}">${icon(ic)}</span><span class="grow"><small>${p.ora ? esc(p.ora) : "Prenotato"}</small><b>${esc(p.titolo)}</b></span>${p.link ? `<a class="btn small" href="${esc(p.link)}" target="_blank" rel="noopener">${icon("Link")}</a>` : ""}</div>`; }).join("")}`;
+      ${bs.map(p => { const [ic, col] = PTYPE[p.tipo] || PTYPE.altro; return `<div class="mini" data-pren="${p.id}"><span style="color:${col}">${icon(ic)}</span><span class="grow"><small>${p.ora ? esc(p.ora) : "Prenotato"}${p.tipo === "volo" && p.oraA ? ` → arrivo ${p.al && p.al !== p.dal ? fmtDay(p.al, { weekday: "short", day: "numeric" }) + " " : ""}${esc(p.oraA)}` : ""}</small><b>${esc(p.titolo)}</b></span>${p.link ? `<a class="btn small" href="${esc(p.link)}" target="_blank" rel="noopener">${icon("Link")}</a>` : ""}</div>`; }).join("")}`;
   }
   function oggiPren(today, before, after) {
     if (!code || after || before) return "";
     if (!before) return `<div class="section-h"><h3>Oggi e stanotte</h3><a class="small" href="#utility/prenotazioni" style="font-weight:600">Tutte</a></div>${dayPren(today)}`;
     const next = [...lists.prenotazioni].filter(p => p.dal).sort((a, b) => a.dal.localeCompare(b.dal) || (a.ora || "").localeCompare(b.ora || "")).slice(0, 3);
-    const covered = NIGHTS.filter(hotelFor).length;
+    const NIGHTS = nights(), covered = NIGHTS.filter(hotelFor).length;
     return `<a class="card mini-card" href="#utility/prenotazioni"><div class="between"><b>${icon("BedDouble")} Hotel prenotati</b><b>${covered}/${NIGHTS.length} notti</b></div>
       <div class="nights">${NIGHTS.map(d => `<i class="${hotelFor(d) ? "ok" : ""}"></i>`).join("")}</div>
       ${next.length ? `<div class="small muted" style="margin-top:8px">Prossime: ${next.map(p => `${esc(p.titolo)} (${short(p.dal)})`).join(" · ")}</div>` : `<div class="small muted" style="margin-top:8px">Aggiungi hotel, voli e biglietti →</div>`}</a>`;
@@ -722,7 +723,7 @@
     const tot = CHECKLIST.reduce((s, [, it]) => s + it.length, 0);
     const rows = [row("button", 'data-goto="booklist"', "Ticket", "#d4442f", "Biglietti da prenotare", `${doneBook}/${toBook.length}`, doneBook, toBook.length)];
     if (code) {
-      const covered = NIGHTS.filter(hotelFor).length, voli = lists.prenotazioni.filter(p => p.tipo === "volo").length;
+      const NIGHTS = nights(), covered = NIGHTS.filter(hotelFor).length, voli = lists.prenotazioni.filter(p => p.tipo === "volo").length;
       rows.push(row("a", 'href="#utility/prenotazioni"', "BedDouble", "#2e6fb0", "Hotel", `${covered}/${NIGHTS.length} notti`, covered, NIGHTS.length));
       rows.push(row("a", 'href="#utility/prenotazioni"', "Plane", "#7b4fa0", "Voli", voli ? `${voli} ${voli === 1 ? "inserito" : "inseriti"}` : "da inserire", Math.min(voli, 2), 2));
     }
@@ -818,7 +819,7 @@
     const editedBy = lastEdit?.by && lastEdit.by !== "?" ? ` · ultima modifica di ${esc(lastEdit.by)}` : "";
 
     view.innerHTML = `
-      <div class="daystrip" id="strip">${DAYS.map((x, k) => { const z = dayZone(x), prev = k ? dayZone(DAYS[k - 1]) : null, move = z && prev && z !== prev; return `<a class="dchip${x === d ? " on" : ""}${x === today ? " today" : ""}" href="#giorni/${x}" style="--c:${z ? zona[z].colore : "var(--muted)"}" aria-label="Giorno ${k + 1}${z ? ", " + zona[z].nome : ""}${move ? ", trasferimento" : ""}"><small>${fmtDay(x, { weekday: "short" }).replace(".", "")}</small><b>${fmtDay(x, { day: "numeric" })}</b><em>${move ? icon("TrainFront") : ""}${z ? ZSHORT[z] : "libero"}</em></a>`; }).join("")}</div>
+      <div class="daystrip" id="strip">${DAYS.map((x, k) => { const z = dayZone(x), prev = k ? dayZone(DAYS[k - 1]) : null, move = z && prev && z !== prev; return `<a class="dchip${x === d ? " on" : ""}${x === today ? " today" : ""}" href="#giorni/${x}" style="--c:${z ? zona[z].colore : "var(--muted)"}" aria-label="Giorno ${k + 1}${z ? ", " + zona[z].nome : flightOn(x) ? ", volo" : ""}${move ? ", trasferimento" : ""}"><small>${fmtDay(x, { weekday: "short" }).replace(".", "")}</small><b>${fmtDay(x, { day: "numeric" })}</b><em>${move ? icon("TrainFront") : ""}${z ? ZSHORT[z] : flightOn(x) ? "volo" : "libero"}</em></a>`; }).join("")}</div>
       <div class="daycover" id="cover">${first ? `<div class="ph" data-bg="${photoUrl(first.id, 960)}"></div>` : art()}
         <span class="dn">Giorno ${i + 1} / ${DAYS.length}</span>
         <div class="dtxt"><div class="kicker">${fmtDay(d)}</div>${editMode ? `<input id="dlabel" value="${esc(day.l)}" placeholder="Dai un nome al giorno…" aria-label="Nome del giorno">` : `<div class="dtitle">${esc(day.l) || "Giorno libero"}</div>`}</div>
@@ -840,7 +841,8 @@
         const row = placeRow(p, { noDays: true, compact: true, noZone: true, right }).replace('<div class="meta">', `<div class="meta">${closedOn(p, d) ? closedPill(p) : ""}${tm ? `<span class="pill">${icon("Clock")} ${esc(tm)}</span>` : ""}`);
         const fatto = day.f?.includes(id);
         return `<li${fatto ? ' class="done"' : ""}>${editMode ? `<span class="n grip" data-grip="${k}" style="background:${zona[p.z].colore}" aria-label="Trascina per spostare">${icon("GripVertical")}</span>` : fatto ? `<span class="n done" aria-label="Fatta">済</span>` : `<span class="n" style="background:${zona[p.z].colore}">${k + 1}</span>`}<div class="sw">${editMode ? "" : `<div class="swipebg">${icon("Trash2")} Togli</div>`}${row}</div>${next ? `<div class="hop">${hop(p, next)}</div>` : ""}</li>`;
-      }).join("")}</ul>` : `<div class="empty" style="margin-top:14px">Nessuna tappa per questo giorno.<br><button class="btn small primary" id="add2" style="margin-top:10px">${icon("Plus")} Aggiungi tappe</button></div>`}
+      }).join("")}</ul>` : flightOn(d) ? `<div class="empty" style="margin-top:14px">Giornata di viaggio: niente tappe in programma.<br><button class="btn small" id="add2" style="margin-top:10px">${icon("Plus")} Aggiungi una tappa</button></div>`
+        : `<div class="empty" style="margin-top:14px">Nessuna tappa per questo giorno.<br><button class="btn small primary" id="add2" style="margin-top:10px">${icon("Plus")} Aggiungi tappe</button></div>`}
       <div class="btns daynav">
         ${i > 0 ? `<a class="btn" href="#giorni/${DAYS[i - 1]}">‹ Giorno ${i}</a>` : ""}
         ${i < DAYS.length - 1 ? `<a class="btn" href="#giorni/${DAYS[i + 1]}">Giorno ${i + 2} ›</a>` : ""}
@@ -1658,7 +1660,11 @@
     hotel: ["BedDouble", "#2e6fb0", "Hotel"], volo: ["Plane", "#7b4fa0", "Volo"], treno: ["TrainFront", "#1f9488", "Treno"],
     biglietto: ["Ticket", "#d4442f", "Biglietto"], altro: ["Bookmark", "#6b5a45", "Altro"],
   };
-  const NIGHTS = DAYS.slice(0, -1);
+  // notti da coprire con un hotel: tutte tranne l'ultima, e tranne quelle passate in aereo
+  // (un volo che parte un giorno e arriva il giorno dopo, es. Roma → Tokyo)
+  const inFlight = d => lists.prenotazioni.some(p => p.tipo === "volo" && p.dal && p.al && p.dal <= d && d < p.al);
+  const nights = () => DAYS.slice(0, -1).filter(d => !inFlight(d));
+  const flightOn = d => lists.prenotazioni.find(p => p.tipo === "volo" && (p.dal === d || p.al === d));
   // per le prenotazioni (voli soprattutto) si possono scegliere anche 3 giorni prima e dopo il viaggio
   const BOOK_DAYS = (() => { const out = [], a = new Date(T.inizio + "T00:00:00Z"), b = new Date(T.fine + "T00:00:00Z"); a.setUTCDate(a.getUTCDate() - 3); b.setUTCDate(b.getUTCDate() + 3); for (const d = a; d <= b; d.setUTCDate(d.getUTCDate() + 1)) out.push(d.toISOString().slice(0, 10)); return out; })();   // l'ultimo giorno si parte
   const hotelFor = d => lists.prenotazioni.find(p => p.tipo === "hotel" && p.dal <= d && d < (p.al || p.dal));
@@ -1673,7 +1679,8 @@
     const [ic, col, tn] = PTYPE[p.tipo] || PTYPE.altro;
     const when = p.tipo === "hotel"
       ? (p.dal && p.al ? `${short(p.dal)} → ${short(p.al)} · ${nightsOf(p)} ${nightsOf(p) === 1 ? "notte" : "notti"}` : "date da definire") + (p.ora ? ` · check-in ${esc(p.ora)}` : "")
-      : `${p.dal ? fmtDay(p.dal, { weekday: "short", day: "numeric", month: "short" }) : "data da definire"}${p.ora ? " · " + esc(p.ora) : ""}`;
+      : `${p.dal ? fmtDay(p.dal, { weekday: "short", day: "numeric", month: "short" }) : "data da definire"}${p.ora ? " · " + esc(p.ora) : ""}`
+        + (p.tipo === "volo" && (p.al || p.oraA) ? ` → arrivo ${p.al && p.al !== p.dal ? fmtDay(p.al, { weekday: "short", day: "numeric", month: "short" }) + " " : ""}${p.oraA ? esc(p.oraA) : ""}` : "");
     const route = p.da || p.a ? `<div class="small">${esc(p.da || "?")} → ${esc(p.a || "?")}</div>` : "";
     return `<div class="card pcard${p.id === freshId ? " fresh" : ""}" data-pren="${p.id}">
       <div class="row"><span class="pic" style="background:${col}">${icon(ic)}</span>
@@ -1695,7 +1702,7 @@
   function renderPren(back) {
     if (!code) { view.innerHTML = `${back}<h2>Prenotazioni</h2><p class="lead">Hotel, voli, treni e biglietti, condivisi tra voi quattro.</p>${needCodeBox("Le prenotazioni")}`; bindPcards(); return; }
     const all = [...lists.prenotazioni].sort((a, b) => (a.dal || "9").localeCompare(b.dal || "9") || (a.ora || "").localeCompare(b.ora || ""));
-    const covered = NIGHTS.filter(hotelFor).length;
+    const NIGHTS = nights(), covered = NIGHTS.filter(hotelFor).length;
     view.innerHTML = `${back}<h2>Prenotazioni</h2><p class="lead">Hotel, voli, treni e biglietti, condivisi tra voi quattro.</p>
       <div class="card">
         <div class="between"><b>${icon("BedDouble")} Notti con hotel</b><b>${covered}/${NIGHTS.length}</b></div>
@@ -1724,6 +1731,7 @@
         ${t === "hotel" ? `<label class="fl"><span>Check-out</span><select id="p-al">${dayOpts(p.al)}</select></label>` : f("p-ora", "Ora", p.ora, 'type="time"')}
       </div>
       ${t === "hotel" ? f("p-ora", "Orario check-in", p.ora, 'type="time"') : ""}
+      ${t === "volo" ? `<div class="grid2"><label class="fl"><span>Arrivo</span><select id="p-al">${dayOpts(p.al || p.dal)}</select></label>${f("p-oraA", "Ora d'arrivo", p.oraA, 'type="time"')}</div>` : ""}
       ${t === "volo" || t === "treno" ? `<div class="grid2">${f("p-da", "Da", p.da, "", t === "volo" ? "es. Roma FCO" : "es. Tokyo")}${f("p-a", "A", p.a, "", t === "volo" ? "es. Tokyo HND" : "es. Kyoto")}</div>` : ""}
       ${t === "hotel" ? f("p-ind", "Indirizzo", p.indirizzo, "", "es. 1-19-1 Kabukicho, Shinjuku") + f("p-jp", "Indirizzo in giapponese (per il taxi)", p.jp, "", "Dalla conferma o da Google Maps") : ""}
       ${t === "biglietto" ? `<label class="fl"><span>Luogo collegato</span><select id="p-luogo"><option value="">Nessuno</option>${LUOGHI.filter(x => !x.out).map(x => `<option value="${x.id}" ${x.id === p.luogo ? "selected" : ""}>${esc(x.n)}</option>`).join("")}</select></label>` : ""}
@@ -1737,6 +1745,7 @@
         const item = { ...p, tipo: t, titolo: v("p-tit"), dal: v("p-dal"), ora: v("p-ora"), codice: v("p-cod"), link: v("p-link"), note: v("p-note") };
         if (t === "hotel") Object.assign(item, { al: v("p-al"), indirizzo: v("p-ind"), jp: v("p-jp") });
         if (t === "volo" || t === "treno") Object.assign(item, { da: v("p-da"), a: v("p-a") });
+        if (t === "volo") Object.assign(item, { al: v("p-al") && v("p-al") > item.dal ? v("p-al") : "", oraA: v("p-oraA") });
         if (t === "biglietto") item.luogo = v("p-luogo");
         if (!item.titolo) return toast("Scrivi almeno il nome");
         if (t === "hotel" && (!item.dal || !item.al || item.al <= item.dal)) return toast("Controlla check-in e check-out");
@@ -2035,6 +2044,7 @@
   }
   const rate = () => LS.get("rate", { r: 170 }).r || 170;
   const eurF = v => v.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+  const eurPM = v => { const r = Math.round(v * 100) / 100 || 0; return (r > 0 ? "+" : "") + eurF(r); };   // saldo: niente "+0,00" o "-0,00"
   const avatar = (n, s = 26) => `<span class="avatar" style="width:${s}px;height:${s}px;font-size:${s * .42}px;background:${AVATAR[n] || "#888"}">${n[0]}</span>`;
   function balances() {
     const net = Object.fromEntries(T.viaggiatori.map(n => [n, 0]));
@@ -2066,7 +2076,7 @@
         <p>${debt ? `<b>${coupleName(debt[0])}</b> devono <b>${eurF(debt[2])}</b> a ${coupleName(debt[1])}` : "Siete in pari 🤝"}</p>
       </div></div>
       <div class="card"><div class="between"><h3 style="margin:0">Saldo tra le coppie</h3>${debt ? `<button class="btn small" id="settle">${icon("HandCoins")} Segna rimborso</button>` : ""}</div>
-        ${COPPIE.map((c, k) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--line)"><span class="avpair">${c.map(n => avatar(n, 28)).join("")}</span><span class="grow"><b>${coupleName(c)}</b></span><b style="font-size:1.05rem;color:${cn[k] > .5 ? "var(--ok)" : cn[k] < -.5 ? "var(--shu)" : "var(--muted)"}" data-count="${cn[k]}" data-fmt="eur±">${cn[k] > 0 ? "+" : ""}${eurF(cn[k])}</b></div>`).join("")}
+        ${COPPIE.map((c, k) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--line)"><span class="avpair">${c.map(n => avatar(n, 28)).join("")}</span><span class="grow"><b>${coupleName(c)}</b></span><b style="font-size:1.05rem;color:${cn[k] > .5 ? "var(--ok)" : cn[k] < -.5 ? "var(--shu)" : "var(--muted)"}" data-count="${cn[k]}" data-fmt="eur±">${eurPM(cn[k])}</b></div>`).join("")}
         <p class="small muted" style="margin:8px 0 0">+ deve ricevere · − deve dare. Gli importi in yen sono convertiti al cambio del giorno in cui li inserite.</p>
         <details class="perperson"><summary>Dettaglio per persona</summary>
           ${T.viaggiatori.map(n => `<div class="row" style="padding:8px 0;border-top:1px solid var(--line)">${avatar(n)}<span class="grow">${n}</span><span class="small" style="color:${net[n] > .5 ? "var(--ok)" : net[n] < -.5 ? "var(--shu)" : "var(--muted)"}">${net[n] > 0 ? "+" : ""}${eurF(net[n])}</span></div>`).join("")}
