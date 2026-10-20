@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 81;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 82;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -873,6 +873,8 @@
       </div>
     `;
     $("#strip .on")?.scrollIntoView({ inline: "center", block: "nearest" });
+    // il giorno toccato si accende subito, mentre il contenuto si prepara a scorrere
+    $("#strip").addEventListener("click", e => { const c = e.target.closest(".dchip"); if (!c || c.classList.contains("on")) return; $("#strip .on")?.classList.remove("on"); c.classList.add("on"); buzz(); });
     bindPcards();
     $("#dlabel")?.addEventListener("change", e => { day.l = e.target.value.trim(); savePlan(); });
     
