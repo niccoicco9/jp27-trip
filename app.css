@@ -1026,3 +1026,9 @@ html, body, .scroller { overscroll-behavior-x: none; }
 .bkw.now { color: #b8860b; }
 .bkw.late { color: var(--shu); }
 .check .bkn { cursor: pointer; }
+
+/* indietro col dito dal bordo (iOS): la pagina attuale segue il dito, sotto c'è già quella di prima */
+.under { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; will-change: transform; transform: translate3d(-30%, 0, 0); }
+.under::after { content: ""; position: absolute; inset: 0; background: #000; opacity: var(--dim, .12); }
+#view.backswipe { position: relative; z-index: 1; background: var(--bg); will-change: transform;
+  box-shadow: 0 100vh 0 var(--bg), -10px 0 28px rgba(20, 12, 6, .16); }

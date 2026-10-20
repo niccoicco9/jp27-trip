@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 84;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 85;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2720,33 +2720,80 @@
   // indietro come nelle app con la barra in basso: risale solo dentro la sezione (Utility › Spese → Utility),
   // non salta mai da una sezione all'altra; sulla pagina principale di una sezione non fa nulla
   const backTarget = () => { const [tab, sub] = (location.hash.slice(1) || "oggi").split("/"); return tab === "utility" && sub ? "#utility" : null; };
+  // Come in iOS: col dito dal bordo sinistro la pagina segue il dito e sotto si vede già quella di prima
+  // (leggermente spostata e in ombra). Lasciando, finisce il movimento e la pagina di prima resta lì così com'è,
+  // senza una seconda animazione; se il gesto è corto torna tutto a posto.
+  let backCommit = null;   // chiude il gesto quando la navigazione è avvenuta (vedi navigate)
   if (standalone) (() => {
-    let x0 = null, y0 = 0, dx = 0, on = null, t0 = 0;
+    let x0 = null, y0 = 0, dx = 0, on = null, vx = 0, lx = 0, lt = 0, under = null, busy = false;
+    const W = () => innerWidth, ease = "cubic-bezier(.32, .72, 0, 1)";
+    const top = $(".top");
+    // pagina di prima costruita in un livello sotto quella attuale, nella posizione in cui l'avevi lasciata
+    function buildUnder(to) {
+      const keep = document.createDocumentFragment(); while (view.firstChild) keep.appendChild(view.firstChild);
+      const full = view.classList.contains("full");
+      try { renderUtility(); } catch (err) { console.warn(err); }
+      const m = document.createElement("main"); while (view.firstChild) m.appendChild(view.firstChild);
+      view.appendChild(keep); view.classList.toggle("full", full);
+      const u = document.createElement("div"); u.className = "under"; u.inert = true; u.setAttribute("aria-hidden", "true");
+      u.style.paddingTop = (top?.offsetHeight || 0) + "px";
+      m.style.transform = `translateY(${-(scrollMem[to] || 0)}px)`;
+      u.appendChild(m); document.body.insertBefore(u, SC);
+      return u;
+    }
+    function paint(x) {
+      const p = Math.min(1, x / W());
+      view.style.transform = `translate3d(${x}px,0,0)`;
+      under.style.transform = `translate3d(${(p - 1) * 30}%,0,0)`; under.style.setProperty("--dim", String(.12 * (1 - p)));
+      if (top) { top.querySelector(".tb-l").style.opacity = top.querySelector(".ctitle").style.opacity = String(1 - Math.min(1, p * 1.6)); }
+    }
+    function reset() {
+      view.classList.remove("backswipe"); view.style.transition = view.style.transform = "";
+      if (top) top.querySelector(".tb-l").style.opacity = top.querySelector(".ctitle").style.opacity = "";
+      under?.remove(); under = null; busy = false;
+    }
     document.addEventListener("touchstart", e => {
       const t = e.touches[0];
-      if (e.touches.length > 1 || t.clientX > 22 || onMap(e) || sheetOpen() || !$("#big").hidden || !backTarget()) { x0 = null; return; }
-      x0 = t.clientX; y0 = t.clientY; dx = 0; on = null; t0 = performance.now();
+      if (busy || e.touches.length > 1 || t.clientX > 24 || onMap(e) || sheetOpen() || !$("#big").hidden || !backTarget()) { x0 = null; return; }
+      x0 = t.clientX; y0 = t.clientY; dx = 0; on = null; vx = 0; lx = t.clientX; lt = performance.now();
       document.addEventListener("touchmove", move, { passive: false });   // solo durante questo gesto: lo scroll normale resta fluido
     }, { passive: true });
     function move(e) {
       if (x0 == null) return;
       const t = e.touches[0], mx = t.clientX - x0, my = t.clientY - y0;
-      if (on === null && (Math.abs(mx) > 8 || Math.abs(my) > 8)) on = mx > Math.abs(my);
+      if (on === null && (Math.abs(mx) > 6 || Math.abs(my) > 6)) {
+        on = mx > Math.abs(my);
+        if (on) { under = buildUnder(backTarget()); view.classList.add("backswipe"); view.style.transition = "none"; }
+      }
       if (!on) { if (on === false) x0 = null; return; }
       e.preventDefault();
-      dx = Math.max(0, mx); view.style.transition = "none"; view.style.transform = `translateX(${dx}px)`; view.style.opacity = String(1 - Math.min(.4, dx / innerWidth * .6));
+      const now = performance.now(); if (now > lt) { vx = vx * .4 + (t.clientX - lx) / (now - lt) * .6; lx = t.clientX; lt = now; }
+      dx = Math.max(0, mx); paint(dx);
     }
-    document.addEventListener("touchend", () => {
+    const settle = (x, done) => {
+      const ms = Math.round(Math.max(160, Math.min(320, Math.abs(x - dx) / Math.max(.9, Math.abs(vx)))));
+      view.style.transition = `transform ${ms}ms ${ease}`; under.style.transition = `transform ${ms}ms ${ease}`;
+      if (top) top.querySelectorAll(".tb-l, .ctitle").forEach(el => el.style.transition = `opacity ${ms}ms`);
+      paint(x); setTimeout(done, ms + 20);
+    };
+    function end() {
       document.removeEventListener("touchmove", move);
-      if (x0 == null || !on) { x0 = null; return; }
-      x0 = null;
-      const fast = dx > 40 && dx / (performance.now() - t0) > .5;
-      view.style.transition = "transform .22s cubic-bezier(.32, .72, 0, 1), opacity .22s";
-      if (dx > innerWidth * .33 || fast) {
-        buzz(); view.style.transform = `translateX(${innerWidth}px)`; view.style.opacity = "0";
-        setTimeout(() => { view.style.transition = view.style.transform = view.style.opacity = ""; if (backTarget()) go("#utility"); }, 200);
-      } else { view.style.transform = ""; view.style.opacity = ""; setTimeout(() => (view.style.transition = ""), 240); }
-    });
+      if (x0 == null || !on || !under) { x0 = null; return; }
+      x0 = null; busy = true;
+      const go_ = dx > W() * .35 || (vx > .45 && dx > 30);
+      if (!go_) { settle(0, reset); return; }
+      buzz();
+      settle(W(), () => {
+        // la pagina di prima diventa quella vera senza ricostruirla: stessi elementi, stessa posizione
+        const m = under.firstChild, frag = document.createDocumentFragment(); while (m.firstChild) frag.appendChild(m.firstChild);
+        pages.set(backTarget(), { frag, stamp: stampNow() });
+        backCommit = () => { reset(); };
+        go(backTarget());
+        setTimeout(() => { if (backCommit) { backCommit(); backCommit = null; } }, 900);   // rete di sicurezza
+      });
+    }
+    document.addEventListener("touchend", end);
+    document.addEventListener("touchcancel", end);
   })();
 
   // tastiera aperta: la barra in basso si nasconde (su Android salirebbe sopra la tastiera)
@@ -2838,6 +2885,7 @@
     // il giorno dopo/prima non è una pagina nuova: titolo e fila dei giorni restano fermi, scorre solo il contenuto
     // (animazione sugli elementi veri, interrompibile: si può cambiare giorno di nuovo in qualunque momento)
     const slide = kind === "push" || kind === "pop" || kind === "next" || kind === "prev";
+    if (backCommit) { const f = backCommit; backCommit = null; show(); f(); return; }   // indietro col dito: già animato
     if (day) slideDay(kind === "next" ? 1 : -1, show);
     else if (slide && canVT()) runVT(kind, show);
     else {
@@ -2895,7 +2943,8 @@
     }
   }
   // indietro/avanti di sistema: cambia pagina se l'indirizzo è cambiato (una volta sola, chiunque arrivi prima)
-  const syncNav = () => { if ((location.hash || "#oggi") !== lastHash) navigate(); };
+  // in Safari (non dalla schermata Home) lo scorrimento indietro di sistema ha già la sua animazione: niente seconda
+  const syncNav = e => { if ((location.hash || "#oggi") !== lastHash) { if (e?.hasUAVisualTransition && !backCommit) backCommit = () => {}; navigate(); } };
   addEventListener("hashchange", syncNav); addEventListener("popstate", syncNav);
 
   applyTheme();
