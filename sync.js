@@ -7,7 +7,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   initializeFirestore, persistentLocalCache, doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, serverTimestamp,
-  FieldPath, arrayUnion, arrayRemove,
+  FieldPath, arrayUnion, arrayRemove, disableNetwork, enableNetwork,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 export const LISTS = ["spese", "prenotazioni", "luoghi", "categorie"];
@@ -20,7 +20,7 @@ export function start(config, code, h) {
   let first = true;
 
   onSnapshot(main, { includeMetadataChanges: true }, snap => {
-    h.status(snap.metadata.fromCache ? "offline" : "online");
+    if (!(waking && snap.metadata.fromCache)) h.status(snap.metadata.fromCache ? "offline" : "online");   // niente pallino grigio mentre riapre la connessione
     if (snap.metadata.hasPendingWrites) return;   // è una nostra modifica non ancora confermata
     h.main(snap.exists() ? snap.data() : null, first);
     first = false;
@@ -47,8 +47,19 @@ export function start(config, code, h) {
     }
   }
 
+  // iOS congela l'app quando va in background e chiude la connessione senza avvisare: al rientro
+  // Firestore se ne accorgerebbe solo al proprio timeout (anche minuti), mostrando dati vecchi.
+  // Riaprire subito la connessione fa arrivare le modifiche degli altri in un attimo: si scaricano
+  // solo le differenze e le modifiche locali in coda partono appena è riaperta.
+  let waking = null;
+  function wake() {
+    if (waking || !navigator.onLine) return waking;
+    return waking = disableNetwork(db).then(() => enableNetwork(db)).catch(() => {}).finally(() => { waking = null; });
+  }
+
   return {
     patch,
+    wake,
     pushMain: data => setDoc(main, { ...data, at: serverTimestamp() }, { merge: true }).catch(fail),
     put: (name, { id, ...rest }) => setDoc(doc(main, name, id), { ...rest, at: serverTimestamp() }).catch(fail),
     del: (name, id) => deleteDoc(doc(main, name, id)).catch(fail),

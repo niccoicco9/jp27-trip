@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 71;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 72;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2275,7 +2275,7 @@
     document.body.appendChild(el); offT = setTimeout(() => el.remove(), 4500);
   }
   addEventListener("offline", () => offPill(true));
-  addEventListener("online", () => { offPill(false); toast("Di nuovo online ✓"); });
+  addEventListener("online", () => { offPill(false); toast("Di nuovo online ✓"); sync?.wake?.(); });
   if (!navigator.onLine) setTimeout(() => offPill(true), 800);
 
   // aggiornamento forzato: scarta la versione salvata dell'app (non le mappe né le foto) e ricarica
@@ -2538,6 +2538,7 @@
   let shownDay = todayJP(), hiddenAt = 0;
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") { hiddenAt = Date.now(); return; }
+    if (hiddenAt && Date.now() - hiddenAt > 2000) sync?.wake?.();   // dati freschi appena si torna nell'app
     const newDay = todayJP() !== shownDay, long = hiddenAt && Date.now() - hiddenAt > 20 * 60e3;
     shownDay = todayJP();
     if ((newDay || long) && !sheetOpen()) { const [tab] = (location.hash.slice(1) || "oggi").split("/"); if (tab === "oggi" || tab === "giorni") rerender(); }
