@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 80;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 81;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2793,16 +2793,21 @@
     SC.style.overflowY = "hidden"; setTimeout(() => { SC.style.overflowY = ""; }, 30);
     lastHash = to;
     view.classList.remove("enter", "nav-push", "nav-pop", "nav-next", "nav-prev", "nav-fade");
+    const day = kind === "next" || kind === "prev", sx = day ? $("#strip")?.scrollLeft : null;
     const show = () => {
       if (!to.startsWith("#mappa")) SC.scrollTop = 0;
       render();
+      // cambio giorno: la fila dei giorni resta dov'era e scorre dolcemente fino al giorno scelto
+      const st = day && $("#strip"); if (st && sx != null) { const goal = st.scrollLeft; st.scrollLeft = sx; st.scrollTo({ left: goal, behavior: reduceMotion() ? "auto" : "smooth" }); }
       if (!to.startsWith("#mappa") && (kind === "tab" || kind === "pop")) restoreScroll(scrollMem[location.hash || "#oggi"] || 0);
       if (!restored) playIntro();
     };
     // come su iPhone: le schede in basso cambiano all'istante; entrare/uscire da una pagina (o passare al giorno dopo)
     // fa scorrere la pagina intera, con la tecnica nativa di Safari (View Transitions) quando c'è
+    // il giorno dopo/prima non è una pagina nuova: resta ferma la pagina (titolo e fila dei giorni),
+    // cambia solo il contenuto, con un breve scorrimento nella direzione del giorno
     const slide = kind === "push" || kind === "pop" || kind === "next" || kind === "prev";
-    if (slide && canVT()) runVT(kind === "next" ? "push" : kind === "prev" ? "pop" : kind, show);
+    if (slide && canVT()) runVT(kind === "next" ? "day-next" : kind === "prev" ? "day-prev" : kind, show);
     else {
       show();
       if (slide || kind === "fade") { void view.offsetWidth; view.classList.add("enter", "nav-" + kind); }

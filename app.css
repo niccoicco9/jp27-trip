@@ -747,8 +747,8 @@ main.enter.nav-fade { animation: fade .2s ease-out; }
 @keyframes nav-tab { from { opacity: 0; transform: translateY(8px); } }
 @keyframes nav-push { from { opacity: 0; transform: translateX(42px); } }
 @keyframes nav-pop { from { opacity: 0; transform: translateX(-42px); } }
-@keyframes nav-next { from { opacity: 0; transform: translateX(34px); } }
-@keyframes nav-prev { from { opacity: 0; transform: translateX(-34px); } }
+@keyframes nav-next { from { opacity: 0; transform: translateX(24px); } }
+@keyframes nav-prev { from { opacity: 0; transform: translateX(-24px); } }
 
 /* scheda: lo sfondo si schiarisce mentre la trascini e sfuma quando si chiude */
 .sheet.closing .sheet-bg { opacity: 0; }
@@ -907,6 +907,19 @@ html[data-vt="push"]::view-transition-old(root) { animation: vt-out-left .42s cu
 html[data-vt="push"]::view-transition-new(root) { animation: vt-in-right .42s cubic-bezier(.32, .72, 0, 1) both; box-shadow: -12px 0 32px rgba(20, 12, 6, .14); }
 html[data-vt="pop"]::view-transition-old(root) { animation: vt-out-right .42s cubic-bezier(.32, .72, 0, 1) both; z-index: 1; box-shadow: -12px 0 32px rgba(20, 12, 6, .14); }
 html[data-vt="pop"]::view-transition-new(root) { animation: vt-in-left .42s cubic-bezier(.32, .72, 0, 1) both; }
+/* cambio giorno (Giorni): la fila dei giorni resta ferma, il contenuto sfuma e scorre appena nella direzione del giorno */
+html[data-vt^="day"] .daystrip { view-transition-name: daystrip; }
+::view-transition-old(daystrip) { display: none; }
+::view-transition-new(daystrip), ::view-transition-group(daystrip) { animation: none; }
+html[data-vt^="day"]::view-transition-old(topbar), html[data-vt^="day"]::view-transition-new(topbar) { animation: none; }
+html[data-vt="day-next"]::view-transition-old(root) { animation: vt-day-out-l .2s ease-in both; }
+html[data-vt="day-next"]::view-transition-new(root) { animation: vt-day-in-r .34s cubic-bezier(.32, .72, 0, 1) .06s both; }
+html[data-vt="day-prev"]::view-transition-old(root) { animation: vt-day-out-r .2s ease-in both; }
+html[data-vt="day-prev"]::view-transition-new(root) { animation: vt-day-in-l .34s cubic-bezier(.32, .72, 0, 1) .06s both; }
+@keyframes vt-day-out-l { to { opacity: 0; transform: translate3d(-20px, 0, 0); } }
+@keyframes vt-day-out-r { to { opacity: 0; transform: translate3d(20px, 0, 0); } }
+@keyframes vt-day-in-r { from { opacity: 0; transform: translate3d(24px, 0, 0); } }
+@keyframes vt-day-in-l { from { opacity: 0; transform: translate3d(-24px, 0, 0); } }
 @keyframes vt-out-left { to { transform: translate3d(-28%, 0, 0); opacity: .6; } }
 @keyframes vt-in-right { from { transform: translate3d(100%, 0, 0); } }
 @keyframes vt-out-right { to { transform: translate3d(100%, 0, 0); } }
