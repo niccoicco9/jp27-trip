@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 76;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 77;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -43,6 +43,7 @@
         const per = (Array.isArray(x.perChi) ? x.perChi : []).filter(n => T.viaggiatori.includes(n));
         return { ...x, importo, valuta, eur, perChi: per.length ? per : [...T.viaggiatori], pagatoDa: T.viaggiatori.includes(x.pagatoDa) ? x.pagatoDa : T.viaggiatori[0], desc: str(x.desc), cat: str(x.cat) || "altro" };
       }
+      if (name === "allegati") { const n = Math.round(+x.pagine); return str(x.pren) && n >= 1 && n <= 30 ? { ...x, pagine: n, nome: str(x.nome).slice(0, 60) || "Documento", t: +x.t || 0 } : null; }
       if (name === "categorie") return str(x.n) ? { ...x, n: str(x.n).slice(0, 24), e: str(x.e) || "🏷️", col: /^#[0-9a-f]{6}$/i.test(x.col) ? x.col : "#8a6d4b" } : null;
       if (name === "prenotazioni") return { ...x, tipo: ["hotel", "volo", "treno", "biglietto", "altro"].includes(x.tipo) ? x.tipo : "altro", titolo: str(x.titolo), dal: /^\d{4}-\d{2}-\d{2}$/.test(x.dal) ? x.dal : "", al: /^\d{4}-\d{2}-\d{2}$/.test(x.al) ? x.al : "", lat: isFinite(x.lat) && x.lat !== null ? +x.lat : null, lng: isFinite(x.lng) && x.lng !== null ? +x.lng : null };
       return x;
@@ -185,7 +186,7 @@
 
   // ——— salvataggio + sync ———
   // Spese e prenotazioni: una voce per documento, in cache locale per l'avvio offline.
-  const lists = { spese: cleanList("spese", LS.get("spese", [])), prenotazioni: cleanList("prenotazioni", LS.get("prenotazioni", [])), luoghi: cleanList("luoghi", LS.get("luoghi", [])), categorie: cleanList("categorie", LS.get("categorie", [])) };
+  const lists = { spese: cleanList("spese", LS.get("spese", [])), prenotazioni: cleanList("prenotazioni", LS.get("prenotazioni", [])), luoghi: cleanList("luoghi", LS.get("luoghi", [])), categorie: cleanList("categorie", LS.get("categorie", [])), allegati: cleanList("allegati", LS.get("allegati", [])) };
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   let code = LS.get("code", "");
   let pushT;
@@ -281,6 +282,7 @@
   }
   function onList(name, items) {
     items = cleanList(name, items);
+    if (name === "allegati") setTimeout(prefetchDocs, 1500);   // anche all'avvio: scarica quelli che mancano su questo telefono
     if (listSig(items) === listSig(lists[name])) { lists[name] = items; return; }   // stessi dati: nessuna ricostruzione
     lists[name] = items; LS.set(name, items);
     if (name === "luoghi") mergeCustom();
@@ -580,10 +582,10 @@
         <a class="btn primary" href="${gmDir(p)}" target="_blank" rel="noopener">${icon("Navigation")} Portami qui</a>
         <a class="btn" href="${gmSearch(p)}" target="_blank" rel="noopener">${icon("MapPin")} Maps</a>
       </div>
-      <div class="btns" style="margin-top:8px">
-        ${p.jp ? `<button class="btn" id="showjp">${icon("Languages")} In giapponese</button>` : ""}
-        <button class="btn" id="onmap">${icon("Map")} Sulla mappa</button>
-        ${p.gone ? "" : `<button class="btn" id="editl">${icon("Pencil")} Modifica</button>`}
+      <div class="dayact pacts" style="grid-template-columns:repeat(${1 + !!p.jp + !p.gone}, 1fr)">
+        ${p.jp ? `<button id="showjp">${icon("Languages")}<span>In giapponese</span></button>` : ""}
+        <button id="onmap">${icon("Map")}<span>Sulla mappa</span></button>
+        ${p.gone ? "" : `<button id="editl">${icon("Pencil")}<span>Modifica</span></button>`}
       </div>
       <dl class="info">
         ${p.dur ? `<dt>Durata</dt><dd>${esc(p.dur)}</dd>` : ""}
@@ -635,8 +637,8 @@
     const arr = lists.prenotazioni.filter(p => p.tipo === "volo" && p.al === d && p.dal !== d);   // atterraggi di oggi (partiti ieri)
     const noHotel = !h && d !== T.fine && !inFlight(d) ? `<a class="mini" href="#utility/prenotazioni">${icon("BedDouble")} <span class="grow">Nessun hotel per questa notte</span><b>Aggiungi</b></a>` : "";
     return `${arr.map(p => `<div class="mini" data-pren="${p.id}"><span style="color:${PTYPE.volo[1]}">${icon("Plane")}</span><span class="grow"><small>Atterraggio${p.oraA ? " " + esc(p.oraA) : ""}${p.a ? " · " + esc(p.a) : ""}</small><b>${esc(p.titolo)}</b></span></div>`).join("")}${noHotel}${h ? `<div class="mini hotel" data-pren="${h.id}">${icon("BedDouble")}<span class="grow"><small>${ci.includes(h) ? "Check-in" + (h.ora ? " " + esc(h.ora) : "") : "Notte"}</small><b>${esc(h.titolo)}</b></span>
-        <a class="btn small primary" href="${gmTo(addrQ(h))}" target="_blank" rel="noopener">${icon("Navigation")}</a><button class="btn small" data-taxi="${h.id}" aria-label="Mostra al tassista">${icon("CarTaxiFront")}</button></div>` : ""}
-      ${bs.map(p => { const [ic, col] = PTYPE[p.tipo] || PTYPE.altro; return `<div class="mini" data-pren="${p.id}"><span style="color:${col}">${icon(ic)}</span><span class="grow"><small>${p.ora ? esc(p.ora) : "Prenotato"}${p.tipo === "volo" && p.oraA ? ` → arrivo ${p.al && p.al !== p.dal ? fmtDay(p.al, { weekday: "short", day: "numeric" }) + " " : ""}${esc(p.oraA)}` : ""}</small><b>${esc(p.titolo)}</b></span>${p.link ? `<a class="btn small" href="${esc(p.link)}" target="_blank" rel="noopener">${icon("Link")}</a>` : ""}</div>`; }).join("")}`;
+        ${docsOf(h.id).length ? `<button class="btn small" data-doc="${docsOf(h.id)[0].id}" aria-label="Apri il documento">${icon("Paperclip")}</button>` : ""}<a class="btn small primary" href="${gmTo(addrQ(h))}" target="_blank" rel="noopener">${icon("Navigation")}</a><button class="btn small" data-taxi="${h.id}" aria-label="Mostra al tassista">${icon("CarTaxiFront")}</button></div>` : ""}
+      ${bs.map(p => { const [ic, col] = PTYPE[p.tipo] || PTYPE.altro; return `<div class="mini" data-pren="${p.id}"><span style="color:${col}">${icon(ic)}</span><span class="grow"><small>${p.ora ? esc(p.ora) : "Prenotato"}${p.tipo === "volo" && p.oraA ? ` → arrivo ${p.al && p.al !== p.dal ? fmtDay(p.al, { weekday: "short", day: "numeric" }) + " " : ""}${esc(p.oraA)}` : ""}</small><b>${esc(p.titolo)}</b></span>${docsOf(p.id).length ? `<button class="btn small" data-doc="${docsOf(p.id)[0].id}" aria-label="Apri il documento">${icon("Paperclip")}</button>` : ""}${p.link ? `<a class="btn small" href="${esc(p.link)}" target="_blank" rel="noopener">${icon("Link")}</a>` : ""}</div>`; }).join("")}`;
   }
   function oggiPren(today, before, after) {
     if (!code || after || before) return "";
@@ -1491,9 +1493,14 @@
     const ok = await photosSaved(); if (ok < urls.length * .9) throw new Error("foto");
   }
 
+  // chiede a iOS di non cancellare i dati dell'app (mappe, foto, documenti) quando il telefono resta senza spazio.
+  // Su iPhone viene concessa all'app aperta dalla schermata Home
+  async function keepData() { try { return !!(await navigator.storage?.persisted?.()) || !!(await navigator.storage?.persist?.()); } catch { return false; } }
+
   // ——— gestione mappe offline ———
   async function openOfflineMaps() {
     const st = await OfflineMap.status(), used = await OfflineMap.usedMB();
+    const kept = await keepData();
     const nFoto = Object.keys(FOTO).length, fotoOk = (await photosSaved()) >= nFoto * .9;
     const busy = {};
     const row = z => `<div class="card zrow" data-zone="${z.id}"><div class="row"><span class="pic" style="background:${z.base ? "#6b5a45" : "#1f9488"}">${icon(z.base ? "Map" : "Mountain")}</span>
@@ -1508,13 +1515,21 @@
         <div class="grow"><b>Foto dei luoghi</b><div class="small muted">${nFoto} miniature · circa 3 MB</div></div>
         ${fotoOk ? `<span class="pill ok">${icon("Check")} offline</span>` : `<button class="btn small primary" id="fdl">${icon("Download")} Scarica</button>`}</div>
         <div class="progress" hidden style="margin-top:10px"><i style="width:0"></i></div></div>
-      <p class="small muted">${used != null ? `Spazio usato dall'app: circa ${used} MB. ` : ""}Su iPhone usa l'app dalla schermata Home, così iOS non cancella le mappe.</p>`, el => {
+      <div class="card zrow" id="zkeep"><div class="row"><span class="pic" style="background:${kept ? "var(--ok)" : "#b8860b"}">${icon("ShieldCheck")}</span>
+        <div class="grow"><b>${kept ? "Protette da iPhone" : "Non ancora protette"}</b><div class="small muted">${kept ? "Mappe, foto e documenti restano anche se lo spazio finisce."
+          : standalone ? "Se lo spazio finisce, iPhone potrebbe cancellarle." : "Aprila dalla schermata Home: solo così iPhone le conserva."}${used >= 1 ? ` Occupano circa ${used} MB.` : ""}</div></div>
+        ${kept ? `<span class="pill ok">${icon("Check")} attiva</span>` : `<button class="btn small" id="zprot">Proteggi</button>`}</div></div>`, el => {
+      $("#zprot", el)?.addEventListener("click", async () => {
+        const ok = await keepData(); buzz();
+        toast(ok ? "Dati protetti ✓" : "iPhone non l'ha concessa: apri l'app dalla schermata Home e riprova");
+        if (ok) openOfflineMaps();
+      });
       $$("[data-zdl]", el).forEach(b => b.onclick = async () => {
         const z = OfflineMap.ZONE.find(x => x.id === b.dataset.zdl); if (busy[z.id]) return; busy[z.id] = true;
         const card = b.closest(".zrow"), bar = $(".progress", card); bar.hidden = false; b.disabled = true; b.textContent = "0%";
         try {
           await OfflineMap.download(z, f => { $("i", bar).style.width = Math.round(f * 100) + "%"; b.textContent = Math.round(f * 100) + "%"; });
-          OfflineMap.reset(); toast(`${z.nome}: pronta offline ✓`); openOfflineMaps();
+          OfflineMap.reset(); await keepData(); toast(`${z.nome}: pronta offline ✓`); openOfflineMaps();
         } catch { toast("Download non riuscito: riprova col Wi-Fi"); b.disabled = false; b.innerHTML = `${icon("Download")} Riprova`; busy[z.id] = false; }
       });
       $("#zall", el)?.addEventListener("click", async e => {
@@ -1523,12 +1538,12 @@
         try {
           for (const [i, z] of todo.entries()) await OfflineMap.download(z, f => { b.textContent = `${z.nome}: ${Math.round(f * 100)}% (${i + 1}/${todo.length})`; });
           if (!fotoOk) await savePhotos(f => { b.textContent = `Foto: ${Math.round(f * 100)}%`; });
-          OfflineMap.reset(); toast("Tutte le mappe sono offline ✓"); openOfflineMaps();
+          OfflineMap.reset(); await keepData(); toast("Tutte le mappe sono offline ✓"); openOfflineMaps();
         } catch { toast("Download interrotto: riprova col Wi-Fi"); openOfflineMaps(); }
       });
       $("#fdl", el)?.addEventListener("click", async e => {
         const b = e.currentTarget, bar = $("#zfoto .progress", el); bar.hidden = false; b.disabled = true;
-        try { await savePhotos(f => { $("i", bar).style.width = Math.round(f * 100) + "%"; b.textContent = Math.round(f * 100) + "%"; }); toast("Foto salvate per l'offline ✓"); openOfflineMaps(); }
+        try { await savePhotos(f => { $("i", bar).style.width = Math.round(f * 100) + "%"; b.textContent = Math.round(f * 100) + "%"; }); await keepData(); toast("Foto salvate per l'offline ✓"); openOfflineMaps(); }
         catch { toast("Alcune foto non si sono scaricate: riprova col Wi-Fi"); openOfflineMaps(); }
       });
       $$("[data-zdel]", el).forEach(b => b.onclick = async () => {
@@ -1655,6 +1670,110 @@
     });
   }
 
+  // ——— DOCUMENTI allegati alle prenotazioni (carte d'imbarco, voucher, biglietti) ———
+  // Foto e PDF diventano immagini JPEG (i PDF pagina per pagina): si aprono con lo stesso visore delle foto,
+  // si condividono tra voi quattro su Firestore e restano sul telefono (cache "jp27-docs") per l'offline.
+  const DOCS = "jp27-docs";
+  const docKey = (id, k) => new URL(`__doc/${id}/${k}`, location.href).href;
+  const docsOf = pid => lists.allegati.filter(a => a.pren === pid).sort((a, b) => a.t - b.t);
+  const docURLs = new Map();   // "id/k" → indirizzo dell'immagine già letta
+  async function docBlob(a, k) {
+    const c = await caches.open(DOCS), hit = await c.match(docKey(a.id, k));
+    if (hit) return hit.blob();
+    if (!sync || !navigator.onLine) return null;
+    const bytes = await sync.getPage(a.id, k).catch(() => null); if (!bytes) return null;
+    const blob = new Blob([bytes], { type: "image/jpeg" });
+    await c.put(docKey(a.id, k), new Response(blob, { headers: { "Content-Type": "image/jpeg" } }));
+    return blob;
+  }
+  async function docURL(a, k) {
+    const key = a.id + "/" + k; if (docURLs.has(key)) return docURLs.get(key);
+    const b = await docBlob(a, k).catch(() => null); if (!b) return null;
+    const u = URL.createObjectURL(b); docURLs.set(key, u); return u;
+  }
+  // in sottofondo scarica i documenti che mancano su questo telefono (così ci sono anche senza rete) e toglie quelli eliminati
+  let prefetching = false;
+  async function prefetchDocs() {
+    if (prefetching || !sync || !navigator.onLine || !("caches" in window)) return; prefetching = true;
+    try {
+      const c = await caches.open(DOCS), keep = new Set(); let got = 0;
+      for (const a of lists.allegati) for (let k = 0; k < a.pagine; k++) {
+        keep.add(docKey(a.id, k));
+        if (!(await c.match(docKey(a.id, k))) && await docBlob(a, k)) got++;
+      }
+      for (const r of await c.keys()) if (!keep.has(r.url)) await c.delete(r);
+      if (got) { keepData(); $$("[data-dth]:not(.ok)").forEach(fillThumb); }
+    } catch {} finally { prefetching = false; }
+  }
+  addEventListener("online", () => setTimeout(prefetchDocs, 2000));
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") setTimeout(prefetchDocs, 3000); });
+  // miniatura: prima pagina del documento
+  function fillThumb(el) {
+    const a = lists.allegati.find(x => x.id === el.dataset.dth); if (!a) return;
+    docURL(a, 0).then(u => { if (u && el.isConnected) { el.style.backgroundImage = `url("${u}")`; el.classList.add("ok"); } });
+  }
+  let thumbF = 0;
+  new MutationObserver(() => { if (!thumbF) thumbF = requestAnimationFrame(() => { thumbF = 0; $$("[data-dth]:not(.ok):not(.wait)").forEach(el => { el.classList.add("wait"); fillThumb(el); }); }); }).observe(document.body, { childList: true, subtree: true });
+  const docBtn = a => `<button class="doc" data-doc="${a.id}"><span class="dth" data-dth="${a.id}">${icon("FileText")}</span><span class="dtx"><b>${esc(a.nome)}</b><small>${a.pagine > 1 ? a.pagine + " pagine" : "Tocca per aprire"}</small></span></button>`;
+  async function openDoc(id) {
+    const a = lists.allegati.find(x => x.id === id); if (!a) return;
+    const urls = [];
+    for (let k = 0; k < a.pagine; k++) { const u = await docURL(a, k); if (!u) { toast(navigator.onLine ? "Documento non ancora caricato da chi l'ha aggiunto: riprova tra poco" : "Documento non ancora scaricato su questo telefono: serve la rete una volta"); return; } urls.push(u); }
+    buzz(); openViewer(urls, null, { title: a.nome, share: k => docBlob(a, k) });
+  }
+  document.addEventListener("click", e => { const d = e.target.closest("[data-doc]"); if (d) { e.preventDefault(); openDoc(d.dataset.doc); } });
+
+  // foto → JPEG (al massimo ~900 KB, il limite di un documento Firestore è 1 MB)
+  async function toJpeg(src, max = 2000) {
+    let q = .85, blob = null;
+    for (let i = 0; i < 7; i++) {
+      const r = Math.min(1, max / Math.max(src.width, src.height)), cv = document.createElement("canvas");
+      cv.width = Math.max(1, Math.round(src.width * r)); cv.height = Math.max(1, Math.round(src.height * r));
+      const x = cv.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, cv.width, cv.height); x.drawImage(src, 0, 0, cv.width, cv.height);
+      blob = await new Promise(res => cv.toBlob(res, "image/jpeg", q)); cv.width = cv.height = 0;
+      if (blob && blob.size <= 900e3) return blob;
+      q = Math.max(.6, q - .08); max = Math.round(max * .85);
+    }
+    throw new Error("troppo grande");
+  }
+  // PDF → una immagine per pagina, con pdf.js caricato solo quando serve
+  async function loadPdf() {
+    if (!window.pdfjsLib) await new Promise((ok, ko) => { const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"; s.onload = ok; s.onerror = ko; document.head.appendChild(s); });
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    return pdfjsLib;
+  }
+  async function pdfPages(file, step) {
+    const lib = await loadPdf(), pdf = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+    const n = Math.min(pdf.numPages, 20), out = [];
+    for (let i = 1; i <= n; i++) {
+      step(n > 1 ? `Pagina ${i} di ${n}…` : "Preparo il documento…");
+      const pg = await pdf.getPage(i), w = pg.getViewport({ scale: 1 }).width, vp = pg.getViewport({ scale: Math.min(3, 1700 / w) });
+      const cv = document.createElement("canvas"); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+      const x = cv.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, cv.width, cv.height);
+      await pg.render({ canvasContext: x, viewport: vp }).promise;
+      out.push(await toJpeg(cv)); cv.width = cv.height = 0;
+    }
+    pdf.destroy?.();
+    return out;
+  }
+  async function addDoc(pid, file, step) {
+    const pdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+    let pages;
+    try { step("Preparo il documento…"); pages = pdf ? await pdfPages(file, step) : [await toJpeg(await createImageBitmap(file))]; }
+    catch (err) { console.warn("Documento:", err); toast(!navigator.onLine && pdf && !window.pdfjsLib ? "Per leggere un PDF la prima volta serve la rete" : pdf ? "Non riesco a leggere questo PDF" : "Non riesco a leggere questa immagine"); return null; }
+    const a = putItem("allegati", { pren: pid, nome: file.name.replace(/\.[^.]+$/, "").slice(0, 60) || "Documento", pagine: pages.length, t: Date.now() });
+    const c = await caches.open(DOCS);
+    for (const [k, b] of pages.entries()) await c.put(docKey(a.id, k), new Response(b, { headers: { "Content-Type": "image/jpeg" } }));
+    for (const [k, b] of pages.entries()) sync.putPage(a.id, k, new Uint8Array(await b.arrayBuffer())).catch(err => { console.warn("Documento:", err); toast("Documento non caricato: riprova"); });
+    keepData();
+    return a;
+  }
+  async function delDoc(a) {
+    delItem("allegati", a.id);
+    const c = await caches.open(DOCS).catch(() => null);
+    for (let k = 0; k < a.pagine; k++) { sync?.delPage(a.id, k); c?.delete(docKey(a.id, k)); const u = docURLs.get(a.id + "/" + k); if (u) { URL.revokeObjectURL(u); docURLs.delete(a.id + "/" + k); } }
+  }
+
   // ——— PRENOTAZIONI (hotel, voli, treni, biglietti) ———
   const PTYPE = {
     hotel: ["BedDouble", "#2e6fb0", "Hotel"], volo: ["Plane", "#7b4fa0", "Volo"], treno: ["TrainFront", "#1f9488", "Treno"],
@@ -1686,6 +1805,7 @@
       <div class="row"><span class="pic" style="background:${col}">${icon(ic)}</span>
         <div class="grow"><b>${esc(p.titolo || tn)}</b><div class="muted small">${when}</div>${route}${p.indirizzo ? `<div class="small muted">${esc(p.indirizzo)}</div>` : ""}</div></div>
       ${p.codice ? `<div class="small" style="margin-top:8px">${icon("KeyRound")} Codice: <b class="copiabile">${esc(p.codice)}</b></div>` : ""}
+      ${docsOf(p.id).length ? `<div class="docs">${docsOf(p.id).map(docBtn).join("")}</div>` : ""}
       ${p.note ? `<div class="small muted" style="margin-top:4px">${esc(p.note)}</div>` : ""}
       <div class="btns">
         ${p.tipo === "hotel" ? `<a class="btn small primary" href="${gmTo(addrQ(p))}" target="_blank" rel="noopener">${icon("Navigation")} Portami</a><button class="btn small" data-taxi="${p.id}">${icon("CarTaxiFront")} Al tassista</button>` : ""}
@@ -1717,7 +1837,8 @@
   }
 
   function editPren(p) {
-    const isNew = !p.id, t = p.tipo || "altro";
+    const isNew = !p.id, t = p.tipo || "altro", pid = p.id || uid();   // l'id serve già per allegare documenti a una prenotazione nuova
+    let saved = false, docsChanged = false;
     const [ic, col, tn] = PTYPE[t] || PTYPE.altro;
     const dayOpts = sel => `<option value="">Scegli il giorno</option>` + BOOK_DAYS.map(d => `<option value="${d}" ${d === sel ? "selected" : ""}>${fmtDay(d, { weekday: "short", day: "numeric", month: "short" })}${d < T.inizio ? " · prima del viaggio" : d > T.fine ? " · dopo il viaggio" : ""}</option>`).join("");
     const f = (id, label, val, attrs = "", ph = "") => /type="time"/.test(attrs) ? `<label class="fl"><span>${label}</span>${timeIn(`id="${id}" value="${esc(val || "")}"`)}</label>`
@@ -1738,11 +1859,30 @@
       ${f("p-cod", "Codice di prenotazione", p.codice, 'autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false"', "es. ABC12345")}
       ${f("p-link", "Link (conferma, biglietto, app)", p.link, 'type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false"', "https://…")}
       <label class="fl"><span>Note</span><textarea id="p-note" rows="2" placeholder="${t === "hotel" ? "Colazione inclusa, deposito bagagli…" : "Cosa portare, dove ci si trova…"}">${esc(p.note || "")}</textarea></label>
+      ${code ? `<div class="fl"><span>Documenti</span><div class="doclist" id="p-docs"></div>
+        <button type="button" class="btn" id="p-adddoc">${icon("Paperclip")} ${t === "volo" ? "Allega la carta d'imbarco" : t === "hotel" ? "Allega il voucher" : t === "biglietto" ? "Allega il biglietto" : "Allega foto o PDF"}</button>
+        <input type="file" id="p-file" accept="image/*,application/pdf" multiple hidden>
+        <small class="muted doc-hint">Foto o PDF: si vedono su tutti e quattro i telefoni, anche senza rete.</small></div>` : ""}
       <div class="btns">${isNew ? `<button class="btn" data-close>Annulla</button>` : `<button class="btn" id="p-del" style="color:var(--shu)">${icon("Trash2")} Elimina</button>`}<button class="btn primary" id="p-save">Salva</button></div>
     `, el => {
       const v = id => $("#" + id, el)?.value.trim() || "";
+      const drawDocs = () => { const box = $("#p-docs", el); if (box) box.innerHTML = docsOf(pid).map(a => `<div class="docrow">${docBtn(a)}<button type="button" class="iconbtn danger" data-deldoc="${a.id}" aria-label="Elimina il documento">${icon("Trash2")}</button></div>`).join(""); };
+      drawDocs();
+      $("#p-docs", el)?.addEventListener("click", e => {
+        const b = e.target.closest("[data-deldoc]"); if (!b) return;
+        const a = lists.allegati.find(x => x.id === b.dataset.deldoc); if (!a) return;
+        ask({ title: `Eliminare "${a.nome}"?`, text: "Sparirà dal telefono di tutti e quattro.", ok: "Elimina", danger: true }).then(ok => { if (!ok) return; delDoc(a); docsChanged = true; drawDocs(); buzz(); });
+      });
+      $("#p-adddoc", el)?.addEventListener("click", () => $("#p-file", el).click());
+      $("#p-file", el)?.addEventListener("change", async e => {
+        const files = [...e.target.files]; e.target.value = ""; if (!files.length) return;
+        const btn = $("#p-adddoc", el), label = btn.innerHTML; btn.disabled = true;
+        for (const f of files) { const a = await addDoc(pid, f, msg => { btn.textContent = msg; }); if (a) docsChanged = true; drawDocs(); }
+        btn.disabled = false; btn.innerHTML = label;
+        if (docsChanged) { buzz(); toast(navigator.onLine ? "Documento allegato ✓" : "Documento allegato: si condivide appena torna la rete"); }
+      });
       $("#p-save", el).onclick = () => {
-        const item = { ...p, tipo: t, titolo: v("p-tit"), dal: v("p-dal"), ora: v("p-ora"), codice: v("p-cod"), link: v("p-link"), note: v("p-note") };
+        const item = { ...p, id: pid, tipo: t, titolo: v("p-tit"), dal: v("p-dal"), ora: v("p-ora"), codice: v("p-cod"), link: v("p-link"), note: v("p-note") };
         if (t === "hotel") Object.assign(item, { al: v("p-al"), indirizzo: v("p-ind"), jp: v("p-jp") });
         if (t === "volo" || t === "treno") Object.assign(item, { da: v("p-da"), a: v("p-a") });
         if (t === "volo") Object.assign(item, { al: v("p-al") && v("p-al") > item.dal ? v("p-al") : "", oraA: v("p-oraA") });
@@ -1753,9 +1893,17 @@
         if (isNew) notifyOthers("pren", saved);
         if (t === "hotel" && (item.jp !== p.jp || item.indirizzo !== p.indirizzo || item.titolo !== p.titolo || !p.lat)) geocodeHotel(saved);
         if (item.luogo && !booked.has(item.luogo)) { booked.add(item.luogo); savePlan(); }   // biglietto preso = "prenotato" spuntato
-        closeSheet(); toast("Salvato ✓"); rerender();
+        saved = true; closeSheet(); toast("Salvato ✓"); rerender();
       };
-      $("#p-del", el)?.addEventListener("click", () => { const old = { ...p }; delItem("prenotazioni", p.id); closeSheet(); rerender(); toast("Prenotazione eliminata", () => { putItem("prenotazioni", old); rerender(); }); });
+      $("#p-del", el)?.addEventListener("click", () => {
+        const old = { ...p }; let back = false; saved = true;
+        delItem("prenotazioni", p.id); closeSheet(); rerender();
+        toast("Prenotazione eliminata", () => { back = true; putItem("prenotazioni", old); rerender(); });
+        setTimeout(() => { if (!back) docsOf(p.id).forEach(delDoc); }, 6000);   // i documenti se ne vanno solo se non si annulla
+      });
+    }, () => {
+      if (isNew && !saved) docsOf(pid).forEach(delDoc);   // prenotazione nuova non salvata: niente documenti orfani
+      else if (docsChanged && !saved) rerender();
     });
   }
 
@@ -2325,7 +2473,7 @@
   async function forceUpdate() {
     toast("Scarico la versione nuova…");
     try {
-      for (const k of await caches.keys()) if (k !== "jp27-mappe" && k !== "jp27-cdn") await caches.delete(k);
+      for (const k of await caches.keys()) if (!["jp27-mappe", "jp27-cdn", "jp27-docs"].includes(k)) await caches.delete(k);
       for (const r of await navigator.serviceWorker?.getRegistrations?.() || []) await r.unregister();
     } catch {}
     location.replace(location.pathname + "?v=" + Date.now() + location.hash);
@@ -2589,7 +2737,7 @@
 
   // effetto pressione come nelle app native: compare solo quando è davvero un tocco, non quando il dito
   // appoggiato inizia a scorrere la pagina (con :active le card si "accendevano" anche scorrendo)
-  const PRESSABLE = ".ucard, .qa, .dchip, .chip, .mini, .prep, .mcard, .chapter, .lres button, .whos button, .who button, .addgrid button, .dayact > *, .iconbtn, .seg button, .card.pcard, .card.spesa, .nextstop .row, .gcard, .place, .btn, .urow, label.check, .phrase";
+  const PRESSABLE = ".doc, .ucard, .qa, .dchip, .chip, .mini, .prep, .mcard, .chapter, .lres button, .whos button, .who button, .addgrid button, .dayact > *, .iconbtn, .seg button, .card.pcard, .card.spesa, .nextstop .row, .gcard, .place, .btn, .urow, label.check, .phrase";
   let press = null;
   const unpress = (keep = 0) => { if (!press) return; clearTimeout(press.t); const el = press.el; press = null; setTimeout(() => el.classList.remove("pressed"), keep); };
   document.addEventListener("pointerdown", e => {
@@ -2693,20 +2841,31 @@
   }
   textScale();
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") textScale(); });
+  if (standalone) setTimeout(keepData, 4000);   // dalla schermata Home iPhone concede subito la protezione dei dati
 
   // foto a schermo intero: due dita per ingrandire, doppio tocco per zoom, trascina giù per chiudere
-  function openViewer(src, small) {
+  // src: una foto o, per i documenti, l'elenco delle pagine (si sfogliano col dito di lato). opts: { title, share(k) → Blob }
+  function openViewer(src, small, opts = {}) {
+    const srcs = Array.isArray(src) ? src : [src], many = srcs.length > 1;
+    let cur = 0;
     const v = document.createElement("div"); v.className = "viewer";
-    v.innerHTML = `<img src="${src}" alt=""><button class="vx" aria-label="Chiudi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>`;
+    v.innerHTML = `<img src="${srcs[0]}" alt="">${opts.title || many ? `<div class="vbar"><b>${esc(opts.title || "")}</b>${many ? `<span class="vcount">1 / ${srcs.length}</span>` : ""}</div>` : ""}
+      ${opts.share && navigator.share ? `<button class="vx vshare" aria-label="Condividi">${icon("Share2")}</button>` : ""}<button class="vx" aria-label="Chiudi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>`;
     document.body.appendChild(v);
     const img = $("img", v); if (small) img.onerror = () => { img.onerror = null; img.src = small; };   // foto originale più piccola di 1600px
     let s = 1, tx = 0, ty = 0, st = null, lastTap = 0;
     const apply = anim => { img.style.transition = anim ? "transform .25s cubic-bezier(.32, .72, 0, 1)" : "none"; img.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`; };
+    const page = d => {   // pagina accanto: esce di lato e la nuova entra dall'altro
+      const n = cur + d; if (n < 0 || n >= srcs.length) { tx = 0; apply(true); return; }
+      cur = n; buzz(); img.src = srcs[cur]; tx = d * innerWidth * .4; apply(false); requestAnimationFrame(() => { tx = 0; apply(true); });
+      const c = $(".vcount", v); if (c) c.textContent = `${cur + 1} / ${srcs.length}`;
+    };
     const close = () => { if (v.classList.contains("out")) return; v.classList.add("out"); document.removeEventListener("keydown", key); setTimeout(() => v.remove(), 200); };
-    const key = e => { if (e.key === "Escape") close(); };
+    const key = e => { if (e.key === "Escape") close(); else if (many && e.key === "ArrowRight") page(1); else if (many && e.key === "ArrowLeft") page(-1); };
     const mid = t => ({ x: (t[0].clientX + t[1].clientX) / 2 - innerWidth / 2, y: (t[0].clientY + t[1].clientY) / 2 - innerHeight / 2 });
     const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
     v.addEventListener("touchstart", e => {
+      if (e.target.closest(".vx")) return;
       const t = e.touches;
       if (t.length === 2) { const m = mid(t); st = { d: dist(t), s, lx: (m.x - tx) / s, ly: (m.y - ty) / s }; return; }
       if (t.length !== 1) return;
@@ -2715,7 +2874,7 @@
         if (s > 1) { s = 1; tx = ty = 0; } else { const x = t[0].clientX - innerWidth / 2, y = t[0].clientY - innerHeight / 2; s = 2.5; tx = -x * 1.5; ty = -y * 1.5; }
         apply(true); st = null; lastTap = 0; return;
       }
-      lastTap = now; st = { x: t[0].clientX, y: t[0].clientY, tx, ty };
+      lastTap = now; st = { x: t[0].clientX, y: t[0].clientY, tx, ty, axis: null };
     }, { passive: true });
     v.addEventListener("touchmove", e => {
       e.preventDefault(); const t = e.touches; if (!st) return;
@@ -2723,16 +2882,32 @@
       if (t.length === 1 && st.x != null) {
         const dx = t[0].clientX - st.x, dy = t[0].clientY - st.y;
         if (s > 1) { tx = st.tx + dx; ty = st.ty + dy; }
-        else { tx = 0; ty = Math.max(0, dy); v.style.background = `rgba(0,0,0,${1 - Math.min(.7, ty / 300)})`; }
+        else {
+          if (!st.axis && Math.hypot(dx, dy) > 8) st.axis = many && Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+          if (st.axis === "x") { tx = dx; ty = 0; }   // sfoglia le pagine
+          else if (st.axis === "y") { tx = 0; ty = Math.max(0, dy); v.style.background = `rgba(0,0,0,${1 - Math.min(.7, ty / 300)})`; }
+        }
         apply();
       }
     }, { passive: false });
     v.addEventListener("touchend", e => {
       if (e.touches.length) { st = null; return; }
-      if (s <= 1.02) { if (ty > 110) return close(); s = 1; tx = ty = 0; v.style.background = ""; apply(true); }
+      if (s <= 1.02) {
+        if (st?.axis === "x" && Math.abs(tx) > 60) { page(tx < 0 ? 1 : -1); st = null; return; }
+        if (ty > 110) return close();
+        s = 1; tx = ty = 0; v.style.background = ""; apply(true);
+      }
       st = null;
     });
-    v.addEventListener("click", e => { if (e.target.closest(".vx") || (!("ontouchstart" in window) && e.target === v)) close(); });
+    v.addEventListener("click", async e => {
+      if (e.target.closest(".vshare")) {
+        const b = await opts.share(cur).catch(() => null); if (!b) return;
+        const name = `${(opts.title || "documento").replace(/[\\/:*?"<>|]+/g, " ").trim()}${many ? " " + (cur + 1) : ""}.jpg`;
+        try { await navigator.share({ files: [new File([b], name, { type: "image/jpeg" })] }); } catch {}
+        return;
+      }
+      if (e.target.closest(".vx") || (!("ontouchstart" in window) && e.target === v)) close();
+    });
     document.addEventListener("keydown", key);
   }
   document.addEventListener("click", e => { const c = e.target.closest(".cover[data-full]"); if (c && !e.target.closest("a")) openViewer(c.dataset.full, c.dataset.small); });

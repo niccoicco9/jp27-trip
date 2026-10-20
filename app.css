@@ -130,6 +130,10 @@ svg.i { width: 1.15em; height: 1.15em; flex: none; vertical-align: -.2em; }
 .viewer .vx { position: absolute; top: calc(12px + env(safe-area-inset-top)); right: 14px; width: 40px; height: 40px; border-radius: 99px; border: 0;
   background: rgba(255,255,255,.18); color: #fff; display: grid; place-items: center; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 .viewer .vx svg { width: 20px; height: 20px; }
+.viewer .vshare { right: 62px; }
+.viewer .vbar { position: absolute; left: 16px; right: 116px; top: calc(14px + env(safe-area-inset-top)); display: flex; flex-direction: column; gap: 2px; color: #fff; pointer-events: none; }
+.viewer .vbar b { font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.viewer .vcount { font-size: .8rem; font-weight: 600; opacity: .75; font-variant-numeric: tabular-nums; }
 /* spese: grafico per categoria e categorie create da voi (emoji + nome, come Tricount) */
 .emo { font-size: 1.15em; line-height: 1; font-style: normal; }
 .pic .emo { font-size: 1.25rem; }
@@ -989,3 +993,26 @@ html, body, .scroller { overscroll-behavior-x: none; }
   body:has(.viewer) #rotate { display: none; }
 }
 @keyframes rot-hint { 0%, 15% { transform: rotate(-90deg); } 45%, 85% { transform: rotate(0); } 100% { transform: rotate(-90deg); } }
+
+/* testo grande di iPhone (Impostazioni › Schermo › Dimensioni testo): i pulsanti non spezzano le parole su due righe,
+   se non ci stanno vanno a capo interi; nelle file di riquadri l'etichetta resta su una riga */
+.btns .btn, .row .btn { white-space: nowrap; }
+.dayact > * > span { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; padding: 0 2px; }
+.mini > b { white-space: nowrap; }
+.pacts { margin: var(--sp-2) 0 0; }
+
+/* documenti allegati alle prenotazioni */
+.docs { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
+.doc { display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%; padding: 6px 14px 6px 6px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; text-align: left; transition: transform .15s; }
+.doc.pressed { transform: scale(.97); transition-duration: .1s; }
+.doc .dth { flex: none; width: 40px; height: 40px; border-radius: 9px; background: var(--line) center / cover no-repeat; display: grid; place-items: center; color: var(--muted); }
+.doc .dth svg { width: 20px; height: 20px; }
+.doc .dth.ok svg { display: none; }
+.doc .dtx { display: flex; flex-direction: column; min-width: 0; }
+.doc .dtx b { font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc .dtx small { color: var(--muted); font-size: .76rem; }
+.doclist { display: flex; flex-direction: column; gap: var(--sp-2); }
+.doclist:not(:empty) { margin-bottom: var(--sp-2); }
+.docrow { display: flex; align-items: center; gap: var(--sp-2); }
+.docrow .doc { flex: 1; background: var(--card); }
+.doc-hint { display: block; margin-top: 6px; }

@@ -2,15 +2,15 @@
 // Tutto vive sotto viaggi/{codice}: il codice segreto non è nel codice pubblico,
 // e le regole di Firestore permettono l'accesso solo a quel percorso.
 // - documento principale: programma dei giorni + prenotazioni spuntate (merge per campo)
-// - sottoraccolte "spese", "prenotazioni" e "luoghi": un documento per voce, così più persone
+// - sottoraccolte "spese", "prenotazioni", "luoghi", "categorie" e "allegati": un documento per voce, così più persone
 //   possono aggiungere insieme senza sovrascriversi.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   initializeFirestore, persistentLocalCache, doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, serverTimestamp,
-  FieldPath, arrayUnion, arrayRemove, disableNetwork, enableNetwork, terminate, clearIndexedDbPersistence,
+  FieldPath, arrayUnion, arrayRemove, disableNetwork, enableNetwork, terminate, clearIndexedDbPersistence, getDoc, Bytes,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-export const LISTS = ["spese", "prenotazioni", "luoghi", "categorie"];
+export const LISTS = ["spese", "prenotazioni", "luoghi", "categorie", "allegati"];
 
 // memory: true riparte senza la copia su disco (se l'IndexedDB di Safari si è rotto, capita su iOS)
 export function start(config, code, h, { memory = false } = {}) {
@@ -70,5 +70,9 @@ export function start(config, code, h, { memory = false } = {}) {
     pushMain: data => setDoc(main, { ...data, at: serverTimestamp() }, { merge: true }).catch(fail),
     put: (name, { id, ...rest }) => setDoc(doc(main, name, id), { ...rest, at: serverTimestamp() }).catch(fail),
     del: (name, id) => deleteDoc(doc(main, name, id)).catch(fail),
+    // documenti allegati: ogni pagina (un'immagine JPEG) è un documento a sé, letto solo quando serve
+    putPage: (id, k, bytes) => setDoc(doc(main, "allegati_pagine", `${id}_${k}`), { b: Bytes.fromUint8Array(bytes), at: serverTimestamp() }),
+    getPage: (id, k) => getDoc(doc(main, "allegati_pagine", `${id}_${k}`)).then(s => s.exists() ? s.data().b.toUint8Array() : null),
+    delPage: (id, k) => deleteDoc(doc(main, "allegati_pagine", `${id}_${k}`)).catch(() => {}),
   };
 }
