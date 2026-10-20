@@ -910,6 +910,9 @@ html[data-vt="pop"]::view-transition-new(root) { animation: vt-in-left .42s cubi
 /* cambio giorno (Giorni): titolo e fila dei giorni restano fermi; il contenuto scorre come le pagine di un'app
    (il giorno vecchio esce tutto da un lato mentre il nuovo entra dall'altro, senza sovrapporsi: niente immagini doppie) */
 html[data-vt^="day"] .daystrip { view-transition-name: daystrip; }
+/* durante lo scorrimento i tocchi passano alla pagina vera (la fila dei giorni è già quella nuova): si può
+   toccare subito un altro giorno, senza tocchi persi */
+html[data-vt^="day"]::view-transition { pointer-events: none; }
 ::view-transition-old(daystrip) { display: none; }
 ::view-transition-new(daystrip), ::view-transition-group(daystrip) { animation: none; }
 html[data-vt^="day"]::view-transition-old(topbar), html[data-vt^="day"]::view-transition-new(topbar) { animation: none; }

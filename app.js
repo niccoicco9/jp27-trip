@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 82;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 83;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -935,14 +935,30 @@
       });
     });
     $("#share")?.addEventListener("click", sharePlan);
-    // swipe orizzontale sulla copertina per cambiare giorno
-    let x0 = null;
-    $("#cover").addEventListener("touchstart", e => { x0 = e.touches[0].clientX; }, { passive: true });
-    $("#cover").addEventListener("touchend", e => {
-      if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null;
-      if (Math.abs(dx) > 60) { const j = i + (dx < 0 ? 1 : -1); if (DAYS[j]) go("#giorni/" + DAYS[j]); }
-    });
   }
+  // Giorni: scorrimento sulla copertina e tocchi sulla fila dei giorni, ascoltati su tutto il documento.
+  // Durante lo scorrimento tra due giorni Safari non fa arrivare i tocchi alla pagina (c'è la "fotografia" animata):
+  // così un gesto fatto in quel momento non va perso e porta sempre al giorno giusto
+  (() => {
+    let g = null;
+    const inside = (el, x, y) => { const r = el?.getBoundingClientRect(); return !!r && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; };
+    const curDay = () => { const c = location.hash.split("/")[1]; return DAYS.includes(c) ? c : selDay; };
+    document.addEventListener("touchstart", e => {
+      g = null; if (!location.hash.startsWith("#giorni") || e.touches.length !== 1 || sheetOpen()) return;
+      const t = e.touches[0]; g = { x: t.clientX, y: t.clientY, cover: inside($("#cover"), t.clientX, t.clientY) && !editMode };
+    }, { passive: true });
+    document.addEventListener("touchend", e => {
+      if (!g) return; const t = e.changedTouches[0], dx = t.clientX - g.x, dy = t.clientY - g.y, s0 = g; g = null;
+      if (s0.cover && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        const j = DAYS.indexOf(curDay()) + (dx < 0 ? 1 : -1); if (DAYS[j]) go("#giorni/" + DAYS[j]); return;
+      }
+      // tocco sulla fila dei giorni mentre il contenuto sta ancora scorrendo: il click non arriverebbe
+      if (document.documentElement.dataset.vt?.startsWith("day") && Math.hypot(dx, dy) < 10) {
+        const c = $$("#strip .dchip").find(a => inside(a, t.clientX, t.clientY));
+        if (c && c.getAttribute("href") !== location.hash) { $("#strip .on")?.classList.remove("on"); c.classList.add("on"); buzz(); go(c.getAttribute("href")); }
+      }
+    }, { passive: true });
+  })();
   function keepScroll(fn) { const y = SC.scrollTop; fn(); SC.scrollTop = y; }
 
   function openPicker(d) {
@@ -2637,7 +2653,9 @@
   let shown = null;          // { key, stamp } della pagina sullo schermo
   const stampNow = () => `${dataVer}|${todayJP()}|${new Date().getHours()}|${code ? 1 : 0}|${me}|${isDark()}`;
   function stashPage() {
-    if (!shown || shown.key.startsWith("#mappa") || !view.firstChild) { shown = null; return; }
+    // la mappa e i giorni non si tengono in memoria: un giorno si ricostruisce in pochi millisecondi e così fila dei
+    // giorni, pagina e giorno selezionato restano sempre allineati anche cambiando giorno di corsa
+    if (!shown || shown.key.startsWith("#mappa") || shown.key.startsWith("#giorni") || !view.firstChild) { shown = null; return; }
     progRest?.();
     const frag = document.createDocumentFragment(); while (view.firstChild) frag.appendChild(view.firstChild);
     pages.delete(shown.key); pages.set(shown.key, { frag, stamp: shown.stamp });
@@ -2799,8 +2817,15 @@
     const show = () => {
       if (!to.startsWith("#mappa")) SC.scrollTop = 0;
       render();
-      // cambio giorno: la fila dei giorni resta dov'era e scorre dolcemente fino al giorno scelto
-      const st = day && $("#strip"); if (st && sx != null) { const goal = st.scrollLeft; st.scrollLeft = sx; st.scrollTo({ left: goal, behavior: reduceMotion() ? "auto" : "smooth" }); }
+      // cambio giorno: la fila dei giorni resta esattamente dov'era (i giorni non si spostano sotto il dito);
+      // scorre solo se il giorno scelto è fuori vista, ad esempio con "Giorno N ›" o lo scorrimento sulla copertina
+      const st = day && $("#strip"); if (st && sx != null) {
+        st.scrollLeft = sx;
+        const on = $(".on", st), pad = 16;
+        if (on) { const x = on.getBoundingClientRect().left - st.getBoundingClientRect().left + st.scrollLeft, l = x - pad, r = x + on.offsetWidth + pad - st.clientWidth;
+          const goal = l < st.scrollLeft ? l : r > st.scrollLeft ? r : null;
+          if (goal != null) st.scrollTo({ left: goal, behavior: reduceMotion() ? "auto" : "smooth" }); }
+      }
       if (!to.startsWith("#mappa") && (kind === "tab" || kind === "pop")) restoreScroll(scrollMem[location.hash || "#oggi"] || 0);
       if (!restored) playIntro();
     };
