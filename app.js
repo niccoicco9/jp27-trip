@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 74;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 75;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2329,7 +2329,7 @@
     openSheet(`
       <h2>${needCode ? "Benvenuti a bordo ✈️" : "Chi sei?"}</h2>
       <p class="lead">${needCode ? "Inserisci il codice del viaggio che vi siete passati: protegge programma, prenotazioni e spese." : "Così sappiamo chi ha fatto le modifiche."}</p>
-      ${needCode ? `<input type="text" id="tcode" placeholder="Codice del viaggio" autocomplete="off" autocapitalize="none" spellcheck="false" value="${esc(code)}" style="font-weight:700;letter-spacing:.04em">` : ""}
+      ${needCode ? `<input type="text" id="tcode" placeholder="Codice del viaggio" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(code)}" style="font-weight:700;letter-spacing:.04em">` : ""}
       <div class="who">${T.viaggiatori.map(n => `<button data-who="${n}" class="${n === me ? "sel" : ""}"><span class="avatar" style="background:${AVATAR[n] || "#888"}">${n[0]}</span>${n}</button>`).join("")}</div>
       ${needCode ? `<div class="btns"><button class="btn ghost" data-close>Più tardi</button><button class="btn primary" id="enter">Entra</button></div>
         <p class="muted small" style="margin-top:12px">Senza codice l'app funziona lo stesso, ma solo su questo telefono e senza spese e prenotazioni condivise.</p>` : ""}`, el => {
@@ -2338,7 +2338,7 @@
         if (!needCode) { me = pick; LS.set("me", me); closeSheet(); toast(`Ciao ${me}! 👋`); render(); }
       });
       $("#enter", el)?.addEventListener("click", () => {
-        const c = $("#tcode", el).value.trim().toLowerCase();
+        const c = $("#tcode", el).value.trim();   // il codice distingue maiuscole e minuscole
         if (!c) return toast("Scrivi il codice del viaggio");
         if (!pick) return toast("Scegli chi sei");
         me = pick; LS.set("me", me);
