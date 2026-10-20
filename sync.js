@@ -7,29 +7,33 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   initializeFirestore, persistentLocalCache, doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, serverTimestamp,
-  FieldPath, arrayUnion, arrayRemove, disableNetwork, enableNetwork,
+  FieldPath, arrayUnion, arrayRemove, disableNetwork, enableNetwork, terminate, clearIndexedDbPersistence,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 export const LISTS = ["spese", "prenotazioni", "luoghi", "categorie"];
 
-export function start(config, code, h) {
-  const app = initializeApp(config);
-  const db = initializeFirestore(app, { localCache: persistentLocalCache() });
+// memory: true riparte senza la copia su disco (se l'IndexedDB di Safari si è rotto, capita su iOS)
+export function start(config, code, h, { memory = false } = {}) {
+  const app = initializeApp(config, memory ? "mem" + Date.now() : undefined);
+  let db;
+  try { db = initializeFirestore(app, memory ? {} : { localCache: persistentLocalCache() }); }
+  catch { db = initializeFirestore(initializeApp(config, "mem" + Date.now()), {}); }
   const main = doc(db, "viaggi", code);
   const fail = err => h.status("error", err);
   let first = true;
 
-  onSnapshot(main, { includeMetadataChanges: true }, snap => {
+  const unsubs = [];
+  unsubs.push(onSnapshot(main, { includeMetadataChanges: true }, snap => {
     if (!(waking && snap.metadata.fromCache)) h.status(snap.metadata.fromCache ? "offline" : "online");   // niente pallino grigio mentre riapre la connessione
     if (snap.metadata.hasPendingWrites) return;   // è una nostra modifica non ancora confermata
     h.main(snap.exists() ? snap.data() : null, first);
     first = false;
-  }, fail);
+  }, fail));
 
   for (const name of LISTS) {
-    onSnapshot(collection(main, name), snap => {
+    unsubs.push(onSnapshot(collection(main, name), snap => {
       h.list(name, snap.docs.map(d => ({ ...d.data(), id: d.id })));
-    }, fail);
+    }, fail));
   }
 
   // Aggiorna solo i giorni cambiati e le singole spunte: così due persone che modificano
@@ -60,6 +64,9 @@ export function start(config, code, h) {
   return {
     patch,
     wake,
+    // ripara: butta la copia locale di Firestore (non le modifiche già inviate) e si riparte dal server
+    stop: () => { unsubs.forEach(u => u()); return terminate(db).catch(() => {}); },
+    reset: () => terminate(db).then(() => clearIndexedDbPersistence(db)),
     pushMain: data => setDoc(main, { ...data, at: serverTimestamp() }, { merge: true }).catch(fail),
     put: (name, { id, ...rest }) => setDoc(doc(main, name, id), { ...rest, at: serverTimestamp() }).catch(fail),
     del: (name, id) => deleteDoc(doc(main, name, id)).catch(fail),

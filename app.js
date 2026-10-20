@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 72;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 74;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -53,7 +53,7 @@
   let checks = new Set(LS.get("checks", []));
   let me = LS.get("me", "");
   let lastEdit = LS.get("lastEdit", null);   // { by, at }
-  let sync = null, syncStatus = "off", pendingRemote = false;
+  let sync = null, syncStatus = "off", pendingRemote = false, syncErr = "", serverAt = 0;
 
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -222,11 +222,13 @@
   mergeCustom();
   // ultimo stato confermato dal server: si inviano solo le differenze rispetto a questo
   let synced = { plan: clone(plan), booked: [...booked] };
-  const same = (a, b) => JSON.stringify(a || null) === JSON.stringify(b || null);
   // impronta dei dati indipendente dall'ordine delle chiavi e dall'orario del server ("at"):
   // serve a riconoscere gli aggiornamenti di Firestore che non cambiano niente (conferme delle proprie modifiche, passaggio online)
   const sig = v => JSON.stringify(v ?? null, (k, x) => k === "at" ? undefined
     : x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map(j => [j, x[j]])) : x);
+  // confronto indipendente dall'ordine dei campi: Firestore non lo conserva, e un giorno "uguale ma in
+  // ordine diverso" sembrava modificato qui e veniva rimandato, coprendo le modifiche degli altri
+  const same = (a, b) => sig(a || null) === sig(b || null);
   const listSig = items => sig([...items].sort((a, b) => String(a.id).localeCompare(String(b.id))));
   function localChanges() {
     const days = {};
@@ -286,7 +288,14 @@
   }
   function setSync(s, err) {
     syncStatus = s;
-    if (err) console.warn("Sincronizzazione:", err.code || "", err.message || err);
+    if (s === "online") serverAt = Date.now();
+    if (err) { console.warn("Sincronizzazione:", err.code || "", err.message || err); syncErr = `${err.code || ""} ${err.message || err}`.trim().slice(0, 160); }
+    // errore del database locale (non di permessi): si riparte subito senza la copia su disco
+    if (err && !["permission-denied", "invalid-argument"].includes(err.code) && sync && !syncMemory) {
+      syncMemory = true; const old = sync; sync = null; syncStarting = false;
+      old.stop?.().finally(() => startSync());
+      return;
+    }
     if (err?.code === "permission-denied" && code) {   // codice sbagliato o regole non pubblicate
       toast("Codice del viaggio non valido");
       code = ""; LS.set("code", ""); setTimeout(() => askWho(true), 400);
@@ -295,11 +304,11 @@
     el.hidden = false; el.className = "sync-dot" + (s === "online" ? " on" : "");
     el.title = s === "online" ? "Dati condivisi: sincronizzati" : s === "offline" ? "Offline: le modifiche partiranno appena torna la rete" : "Errore di sincronizzazione";
   }
-  let syncStarting = false;
+  let syncStarting = false, syncMemory = false;
   function startSync() {
     if (!window.FIREBASE || !code || sync || syncStarting) return;
     syncStarting = true;
-    import("./sync.js").then(m => { sync = m.start(window.FIREBASE, code, { main: onRemote, list: onList, status: setSync, recreate: () => sync.pushMain({ plan, booked: [...booked], by: me || "?" }) }); }).catch(err => { syncStarting = false; setSync("error", err); });
+    import("./sync.js").then(m => { sync = m.start(window.FIREBASE, code, { main: onRemote, list: onList, status: setSync, recreate: () => sync.pushMain({ plan, booked: [...booked], by: me || "?" }) }, { memory: syncMemory }); }).catch(err => { syncStarting = false; setSync("error", err); });
   }
 
   // ricerca tollerante: ignora accenti (ō → o), trattini, apostrofi e maiuscole; ogni parola deve comparire
@@ -1559,6 +1568,7 @@
       notifCard();
       view.insertAdjacentHTML("beforeend", `<div class="card row"><div class="grow"><b>Versione ${APP_VERSION}</b><div class="muted small">Se qualcosa non sembra aggiornato, scarica di nuovo l'app (le mappe offline restano).</div></div><button class="btn small" id="forceupd">${icon("RotateCcw")} Aggiorna adesso</button></div>`);
       $("#forceupd").onclick = forceUpdate;
+      if (code) syncCard();
       return;
     }
     const g = GUIDE[sub];
@@ -2277,6 +2287,29 @@
   addEventListener("offline", () => offPill(true));
   addEventListener("online", () => { offPill(false); toast("Di nuovo online ✓"); sync?.wake?.(); });
   if (!navigator.onLine) setTimeout(() => offPill(true), 800);
+
+  // diagnosi dei dati condivisi: cosa ha l'app, cosa c'è sul server, ultimo contatto ed eventuale errore
+  function syncCard() {
+    const ago = t => { const m = Math.round((Date.now() - t) / 60e3); return !t ? "mai in questa sessione" : m < 1 ? "adesso" : m < 60 ? `${m} min fa` : `alle ${new Date(t).toTimeString().slice(0, 5)}`; };
+    const voli = lists.prenotazioni.filter(p => p.tipo === "volo").length;
+    view.insertAdjacentHTML("beforeend", `<div class="card" id="synccard"><b>Dati condivisi</b>
+      <div class="muted small">Stato: ${syncStatus === "online" ? "collegato" : syncStatus === "offline" ? "offline" : syncStatus === "error" ? "errore" : "non avviato"} · ultimo contatto col server: ${ago(serverAt)}</div>
+      <div class="muted small">Sul telefono: ${lists.prenotazioni.length} prenotazioni (${voli} voli), ${lists.spese.length} spese</div>
+      <div class="muted small" id="srvchk">Sul server: controllo…</div>
+      ${syncErr ? `<div class="small" style="color:#d4442f">Errore: ${esc(syncErr)}</div>` : ""}
+      <div class="btns"><button class="btn small" id="syncfix">${icon("RotateCcw")} Riscarica i dati dal server</button></div></div>`);
+    const out = $("#srvchk"), F = window.FIREBASE;
+    fetch(`https://firestore.googleapis.com/v1/projects/${F.projectId}/databases/(default)/documents/viaggi/${encodeURIComponent(code)}/prenotazioni?key=${F.apiKey}&pageSize=300`, { cache: "no-store" })
+      .then(r => r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status)))
+      .then(j => { const d = j.documents || [], v = d.filter(x => x.fields?.tipo?.stringValue === "volo").length; if (out.isConnected) out.textContent = `Sul server: ${d.length} prenotazioni (${v} voli)`; })
+      .catch(e => { if (out.isConnected) out.textContent = `Sul server: non raggiungibile (${e.message || e})`; });
+    $("#syncfix").onclick = async () => {
+      if (!navigator.onLine) { toast("Serve la connessione"); return; }
+      toast("Riscarico i dati…");
+      try { await sync?.reset?.(); } catch (e) { console.warn(e); }
+      location.replace(location.pathname + "?v=" + Date.now() + location.hash);
+    };
+  }
 
   // aggiornamento forzato: scarta la versione salvata dell'app (non le mappe né le foto) e ricarica
   async function forceUpdate() {
