@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 85;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 86;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -308,9 +308,22 @@
     el.title = s === "online" ? "Dati condivisi: sincronizzati" : s === "offline" ? "Offline: le modifiche partiranno appena torna la rete" : "Errore di sincronizzazione";
   }
   let syncStarting = false, syncMemory = false;
-  function startSync() {
+  // codici del viaggio non più validi (solo l'impronta SHA-256, non il codice): chi li ha ancora vedrebbe una copia
+  // vecchia e separata dei dati, quindi l'app chiede quello nuovo
+  const OLD_CODES = ["ae6340d0ffd1d8264fbf407d23b3194108226a8a5fe2c6b56d4035f9c14828f3"];
+  async function isOldCode(c) {
+    try { const h = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(c))); return OLD_CODES.includes([...h].map(b => b.toString(16).padStart(2, "0")).join("")); }
+    catch { return false; }
+  }
+  async function startSync() {
     if (!window.FIREBASE || !code || sync || syncStarting) return;
     syncStarting = true;
+    if (await isOldCode(code)) {
+      syncStarting = false; code = ""; LS.set("code", ""); LS.set("skipCode", false);
+      toast("Il codice del viaggio è cambiato: inserisci quello nuovo");
+      setTimeout(() => askWho(true), 600); render();
+      return;
+    }
     import("./sync.js").then(m => { sync = m.start(window.FIREBASE, code, { main: onRemote, list: onList, status: setSync, recreate: () => sync.pushMain({ plan, booked: [...booked], by: me || "?" }) }, { memory: syncMemory }); dataVer++; if (location.hash.startsWith("#giorni") && !sheetOpen()) keepScroll(render); }).catch(err => { syncStarting = false; setSync("error", err); });
   }
 
@@ -391,18 +404,26 @@
   // la sottopagina di Utility. Così "indietro" (swipe di iOS, tasto Android, il nostro swipe)
   // risale dentro la sezione e non salta mai a sezioni o giorni visti prima
   let subPushed = false, pendingGo = null;
+  // da dove si è entrati in una sottopagina di Utility (es. Oggi › Prenotazioni): "indietro" riporta lì
+  let subFrom = "#utility";
   const isSub = h => /^#utility\/./.test(h);
   // cambia indirizzo e pagina subito, senza aspettare "hashchange" (su iPhone non sempre arriva)
   function setUrl(h, push) { history[push ? "pushState" : "replaceState"](null, "", h); navigate(); }
+  // App dalla schermata Home: niente passi nella cronologia. Altrimenti, sui nuovi iPhone, lo scorrimento dal bordo fa
+  // partire ANCHE l'"indietro" di iOS (un'istantanea di tutto lo schermo) insieme al nostro: pagine doppie o triple.
+  // "Indietro" lo gestisce l'app (‹ in alto e scorrimento dal bordo), che sa sempre dove riportare
+  const noHistory = () => navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
   function land(h) {
-    if (isSub(h)) { if (location.hash !== "#utility") history.replaceState(null, "", "#utility"); subPushed = true; setUrl(h, true); }
+    if (noHistory()) { const cur = location.hash || "#oggi"; if (isSub(h) && !isSub(cur)) subFrom = cur; subPushed = false; setUrl(h, false); return; }
+    if (isSub(h)) { const cur = location.hash || "#oggi"; if (!isSub(cur)) subFrom = cur; subPushed = true; setUrl(h, true); }
     else setUrl(h, false);
   }
   function go(h) {
     const cur = location.hash || "#oggi";
     // stessa pagina: chiude la scheda aperta, altrimenti torna in cima (come ritoccare la scheda attiva su iPhone)
     if (h === cur) { if (sheetOpen()) closeSheet(); else SC.scrollTo({ top: 0, behavior: reduceMotion() ? "auto" : "smooth" }); return; }
-    if (cur === "#utility" && isSub(h)) { subPushed = true; setUrl(h, true); return; }
+    if (noHistory()) { if (cur === "#utility" && isSub(h)) subFrom = "#utility"; land(h); return; }
+    if (cur === "#utility" && isSub(h)) { subFrom = "#utility"; subPushed = true; setUrl(h, true); return; }
     if (!subPushed) { land(h); return; }
     subPushed = false; pendingGo = h; history.back();
     // rete di sicurezza: se la cronologia non risponde (passo già tolto), si va comunque alla pagina
@@ -1071,17 +1092,18 @@
       <div id="llist"></div>`;
     const draw = () => {
       const qq = lf.q.toLowerCase().trim();
-      const gallery = lf.view === "g" && !qq && !lf.near && !lf.pren && !lf.mine && !lf.out;
+      // vista a foto anche con i filtri (da prenotare, aggiunti da voi, scartati); con ricerca o "vicino a me" resta l'elenco
+      const gallery = lf.view === "g" && !qq && !lf.near;
       $$("[data-lv]").forEach(b => b.classList.toggle("on", b.dataset.lv === lf.view));
+      $(".lview")?.classList.toggle("off", !!(qq || lf.near));
       if (gallery) {
+        const keep = p => (lf.out || !p.out) && (!lf.pren || p.pren) && (!lf.mine || p.mine);
         const zs = lf.z === "all" ? ZONE.map(z => z.id) : [lf.z];
         let html = "", n = 0;
-        for (const z of zs) {
-          const ps = LUOGHI.filter(p => !p.out && p.z === z).sort((a, b) => (dayOf(a.id)[0] || "9").localeCompare(dayOf(b.id)[0] || "9") || (photoUrl(b.id) ? 1 : 0) - (photoUrl(a.id) ? 1 : 0));
-          if (!ps.length) continue; n += ps.length;
-          html += `<h3 class="galh"><span class="dot" style="background:${zona[z].colore}"></span>${esc(zona[z].nome)}<small>${ps.length}</small></h3><div class="gal">${ps.map(galCard).join("")}</div>`;
-        }
-        $("#lcount").textContent = `${n} posti`;
+        const group = (ps, title, col) => { if (!ps.length) return; n += ps.length; html += `<h3 class="galh">${col ? `<span class="dot" style="background:${col}"></span>` : ""}${esc(title)}<small>${ps.length}</small></h3><div class="gal">${ps.map(galCard).join("")}</div>`; };
+        for (const z of zs) group(LUOGHI.filter(p => !p.out && p.z === z && keep(p)).sort((a, b) => (dayOf(a.id)[0] || "9").localeCompare(dayOf(b.id)[0] || "9") || (photoUrl(b.id) ? 1 : 0) - (photoUrl(a.id) ? 1 : 0)), zona[z].nome, zona[z].colore);
+        if (lf.out) group(LUOGHI.filter(p => p.out && (lf.z === "all" || p.z === lf.z) && keep(p)), "Scartati ed eliminati");
+        $("#lcount").textContent = `${n} ${n === 1 ? "posto" : "posti"}`;
         $("#llist").innerHTML = html || `<p class="empty">Nessun risultato</p>`; lazyScan(); return;
       }
       const list = LUOGHI.filter(p => (lf.out || !p.out) && (lf.z === "all" || p.z === lf.z) && (!lf.pren || p.pren) && (!lf.mine || p.mine) && (!qq || matches(p.n + " " + p.jp + " " + p.d + " " + (CAT[p.c]?.[2] || "") + " " + zona[p.z].nome, qq)))
@@ -1605,7 +1627,8 @@
   const UTOP = ["prenotazioni", "spese", "frasi", "yen"];
   const UGROUPS = [["In viaggio", ["sos", "mappe", "ricordi"]], ["Prima di partire", ["checklist", "budget", "pratico", "installa"]], ["Guide", ["trasporti", "soldi", "galateo", "stagione"]]];
   function renderUtility(sub) {
-    const back = `<a class="back" href="#utility">${icon("ChevronLeft")} Utility</a>`;
+    const from = isSub(subFrom) ? "#utility" : subFrom, fromTab = from.slice(1).split("/")[0];
+    const back = `<a class="back" href="${from}">${icon("ChevronLeft")} ${esc(TABS.find(t => t[0] === fromTab)?.[2] || "Utility")}</a>`;
     if (!sub) {
       view.innerHTML = `<h2>Utility</h2><p class="lead">Tutto quello che serve in viaggio, anche offline.</p>
         <div class="ugrid">${UTOP.map(k => UTIL.find(u => u[0] === k)).map(([k, ic, c, t, s]) => `<a class="ucard" href="#utility/${k}"><span class="ic" style="background:${c}">${icon(ic)}</span><b>${t}</b>${s ? `<small>${s}</small>` : ""}</a>`).join("")}</div>
@@ -1924,9 +1947,9 @@
         if (t === "biglietto") item.luogo = v("p-luogo");
         if (!item.titolo) return toast("Scrivi almeno il nome");
         if (t === "hotel" && (!item.dal || !item.al || item.al <= item.dal)) return toast("Controlla check-in e check-out");
-        const saved = putItem("prenotazioni", item);
-        if (isNew) notifyOthers("pren", saved);
-        if (t === "hotel" && (item.jp !== p.jp || item.indirizzo !== p.indirizzo || item.titolo !== p.titolo || !p.lat)) geocodeHotel(saved);
+        const stored = putItem("prenotazioni", item);
+        if (isNew) notifyOthers("pren", stored);
+        if (t === "hotel" && (item.jp !== p.jp || item.indirizzo !== p.indirizzo || item.titolo !== p.titolo || !p.lat)) geocodeHotel(stored);
         if (item.luogo && !booked.has(item.luogo)) { booked.add(item.luogo); savePlan(); }   // biglietto preso = "prenotato" spuntato
         saved = true; closeSheet(); toast("Salvato ✓"); rerender();
       };
@@ -2253,7 +2276,7 @@
     const debt = Math.abs(cn[0]) < .5 ? null : cn[0] > 0 ? [COPPIE[1], COPPIE[0], cn[0]] : [COPPIE[0], COPPIE[1], -cn[0]];
     const items = [...lists.spese].filter(s => !spFilter || catOf(s.cat).k === spFilter).sort((a, b) => (b.data || "").localeCompare(a.data || "") || (b.ts || 0) - (a.ts || 0));
     let lastD = null;
-    view.innerHTML = `${back}<div class="between"><h2>Spese</h2><button class="btn small primary" id="adds" data-top>${icon("Plus")} Aggiungi</button></div><p class="lead">Chi ha pagato cosa, e alla fine chi deve quanto a chi.</p>
+    view.innerHTML = `${back}<h2>Spese</h2><button id="adds" hidden aria-hidden="true"></button><p class="lead">Chi ha pagato cosa, e alla fine chi deve quanto a chi.</p>
       <div class="hero solid" style="min-height:0"><span class="kanji" aria-hidden="true">会計</span><div class="hero-in" style="min-height:190px">
         <span class="kicker">Spesa totale del gruppo</span><div class="big-n" style="font-size:2.6rem" data-count="${total}" data-fmt="eur">${eurF(total)}</div>
         <p>${debt ? `<b>${coupleName(debt[0])}</b> devono <b>${eurF(debt[2])}</b> a ${coupleName(debt[1])}` : "Siete in pari 🤝"}</p>
@@ -2683,6 +2706,12 @@
     else ({ oggi: renderOggi, giorni: () => renderGiorni(sub), luoghi: renderLuoghi, mappa: renderMappa, utility: () => renderUtility(sub) }[tab] || renderOggi)();
     shown = { key, stamp: stampNow() };
     watchTitle();
+    // Spese: pulsante "+ Spesa" in basso a destra, a portata di pollice (anche su iPhone grandi)
+    let fab = $("#fab");
+    if (key === "#utility/spese") {
+      if (!fab) { fab = document.createElement("button"); fab.id = "fab"; fab.className = "fab"; fab.innerHTML = `${icon("Plus")}<span>Spesa</span>`; fab.setAttribute("aria-label", "Aggiungi una spesa"); fab.onclick = () => { buzz(); $("#adds")?.click(); }; document.body.appendChild(fab); }
+      fab.hidden = false; document.body.classList.add("has-fab");
+    } else { if (fab) fab.hidden = true; document.body.classList.remove("has-fab"); }
   }
   // altezza della testata come variabile CSS: si scrive solo se cambia (scriverla ricalcola lo stile di tutta la pagina)
   let headPx = "";
@@ -2719,7 +2748,7 @@
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
   // indietro come nelle app con la barra in basso: risale solo dentro la sezione (Utility › Spese → Utility),
   // non salta mai da una sezione all'altra; sulla pagina principale di una sezione non fa nulla
-  const backTarget = () => { const [tab, sub] = (location.hash.slice(1) || "oggi").split("/"); return tab === "utility" && sub ? "#utility" : null; };
+  const backTarget = () => isSub(location.hash) ? (isSub(subFrom) ? "#utility" : subFrom) : null;
   // Come in iOS: col dito dal bordo sinistro la pagina segue il dito e sotto si vede già quella di prima
   // (leggermente spostata e in ombra). Lasciando, finisce il movimento e la pagina di prima resta lì così com'è,
   // senza una seconda animazione; se il gesto è corto torna tutto a posto.
@@ -2730,15 +2759,20 @@
     const top = $(".top");
     // pagina di prima costruita in un livello sotto quella attuale, nella posizione in cui l'avevi lasciata
     function buildUnder(to) {
-      const keep = document.createDocumentFragment(); while (view.firstChild) keep.appendChild(view.firstChild);
-      const full = view.classList.contains("full");
-      try { renderUtility(); } catch (err) { console.warn(err); }
-      const m = document.createElement("main"); while (view.firstChild) m.appendChild(view.firstChild);
-      view.appendChild(keep); view.classList.toggle("full", full);
       const u = document.createElement("div"); u.className = "under"; u.inert = true; u.setAttribute("aria-hidden", "true");
       u.style.paddingTop = (top?.offsetHeight || 0) + "px";
+      const m = document.createElement("main"); u.appendChild(m); document.body.insertBefore(u, SC);
+      if (to.startsWith("#mappa")) return u;   // la mappa non si prepara sotto: si vede lo sfondo
+      const kept = pages.get(to);
+      if (kept && kept.stamp === stampNow()) { pages.delete(to); m.appendChild(kept.frag); }
+      else {
+        const keep = document.createDocumentFragment(); while (view.firstChild) keep.appendChild(view.firstChild);
+        const full = view.classList.contains("full"), [tab, sub] = to.slice(1).split("/");
+        try { ({ oggi: renderOggi, giorni: () => renderGiorni(sub), luoghi: renderLuoghi, utility: () => renderUtility(sub) }[tab] || renderOggi)(); } catch (err) { console.warn(err); }
+        while (view.firstChild) m.appendChild(view.firstChild);
+        view.appendChild(keep); view.classList.toggle("full", full);
+      }
       m.style.transform = `translateY(${-(scrollMem[to] || 0)}px)`;
-      u.appendChild(m); document.body.insertBefore(u, SC);
       return u;
     }
     function paint(x) {
@@ -2748,7 +2782,7 @@
       if (top) { top.querySelector(".tb-l").style.opacity = top.querySelector(".ctitle").style.opacity = String(1 - Math.min(1, p * 1.6)); }
     }
     function reset() {
-      view.classList.remove("backswipe"); view.style.transition = view.style.transform = "";
+      view.classList.remove("backswipe"); view.style.transition = view.style.transform = ""; if (!sheetOpen()) SC.classList.remove("locked");
       if (top) top.querySelector(".tb-l").style.opacity = top.querySelector(".ctitle").style.opacity = "";
       under?.remove(); under = null; busy = false;
     }
@@ -2763,7 +2797,7 @@
       const t = e.touches[0], mx = t.clientX - x0, my = t.clientY - y0;
       if (on === null && (Math.abs(mx) > 6 || Math.abs(my) > 6)) {
         on = mx > Math.abs(my);
-        if (on) { under = buildUnder(backTarget()); view.classList.add("backswipe"); view.style.transition = "none"; }
+        if (on) { under = buildUnder(backTarget()); view.classList.add("backswipe"); view.style.transition = "none"; SC.classList.add("locked"); }   // niente scorrimento in verticale insieme
       }
       if (!on) { if (on === false) x0 = null; return; }
       e.preventDefault();
@@ -2785,10 +2819,10 @@
       buzz();
       settle(W(), () => {
         // la pagina di prima diventa quella vera senza ricostruirla: stessi elementi, stessa posizione
-        const m = under.firstChild, frag = document.createDocumentFragment(); while (m.firstChild) frag.appendChild(m.firstChild);
-        pages.set(backTarget(), { frag, stamp: stampNow() });
+        const to = backTarget(), m = under.firstChild, frag = document.createDocumentFragment(); while (m.firstChild) frag.appendChild(m.firstChild);
+        if (frag.firstChild) pages.set(to, { frag, stamp: stampNow() });
         backCommit = () => { reset(); };
-        go(backTarget());
+        go(to);
         setTimeout(() => { if (backCommit) { backCommit(); backCommit = null; } }, 900);   // rete di sicurezza
       });
     }
@@ -2821,7 +2855,7 @@
 
   // effetto pressione come nelle app native: compare solo quando è davvero un tocco, non quando il dito
   // appoggiato inizia a scorrere la pagina (con :active le card si "accendevano" anche scorrendo)
-  const PRESSABLE = ".doc, .ucard, .qa, .dchip, .chip, .mini, .prep, .mcard, .chapter, .lres button, .whos button, .who button, .addgrid button, .dayact > *, .iconbtn, .seg button, .card.pcard, .card.spesa, .nextstop .row, .gcard, .place, .btn, .urow, label.check, .phrase";
+  const PRESSABLE = ".fab, .doc, .ucard, .qa, .dchip, .chip, .mini, .prep, .mcard, .chapter, .lres button, .whos button, .who button, .addgrid button, .dayact > *, .iconbtn, .seg button, .card.pcard, .card.spesa, .nextstop .row, .gcard, .place, .btn, .urow, label.check, .phrase";
   let press = null;
   const unpress = (keep = 0) => { if (!press) return; clearTimeout(press.t); const el = press.el; press = null; setTimeout(() => el.classList.remove("pressed"), keep); };
   document.addEventListener("pointerdown", e => {
@@ -2843,6 +2877,7 @@
   function navKind(from, to) {
     const [ta, sa] = from.slice(1).split("/"), [tb, sb] = to.slice(1).split("/");
     if (tb === "mappa" || ta === "mappa") return "fade";
+    if (isSub(from) && to === subFrom) return "pop";
     if (ta !== tb) return "tab";
     if (tb === "giorni") { const a = DAYS.indexOf(sa || selDay), b = DAYS.indexOf(sb || selDay); return a === b ? "tab" : b > a ? "next" : "prev"; }
     if (!sa && sb) return "push";
@@ -2865,8 +2900,9 @@
     lastHash = to;
     view.classList.remove("enter", "nav-push", "nav-pop", "nav-next", "nav-prev", "nav-fade");
     const day = kind === "next" || kind === "prev", sx = day ? $("#strip")?.scrollLeft : null;
+    const back = kind === "tab" || kind === "pop";   // si torna dove si era: niente salto in cima prima di riposizionarsi
     const show = () => {
-      if (!to.startsWith("#mappa")) SC.scrollTop = 0;
+      if (!to.startsWith("#mappa") && !back) SC.scrollTop = 0;
       render();
       // cambio giorno: la fila dei giorni resta esattamente dov'era (i giorni non si spostano sotto il dito);
       // scorre solo se il giorno scelto è fuori vista, ad esempio con "Giorno N ›" o lo scorrimento sulla copertina
@@ -2877,7 +2913,7 @@
           const goal = l < st.scrollLeft ? l : r > st.scrollLeft ? r : null;
           if (goal != null) st.scrollTo({ left: goal, behavior: reduceMotion() ? "auto" : "smooth" }); }
       }
-      if (!to.startsWith("#mappa") && (kind === "tab" || kind === "pop")) restoreScroll(scrollMem[location.hash || "#oggi"] || 0);
+      if (!to.startsWith("#mappa") && back) restoreScroll(scrollMem[location.hash || "#oggi"] || 0);
       if (!restored) playIntro();
     };
     // come su iPhone: le schede in basso cambiano all'istante; entrare/uscire da una pagina (o passare al giorno dopo)

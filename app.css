@@ -1032,3 +1032,17 @@ html, body, .scroller { overscroll-behavior-x: none; }
 .under::after { content: ""; position: absolute; inset: 0; background: #000; opacity: var(--dim, .12); }
 #view.backswipe { position: relative; z-index: 1; background: var(--bg); will-change: transform;
   box-shadow: 0 100vh 0 var(--bg), -10px 0 28px rgba(20, 12, 6, .16); }
+
+/* Luoghi: con la ricerca o "vicino a me" si vede sempre l'elenco, il selettore foto/elenco si spegne */
+.seg.lview.off { opacity: .4; pointer-events: none; }
+
+/* Spese: pulsante + in basso a destra, sopra la barra delle schede */
+.fab { position: fixed; z-index: 31; right: max(16px, calc(50vw - 260px + 16px)); bottom: calc(var(--nav-h) + 22px + env(safe-area-inset-bottom));
+  display: flex; align-items: center; gap: 6px; height: 54px; padding: 0 22px 0 18px; border: 0; border-radius: 99px;
+  background: linear-gradient(135deg, var(--shu-2), var(--shu)); color: #fff; font: inherit; font-weight: 700; font-size: 1rem;
+  box-shadow: 0 10px 24px -6px rgba(212, 68, 47, .5), 0 2px 6px rgba(0, 0, 0, .12); transition: transform .15s; animation: fade .2s ease-out; }
+.fab[hidden] { display: none; }
+.fab svg.i { width: 22px; height: 22px; }
+.fab.pressed { transform: scale(.94); transition-duration: .1s; }
+body.kb .fab, body.on-map .fab { display: none; }
+body.has-fab .scroller { padding-bottom: calc(var(--nav-h) + 24px + 76px + env(safe-area-inset-bottom)); }
