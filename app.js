@@ -2,14 +2,14 @@
   "use strict";
 
   // ——— storage (protetto: in privato o con dati bloccati può fallire) ———
-  let dataVer = 0;
-  const UI_KEYS = new Set(["selDay", "lview", "mapMode", "notifyQ", "skipCode"]);   // solo preferenze di navigazione: non cambiano le pagine   // cresce a ogni modifica salvata: le pagine tenute in memoria più vecchie si ricostruiscono
+  let dataVer = 0;   // cresce a ogni modifica salvata: le pagine tenute in memoria più vecchie si ricostruiscono
+  const UI_KEYS = new Set(["selDay", "lview", "mapMode", "notifyQ", "skipCode", "lastPage"]);   // solo preferenze di navigazione: non cambiano le pagine
   const LS = {
     get(k, d) { try { const v = localStorage.getItem("jp27:" + k); return v ? JSON.parse(v) : d; } catch { return d; } },
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 95;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 96;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -349,6 +349,8 @@
     if (name === "luoghi") mergeCustom();
     remoteChanged();
   }
+  // codice appena rifiutato: torna nel campo (si corregge solo l'errore) finché l'app resta aperta, anche dopo il ricaricamento
+  let badCode = "", oldCode = false; try { badCode = sessionStorage.getItem("jp27:badCode") || ""; } catch {}
   function setSync(s, err) {
     syncStatus = s;
     if (s === "online") serverAt = Date.now();
@@ -361,6 +363,7 @@
     }
     if (err?.code === "permission-denied" && code) {   // codice sbagliato o regole non pubblicate
       toast("Codice del viaggio non valido");
+      badCode = code; try { sessionStorage.setItem("jp27:badCode", code); } catch {}
       code = ""; LS.set("code", ""); setTimeout(() => askWho(true), 400);
     }
     const el = $("#syncdot");
@@ -381,7 +384,7 @@
     if (!window.FIREBASE || !code || sync || syncStarting) return;
     syncStarting = true;
     if (await isOldCode(code)) {
-      syncStarting = false; code = ""; LS.set("code", ""); LS.set("skipCode", false);
+      syncStarting = false; code = ""; oldCode = true; LS.set("code", ""); LS.set("skipCode", false);
       toast("Il codice del viaggio è cambiato: inserisci quello nuovo");
       setTimeout(() => askWho(true), 600); render();
       return;
@@ -2646,7 +2649,8 @@
     openSheet(`
       <h2>${needCode ? "Benvenuti a bordo ✈️" : "Chi sei?"}</h2>
       <p class="lead">${needCode ? "Inserisci il codice del viaggio che vi siete passati: protegge programma, prenotazioni e spese." : "Così sappiamo chi ha fatto le modifiche."}</p>
-      ${needCode ? `<input type="text" id="tcode" placeholder="Codice del viaggio" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(code)}" style="font-weight:700;letter-spacing:.04em">` : ""}
+      ${needCode ? `<input type="text" id="tcode" placeholder="Codice del viaggio" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(code || badCode)}" style="font-weight:700;letter-spacing:.04em">
+        ${(badCode || oldCode) && !code ? `<p class="small" id="badcode" style="color:var(--shu);margin:8px 0 0">${icon("KeyRound")} ${badCode ? "Non è il codice giusto: controlla maiuscole, minuscole e simboli." : "Il codice del viaggio è cambiato: usa quello nuovo che vi siete passati."}</p>` : ""}` : ""}
       <div class="who">${T.viaggiatori.map(n => `<button data-who="${n}" class="${n === me ? "sel" : ""}"><span class="avatar" style="background:${AVATAR[n] || "#888"}">${n[0]}</span>${n}</button>`).join("")}</div>
       ${needCode ? `<div class="btns"><button class="btn ghost" data-close>Più tardi</button><button class="btn primary" id="enter">Entra</button></div>
         <p class="muted small" style="margin-top:12px">Senza codice l'app funziona lo stesso, ma solo su questo telefono e senza spese e prenotazioni condivise.</p>` : ""}`, el => {
@@ -2658,13 +2662,19 @@
         const c = $("#tcode", el).value.trim();   // il codice distingue maiuscole e minuscole
         if (!c) return toast("Scrivi il codice del viaggio");
         if (!pick) return toast("Scegli chi sei");
+        badCode = ""; oldCode = false; try { sessionStorage.removeItem("jp27:badCode"); } catch {}
         me = pick; LS.set("me", me);
         const changed = c !== code; code = c; LS.set("code", c);
         closeSheet();
         LS.set("skipCode", false);
         if (changed && sync) location.reload(); else { startSync(); toast(`Ciao ${me}! 👋`); render(); }
       });
-    }, () => { if (needCode && !code) { LS.set("skipCode", true); toast("Puoi inserire il codice quando vuoi da Utility"); } });
+    }, () => {
+      if (needCode && !code) {
+        if (pick && pick !== me) { me = pick; LS.set("me", me); render(); }   // il nome scelto resta anche con "Più tardi"
+        LS.set("skipCode", true); toast("Puoi inserire il codice quando vuoi da Utility");
+      }
+    });
   }
 
   // ——— orologi ———
@@ -2977,6 +2987,10 @@
   document.addEventListener("change", e => { if (e.target.matches?.('input[type="checkbox"]') && !e.target.closest(".haptic")) buzz(); });
   // ogni pagina ricorda dov'eri arrivato; entrare in una sottopagina scorre da destra, tornare da sinistra
   const scrollMem = {};
+  // riaperta dopo che iOS l'ha chiusa in sottofondo: torna alla pagina di prima se è passata meno di mezz'ora
+  // (dopo, si riparte da Oggi; un link o una notifica portano comunque dove dicono)
+  { const lp = LS.get("lastPage"); if ((location.hash || "#oggi") === "#oggi" && lp?.h && lp.h !== "#oggi" && Date.now() - lp.at < 30 * 60e3) history.replaceState(null, "", lp.h); }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") LS.set("lastPage", { h: lastHash, at: Date.now() }); });
   let lastHash = location.hash || "#oggi";
   function navKind(from, to) {
     const [ta, sa] = from.slice(1).split("/"), [tb, sb] = to.slice(1).split("/");
