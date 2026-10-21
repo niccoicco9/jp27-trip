@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 89;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 90;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -181,6 +181,13 @@
   const getDay = iso => (plan[iso] ||= { l: "", n: "", i: [] });
   const dayOf = id => DAYS.filter(d => plan[d]?.i?.includes(id));
   const short = d => fmtDay(d, { day: "numeric", month: "short" });
+  // titolo di un giorno senza nome: le zone delle tappe ("Tokyo", "Kyoto e Nara"); "Giorno libero" solo se è vuoto
+  function dayTitle(d) {
+    const day = plan[d]; if (day?.l) return day.l;
+    const ids = day?.i || []; if (!ids.length) return "Giorno libero";
+    const zs = [...new Set(ids.map(id => byId[id]?.z).filter(z => z && z !== "altre"))].map(z => zona[z].nome);
+    return zs.length ? zs.slice(0, 2).join(" e ") + (zs.length > 2 ? " e dintorni" : "") : `${ids.length} ${ids.length === 1 ? "tappa" : "tappe"}`;
+  }
   function dayZone(d) {
     const c = {}; for (const id of plan[d]?.i || []) { const z = byId[id]?.z; if (z) c[z] = (c[z] || 0) + 1; }
     return Object.entries(c).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
@@ -482,7 +489,7 @@
     if (!a || e.defaultPrevented || a.target || e.metaKey || e.ctrlKey) return;
     e.preventDefault(); go(a.getAttribute("href"));
   });
-  let sheetT = null, sheetVer = 0;
+  let sheetT = null, sheetVer = 0, sheetSnap = "";
   const sheetOpen = () => !sheet.hidden && !sheet.classList.contains("closing");
   // dentro una scheda già aperta: "push" (avanti, es. Modifica) o "pop" (indietro, es. Annulla/Salva) fanno scorrere il contenuto
   let sheetNav = "";
@@ -498,6 +505,16 @@
     lazyScan();
     sheetOnClose = onClose || null;
     onMount?.($("#sheet-body"));
+    sheetSnap = sheetFields();
+  }
+  // campi della scheda così come si è aperta: chiudendola (trascinando giù, toccando fuori, ✕ o Annulla) con qualcosa
+  // di scritto e non salvato si chiede prima di buttarlo, come fanno le schede di iOS. Salva chiude senza chiedere.
+  const sheetFields = () => $$("#sheet-body input:not([type=search]):not([type=file]), #sheet-body textarea, #sheet-body select")
+    .map(i => i.type === "checkbox" || i.type === "radio" ? i.checked : i.value).join("\u0001");
+  async function dismissSheet(v = 0) {
+    if (!sheetOpen()) return;
+    if (sheetFields() === sheetSnap) return closeSheet(false, false, v);
+    if (await ask({ title: "Ignorare le modifiche?", text: "Quello che hai scritto non è ancora salvato.", ok: "Ignora", danger: true })) closeSheet();
   }
   function sheetLayer(fromHistory) { closeSheet(false, fromHistory); }
   function closeSheet(instant, fromHistory, v = 0) {
@@ -521,7 +538,7 @@
     const a = document.activeElement;
     if (pendingRemote && !sheetOpen() && !typingNow()) { pendingRemote = false; rerender(); }
   }, 300));
-  sheet.addEventListener("click", e => { if (e.target.closest("[data-close]")) closeSheet(); });
+  sheet.addEventListener("click", e => { if (e.target.closest("[data-close]")) dismissSheet(); });
   document.addEventListener("keydown", e => { if (e.key === "Escape") { closeSheet(); hideBig(); } });
   // trascina giù per chiudere: dalla lineetta o da qualunque punto quando il contenuto è in cima;
   // basta anche un colpetto veloce verso il basso
@@ -542,7 +559,10 @@
     const finish = () => {
       if (y0 == null) return; y0 = null; mode = null;
       cancelAnimationFrame(raf); raf = 0; bg.style.transition = "";
-      if (dy > 110 || (v > .5 && dy > 16)) { buzz(); closeSheet(false, false, v); bg.style.opacity = "0"; return; }
+      if (dy > 110 || (v > .5 && dy > 16)) {
+        if (sheetFields() === sheetSnap) { buzz(); closeSheet(false, false, v); bg.style.opacity = "0"; return; }
+        dismissSheet();   // c'è qualcosa di scritto: la scheda torna su e chiede prima di buttarlo
+      }
       bg.style.opacity = "";
       sheetCard.style.transition = "transform .4s cubic-bezier(.32, .72, 0, 1)"; sheetCard.style.transform = "";
     };
@@ -853,7 +873,7 @@
     const tom = DAYS[dayIndex(today) + 1], td = tom && plan[tom], first = td?.i?.map(id => byId[id]).find(Boolean);
     return `<div class="card evening"><h3 style="margin:0">Com'è andata oggi</h3>
       <div class="stat"><div><b>${done.length}/${ids.length}</b><small>tappe</small></div><div><b>${km < 1 ? "–" : fmtKm(km)}</b><small>a piedi (stima)</small></div><div><b>${tot ? Math.round(tot) + " €" : "–"}</b><small>spesi oggi</small></div></div>
-      ${tom ? `<p class="small" style="margin:12px 0 0"><b>Domani</b> · ${esc(td?.l || "giornata libera")}${first ? ` · prima tappa ${esc(first.n)}${td.t?.[first.id] ? " alle " + esc(td.t[first.id]) : ""}` : ""}</p>` : `<p class="small" style="margin:12px 0 0"><b>Domani si torna a casa.</b> Buon viaggio! ✈️</p>`}</div>`;
+      ${tom ? `<p class="small" style="margin:12px 0 0"><b>Domani</b> · ${esc(td?.l || (td?.i?.length ? dayTitle(tom) : "giornata libera"))}${first ? ` · prima tappa ${esc(first.n)}${td.t?.[first.id] ? " alle " + esc(td.t[first.id]) : ""}` : ""}</p>` : `<p class="small" style="margin:12px 0 0"><b>Domani si torna a casa.</b> Buon viaggio! ✈️</p>`}</div>`;
   }
   // vicino a te: luoghi della lista entro 1,5 km (anche di altri giorni), su richiesta
   let nearPos = null;
@@ -904,7 +924,7 @@
       <div class="daystrip" id="strip">${DAYS.map((x, k) => { const z = dayZone(x), prev = k ? dayZone(DAYS[k - 1]) : null, move = z && prev && z !== prev; return `<a class="dchip${x === d ? " on" : ""}${x === today ? " today" : ""}" href="#giorni/${x}" style="--c:${z ? zona[z].colore : "var(--muted)"}" aria-label="Giorno ${k + 1}${z ? ", " + zona[z].nome : landsOn(x) ? ", arrivo" : flightOn(x) ? ", partenza" : ""}${move ? ", trasferimento" : ""}"><small>${fmtDay(x, { weekday: "short" }).replace(".", "")}</small><b>${fmtDay(x, { day: "numeric" })}</b><em>${move ? icon("TrainFront") : ""}${z ? ZSHORT[z] : landsOn(x) ? "arrivo" : flightOn(x) ? "partenza" : "libero"}</em></a>`; }).join("")}</div>
       <div class="daycover" id="cover">${first ? `<div class="ph" data-bg="${photoUrl(first.id, 960)}"></div>` : art()}
         <span class="dn">Giorno ${i + 1} / ${DAYS.length}</span>
-        <div class="dtxt"><div class="kicker">${fmtDay(d)}</div>${editMode ? `<input id="dlabel" value="${esc(day.l)}" placeholder="Dai un nome al giorno…" aria-label="Nome del giorno">` : `<div class="dtitle">${esc(day.l) || "Giorno libero"}</div>`}</div>
+        <div class="dtxt"><div class="kicker">${fmtDay(d)}</div>${editMode ? `<input id="dlabel" value="${esc(day.l)}" placeholder="Dai un nome al giorno…" aria-label="Nome del giorno">` : `<div class="dtitle">${esc(dayTitle(d))}</div>`}</div>
       </div>
       ${editMode ? `<textarea id="dnote" rows="2" placeholder="Nota del giorno (orari, treni, cose da ricordare)…" style="margin-bottom:14px">${esc(day.n || "")}</textarea>`
         : day.n ? `<div class="daynote">${icon("Sparkles")}<span>${esc(day.n)}</span></div>` : ""}
@@ -2742,7 +2762,10 @@
     view.classList.remove("full");
     document.body.classList.toggle("on-map", tab === "mappa");
     setHead();
-    tabLinks().forEach(a => a.classList.toggle("on", a.dataset.tab === tab));
+    // come su iOS: una pagina aperta da un'altra tab (es. Prenotazioni da Oggi) lascia accesa quella di partenza
+    const fromTab = isSub(key) && !isSub(subFrom) ? subFrom.slice(1).split("/")[0] : tab;
+    const navTab = TABS.some(t => t[0] === fromTab) ? fromTab : tab;
+    tabLinks().forEach(a => a.classList.toggle("on", a.dataset.tab === navTab));
     syncInd(!L.raf && L.x === 0);
     const kept = pages.get(key); pages.delete(key);
     restored = !!kept && kept.stamp === stampNow();
