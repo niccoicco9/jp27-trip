@@ -19,14 +19,16 @@
   --card-2: #faf7f2;
   --ink: #1c1915;
   --ink-2: #4a443c;
-  --muted: #857b6e;
+  --muted: #73695d;   /* contrasto ≥ 4,5 anche sullo sfondo crema */
   --line: rgba(60, 45, 25, .10);
-  --shu: #d4442f;
+  --shu: #c63d29;
   --shu-2: #ef6a4f;
+  --btn-a: #d24a33; --btn-b: #b93723;   /* pulsanti pieni: testo bianco leggibile (≥ 4,4) */
+  --seg-on: var(--card);   /* segmento scelto nei selettori: in scuro serve più chiaro del contenitore */
   --shu-soft: rgba(212, 68, 47, .10);
   --ai: #2b4c7e;
   --gold: #c89b3c;
-  --ok: #4f8a3c;
+  --ok: #427632;
   --warn-bg: #fdf0d5; --warn-fg: #8a5a00;
   --glass: rgba(255, 255, 255, .72);
   --shadow-s: 0 1px 2px rgba(40, 25, 10, .05), 0 2px 8px rgba(40, 25, 10, .05);
@@ -44,7 +46,7 @@
   :root:not([data-theme="light"]) {
     --bg: #0e0d0c; --bg-2: #171512; --card: #1a1815; --card-2: #22201b; --ink: #f4efe7; --ink-2: #d2cabd; --muted: #958b7d;
     --line: rgba(255, 240, 220, .09); --shu: #f0644c; --shu-2: #ff8a6b; --shu-soft: rgba(240, 100, 76, .14); --ai: #8fb3e8; --gold: #e0b75a; --ok: #8cc36a;
-    --warn-bg: rgba(224, 183, 90, .14); --warn-fg: #e9c06a; --glass: rgba(26, 24, 21, .72);
+    --warn-bg: rgba(224, 183, 90, .14); --warn-fg: #e9c06a; --glass: rgba(26, 24, 21, .72); --seg-on: #3d3831;
     --shadow-s: 0 1px 2px rgba(0,0,0,.4); --shadow: 0 2px 6px rgba(0,0,0,.3), 0 12px 32px rgba(0,0,0,.35); --shadow-l: 0 10px 40px rgba(0,0,0,.6);
     color-scheme: dark;
   }
@@ -52,7 +54,7 @@
 :root[data-theme="dark"] {
   --bg: #0e0d0c; --bg-2: #171512; --card: #1a1815; --card-2: #22201b; --ink: #f4efe7; --ink-2: #d2cabd; --muted: #958b7d;
   --line: rgba(255, 240, 220, .09); --shu: #f0644c; --shu-2: #ff8a6b; --shu-soft: rgba(240, 100, 76, .14); --ai: #8fb3e8; --gold: #e0b75a; --ok: #8cc36a;
-  --warn-bg: rgba(224, 183, 90, .14); --warn-fg: #e9c06a; --glass: rgba(26, 24, 21, .72);
+  --warn-bg: rgba(224, 183, 90, .14); --warn-fg: #e9c06a; --glass: rgba(26, 24, 21, .72); --seg-on: #3d3831;
   --shadow-s: 0 1px 2px rgba(0,0,0,.4); --shadow: 0 2px 6px rgba(0,0,0,.3), 0 12px 32px rgba(0,0,0,.35); --shadow-l: 0 10px 40px rgba(0,0,0,.6);
   color-scheme: dark;
 }
@@ -239,7 +241,7 @@ main.enter { animation: fade .18s ease-out; }
   border-radius: 14px; border: 1px solid var(--line); background: var(--card); font-weight: 600; font-size: .92rem; text-decoration: none; color: var(--ink);
   box-shadow: var(--shadow-s); transition: transform .15s, background .2s;
 }
-.btn.primary { background: linear-gradient(135deg, var(--shu-2), var(--shu)); border-color: transparent; color: #fff; box-shadow: 0 6px 16px rgba(212, 68, 47, .3); }
+.btn.primary { background: linear-gradient(135deg, var(--btn-a), var(--btn-b)); border-color: transparent; color: #fff; box-shadow: 0 6px 16px rgba(212, 68, 47, .3); }
 .btn.dark { background: var(--ink); color: var(--bg); border-color: transparent; }
 .btn.small { min-height: 40px; padding: 6px 12px; font-size: .82rem; border-radius: 12px; }
 .btn.ghost { background: transparent; box-shadow: none; }
@@ -513,6 +515,7 @@ table.budget td:last-child { text-align: right; font-variant-numeric: tabular-nu
 .info { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; font-size: .88rem; margin: 14px 0 0; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px; }
 .info dt { color: var(--muted); font-weight: 600; }
 .info dd { margin: 0; }
+.info dd a { display: inline-block; padding: 6px 0; margin: -6px 0; }   /* "Giorno N": più facile da toccare, stessa riga */
 .note { background: var(--warn-bg); color: var(--warn-fg); border-radius: 14px; padding: 10px 12px; font-size: .88rem; margin: 10px 0; display: flex; gap: 8px; }
 @keyframes up { from { transform: translateY(60px); opacity: 0; } }
 @keyframes fade { from { opacity: 0; } }
@@ -560,7 +563,7 @@ a.mini:not(.hotel) b { font-size: .8rem; color: var(--shu); }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .seg { display: inline-flex; padding: 4px; background: var(--card-2); border: 1px solid var(--line); border-radius: 14px; gap: 2px; }
 .seg button { border: none; background: transparent; min-width: 46px; min-height: 38px; border-radius: 10px; font-weight: 800; font-size: 1.05rem; color: var(--muted); }
-.seg button.on { background: var(--card); color: var(--ink); box-shadow: var(--shadow-s); }
+.seg button.on { background: var(--seg-on); color: var(--ink); box-shadow: var(--shadow-s); }
 .whos { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .whos button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 2px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); font-size: .74rem; font-weight: 700; }
 .whos button.sel, .who button.sel { border-color: var(--shu); box-shadow: 0 0 0 2px var(--shu-soft); }
@@ -1039,10 +1042,16 @@ html, body, .scroller { overscroll-behavior-x: none; }
 /* Spese: pulsante + in basso a destra, sopra la barra delle schede */
 .fab { position: fixed; z-index: 31; right: max(16px, calc(50vw - 260px + 16px)); bottom: calc(var(--nav-h) + 22px + env(safe-area-inset-bottom));
   display: flex; align-items: center; gap: 6px; height: 54px; padding: 0 22px 0 18px; border: 0; border-radius: 99px;
-  background: linear-gradient(135deg, var(--shu-2), var(--shu)); color: #fff; font: inherit; font-weight: 700; font-size: 1rem;
+  background: linear-gradient(135deg, var(--btn-a), var(--btn-b)); color: #fff; font: inherit; font-weight: 700; font-size: 1rem;
   box-shadow: 0 10px 24px -6px rgba(212, 68, 47, .5), 0 2px 6px rgba(0, 0, 0, .12); transition: transform .15s; animation: fade .2s ease-out; }
 .fab[hidden] { display: none; }
 .fab svg.i { width: 22px; height: 22px; }
 .fab.pressed { transform: scale(.94); transition-duration: .1s; }
 body.kb .fab, body.on-map .fab { display: none; }
 body.has-fab .scroller { padding-bottom: calc(var(--nav-h) + 24px + 76px + env(safe-area-inset-bottom)); }
+
+/* area di tocco di almeno 44 pt anche per i controlli piccoli: un bordo invisibile attorno, l'aspetto non cambia */
+.tbplus, .iconbtn, .seg button, .tbback { position: relative; }
+.tbplus::after, .iconbtn::after, .sheet-x::after { content: ""; position: absolute; inset: -6px; }
+.seg button::after { content: ""; position: absolute; inset: -8px 0; }
+.tbback::after { content: ""; position: absolute; inset: -3px -4px; }

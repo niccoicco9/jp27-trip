@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 93;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 94;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -731,7 +731,7 @@
     const arr = lists.prenotazioni.filter(p => p.tipo === "volo" && p.al === d && p.dal !== d);   // atterraggi di oggi (partiti ieri)
     const noHotel = !h && d !== T.fine && !inFlight(d) ? `<a class="mini" href="#utility/prenotazioni">${icon("BedDouble")} <span class="grow">Nessun hotel per questa notte</span><b>Aggiungi</b></a>` : "";
     return `${arr.map(p => `<div class="mini" data-pren="${p.id}"><span style="color:${PTYPE.volo[1]}">${icon("Plane")}</span><span class="grow"><small>Atterraggio${p.oraA ? " " + esc(p.oraA) : ""}${p.a ? " · " + esc(p.a) : ""}</small><b>${esc(p.titolo)}</b></span></div>`).join("")}${noHotel}${h ? `<div class="mini hotel" data-pren="${h.id}">${icon("BedDouble")}<span class="grow"><small>${ci.includes(h) ? "Check-in" + (h.ora ? " " + esc(h.ora) : "") : "Notte"}</small><b>${esc(h.titolo)}</b></span>
-        ${docsOf(h.id).length ? `<button class="btn small" data-doc="${docsOf(h.id)[0].id}" aria-label="Apri il documento">${icon("Paperclip")}</button>` : ""}<a class="btn small primary" href="${gmTo(addrQ(h))}" target="_blank" rel="noopener">${icon("Navigation")}</a><button class="btn small" data-taxi="${h.id}" aria-label="Mostra al tassista">${icon("CarTaxiFront")}</button></div>` : ""}
+        ${docsOf(h.id).length ? `<button class="btn small" data-doc="${docsOf(h.id)[0].id}" aria-label="Apri il documento">${icon("Paperclip")}</button>` : ""}<a class="btn small primary" href="${gmTo(addrQ(h))}" target="_blank" rel="noopener" aria-label="Portami all'hotel">${icon("Navigation")}</a><button class="btn small" data-taxi="${h.id}" aria-label="Mostra al tassista">${icon("CarTaxiFront")}</button></div>` : ""}
       ${bs.map(p => { const [ic, col] = PTYPE[p.tipo] || PTYPE.altro; return `<div class="mini" data-pren="${p.id}"><span style="color:${col}">${icon(ic)}</span><span class="grow"><small>${p.ora ? esc(p.ora) : "Prenotato"}${p.tipo === "volo" && p.oraA ? ` → arrivo ${p.al && p.al !== p.dal ? fmtDay(p.al, { weekday: "short", day: "numeric" }) + " " : ""}${esc(p.oraA)}` : ""}</small><b>${esc(p.titolo)}</b></span>${docsOf(p.id).length ? `<button class="btn small" data-doc="${docsOf(p.id)[0].id}" aria-label="Apri il documento">${icon("Paperclip")}</button>` : ""}${p.link ? `<a class="btn small" href="${esc(p.link)}" target="_blank" rel="noopener">${icon("Link")}</a>` : ""}</div>`; }).join("")}`;
   }
   function oggiPren(today, before, after) {
@@ -2623,7 +2623,7 @@
   }
 
   // ——— chi sei? ———
-  const AVATAR = { "Niccolò": "#2b4c7e", "Antonella": "#c0577a", "Miriam": "#1f9488", "Paolo": "#d9822b" };
+  const AVATAR = { "Niccolò": "#2b4c7e", "Antonella": "#b44d6f", "Miriam": "#1b8378", "Paolo": "#b5671c" };   // abbastanza scuri per l'iniziale bianca
   // Accesso: codice segreto del viaggio (protegge i dati condivisi) + chi sei.
   function askWho(needCode = !code) {
     let pick = me;
