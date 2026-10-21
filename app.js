@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 92;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 93;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -515,10 +515,12 @@
   // [data-unsaved]: cose già fatte nella scheda che andrebbero perse anche loro (es. documenti allegati a una prenotazione nuova)
   const sheetFields = () => $$("#sheet-body input:not([type=search]):not([type=file]), #sheet-body textarea, #sheet-body select, #sheet-body [data-unsaved]")
     .map(i => i.dataset.unsaved ?? (i.type === "checkbox" || i.type === "radio" ? i.checked : i.value)).join("\u0001");
+  // true se si può lasciare la scheda: niente di modificato, oppure si è scelto di ignorarlo
+  const canLeave = async () => sheetFields() === sheetSnap || await ask({ title: "Ignorare le modifiche?", text: "Quello che hai scritto non è ancora salvato.", ok: "Ignora", danger: true });
   async function dismissSheet(v = 0) {
     if (!sheetOpen()) return;
     if (sheetFields() === sheetSnap) return closeSheet(false, false, v);
-    if (await ask({ title: "Ignorare le modifiche?", text: "Quello che hai scritto non è ancora salvato.", ok: "Ignora", danger: true })) closeSheet();
+    if (await canLeave()) closeSheet();
   }
   function sheetLayer(fromHistory) { closeSheet(false, fromHistory); }
   function closeSheet(instant, fromHistory, v = 0) {
@@ -2125,7 +2127,7 @@
       <label class="fl"><span>Descrizione</span><textarea id="b-d" rows="4" placeholder="Perché andarci, cosa vedere, orari…">${esc(p.d || "")}</textarea></label>
       <div class="grid2">
         <label class="fl"><span>Durata</span><input id="b-dur" value="${esc(p.dur || "")}" placeholder="es. 1 ora" autocomplete="off"></label>
-        <label class="fl"><span>Costo a persona (€)</span><input id="b-eur" inputmode="decimal" value="${p.eur ?? ""}" placeholder="Facoltativo"></label>
+        <label class="fl"><span>Costo a persona (€)</span><input id="b-eur" inputmode="decimal" value="${p.eur ? String(p.eur).replace(".", ",") : ""}" placeholder="Facoltativo"></label>
       </div>
       <label class="check" style="border:none;padding:0 0 12px"><input type="checkbox" id="b-pren" ${p.pren ? "checked" : ""}><span>Da prenotare in anticipo</span></label>
       ${ed ? `<button class="btn" id="b-orig" style="width:100%;margin-bottom:10px">${icon("Undo2")} Ripristina com'era su Wanderlog</button>` : ""}
@@ -2142,7 +2144,7 @@
         else if (ed) delItem("luoghi", ed.id);
         mergeCustom(); rerender(); toast("Salvato ✓"); inSheet("pop", () => openPlace(p.id));
       };
-      $("#b-cancel", el).onclick = () => inSheet("pop", () => openPlace(p.id));
+      $("#b-cancel", el).onclick = async () => { if (await canLeave()) inSheet("pop", () => openPlace(p.id)); };
       $("#b-orig", el)?.addEventListener("click", () => { delItem("luoghi", ed.id); mergeCustom(); rerender(); toast("Ripristinato com'era su Wanderlog"); inSheet("pop", () => openPlace(p.id)); });
     });
   }
@@ -2152,8 +2154,11 @@
       gid: "", sel: isPhotoUrl(p.img?.u) ? "cur" : -1, picked: isPhotoUrl(p.img?.u) };   // sel: "cur" = foto già salvata, numero = proposta, -1 = nessuna
     let cands = [], phTok = 0, phT;
     const thumbOf = c => c.src === "g" ? c.thumb : c.u.replace(/\/\d+px-/, "/330px-");
+    // posizione, categoria, zona e foto scelta a mano contano come modifiche da non perdere chiudendo (quella proposta in automatico no)
+    const mark = el => { const m = $("#l-st", el); if (m) m.dataset.unsaved = JSON.stringify([st.c, st.z, st.lat, st.lng, st.picked ? st.sel : null]); };
     const drawPh = el => {
       const box = $("#l-ph", el); if (!box) return;
+      mark(el);
       const btn = (k, src) => `<button type="button" class="lphb${st.sel === k ? " on" : ""}" data-ph="${k}"><img src="${esc(src)}" alt="" decoding="async"></button>`;
       box.innerHTML = (isPhotoUrl(p.img?.u) ? btn("cur", photoUrl(p.id, 330) || p.img.u) : "")
         + cands.map((c, k) => btn(k, thumbOf(c))).join("")
@@ -2177,6 +2182,7 @@
       }, 500);
     };
     const draw = el => {
+      mark(el);
       $$("[data-lc]", el).forEach(b => b.classList.toggle("on", b.dataset.lc === st.c));
       $$("[data-lz]", el).forEach(b => b.classList.toggle("on", b.dataset.lz === st.z));
       const pos = $("#l-pos", el);
@@ -2197,7 +2203,7 @@
         <div class="searchbox">${icon("Search")}<input type="search" id="l-q" placeholder="es. Ichiran Shibuya, Nishiki Market…" value="${esc(isNew ? p.n || "" : "")}" autocomplete="off" enterkeyhint="search"></div>
         <div id="l-res" class="lres"></div>
         <div class="row" style="gap:8px;margin-top:8px"><button class="btn small" id="l-gps">${icon("LocateFixed")} Sono qui</button><button class="btn small" id="l-link">${icon("Link")} Incolla link Maps</button></div>
-        <div id="l-pos" class="lpos"></div>
+        <div id="l-pos" class="lpos"></div><i id="l-st" hidden></i>
       </div>
       <div class="fl"><span>Foto</span><div id="l-ph" class="lph"></div><small id="l-phn" class="muted small"></small></div>
       <label class="fl"><span>Nome</span><input id="l-n" value="${esc(p.n || "")}" placeholder="Come lo chiamate voi" autocomplete="off"></label>
@@ -2207,7 +2213,7 @@
       <label class="fl"><span>Descrizione / note</span><textarea id="l-d" rows="2" placeholder="Perché andarci, cosa ordinare, orari…">${esc(p.d || "")}</textarea></label>
       <div class="grid2">
         <label class="fl"><span>Durata</span><input id="l-dur" value="${esc(p.dur || "")}" placeholder="es. 1 ora" autocomplete="off"></label>
-        <label class="fl"><span>Costo a persona (€)</span><input id="l-eur" inputmode="decimal" value="${p.eur ?? ""}" placeholder="Facoltativo"></label>
+        <label class="fl"><span>Costo a persona (€)</span><input id="l-eur" inputmode="decimal" value="${p.eur ? String(p.eur).replace(".", ",") : ""}" placeholder="Facoltativo"></label>
       </div>
       <label class="check" style="border:none;padding:0 0 12px"><input type="checkbox" id="l-pren" ${st.pren ? "checked" : ""}><span>Da prenotare in anticipo</span></label>
       ${isNew ? "" : `<button class="btn" id="l-del" style="width:100%;margin-bottom:10px;color:var(--shu)">${icon("Trash2")} Elimina luogo</button>`}
@@ -2278,7 +2284,7 @@
         else if (isNew || fromPlace) { rerender(); inSheet("pop", () => openPlace(saved.id)); }
         else { closeSheet(); rerender(); }
       };
-      $("#l-cancel", el)?.addEventListener("click", () => inSheet("pop", () => openPlace(p.id)));
+      $("#l-cancel", el)?.addEventListener("click", async () => { if (await canLeave()) inSheet("pop", () => openPlace(p.id)); });
       $("#l-del", el)?.addEventListener("click", () => deletePlace(byId[p.id] || { ...p, mine: true }));
     });
   }
