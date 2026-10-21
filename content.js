@@ -132,7 +132,7 @@ window.GUIDE = {
     <ol><li>Apri questo sito con <b>Safari</b></li><li>Tocca <b>Condividi</b> (il quadrato con la freccia)</li><li><b>Aggiungi alla schermata Home</b></li></ol>
     <h3>Android</h3>
     <ol><li>Apri il sito con <b>Chrome</b></li><li>Menu ⋮ → <b>Installa app</b> (oppure <i>Aggiungi a schermata Home</i>)</li></ol>
-    <p>Dopo la prima apertura online, programma, luoghi, frasi e guide funzionano anche <b>offline</b>. La mappa e il meteo richiedono internet.</p>` },
+    <p>Dopo la prima apertura online, programma, luoghi, frasi e guide funzionano anche <b>offline</b>. Anche la mappa, se prima scaricate le zone da <a href="#utility/mappe">Mappe offline</a>. Il meteo invece richiede internet.</p>` },
 };
 
 window.CHECKLIST = [

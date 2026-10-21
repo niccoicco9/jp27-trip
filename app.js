@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 90;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 91;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -509,8 +509,9 @@
   }
   // campi della scheda così come si è aperta: chiudendola (trascinando giù, toccando fuori, ✕ o Annulla) con qualcosa
   // di scritto e non salvato si chiede prima di buttarlo, come fanno le schede di iOS. Salva chiude senza chiedere.
-  const sheetFields = () => $$("#sheet-body input:not([type=search]):not([type=file]), #sheet-body textarea, #sheet-body select")
-    .map(i => i.type === "checkbox" || i.type === "radio" ? i.checked : i.value).join("\u0001");
+  // [data-unsaved]: cose già fatte nella scheda che andrebbero perse anche loro (es. documenti allegati a una prenotazione nuova)
+  const sheetFields = () => $$("#sheet-body input:not([type=search]):not([type=file]), #sheet-body textarea, #sheet-body select, #sheet-body [data-unsaved]")
+    .map(i => i.dataset.unsaved ?? (i.type === "checkbox" || i.type === "radio" ? i.checked : i.value)).join("\u0001");
   async function dismissSheet(v = 0) {
     if (!sheetOpen()) return;
     if (sheetFields() === sheetSnap) return closeSheet(false, false, v);
@@ -686,15 +687,16 @@
       ${p.gone ? `<button class="btn primary" id="restp" style="width:100%;margin-top:16px">${icon("Undo2")} Ripristina il luogo</button>`
         : `<button class="btn" id="delp" style="width:100%;margin-top:16px;color:var(--shu)">${icon("Trash2")} Elimina luogo</button>`}
     `, el => {
+      const again = () => { const y = sheetCard.scrollTop; openPlace(id); sheetCard.scrollTop = y; };   // ridisegna la scheda senza tornare in cima
       $("#delp", el)?.addEventListener("click", () => deletePlace(p));
       $("#restp", el)?.addEventListener("click", () => { delItem("luoghi", "h" + id); toast("Luogo ripristinato"); closeSheet(); rerender(); });
-      $("#bk", el)?.addEventListener("change", e => { e.target.checked ? booked.add(id) : booked.delete(id); savePlan(); openPlace(id); });
+      $("#bk", el)?.addEventListener("change", e => { e.target.checked ? booked.add(id) : booked.delete(id); savePlan(); again(); });
       $("#editl", el)?.addEventListener("click", () => inSheet("push", () => p.mine ? editLuogo(lists.luoghi.find(x => x.id === id) || p, null, true) : editBase(p)));
       if ($("#showjp", el)) $("#showjp", el).onclick = () => showBig(p.jp, `${esc(p.n)}<br><span class="jp" style="font-size:1.3rem;color:var(--ink)">ここに行きたいです</span><br><small>"Vorrei andare qui"</small>`);
       $("#onmap", el).onclick = () => { mapFocus = id; go("#mappa"); };
       if ($("#addday", el)) $("#addday", el).onchange = e => {
         const d = e.target.value; if (!d) return;
-        getDay(d).i.push(id); savePlan(); toast(closedOn(p, d) ? `Attenzione: quel giorno è chiuso (${p.chiuso})` : `Aggiunto al giorno ${dayIndex(d) + 1}`); openPlace(id);
+        getDay(d).i.push(id); savePlan(); toast(closedOn(p, d) ? `Attenzione: quel giorno è chiuso (${p.chiuso})` : `Aggiunto al giorno ${dayIndex(d) + 1}`); again();
       };
     }, rerender);
   }
@@ -1699,7 +1701,7 @@
         ${UGROUPS.map(([g, keys]) => `<h3 class="ugroup">${g}</h3><div class="card ulist">${UTIL.filter(u => keys.includes(u[0]) || (g === "Guide" && !UTOP.includes(u[0]) && !UGROUPS.some(([, ks]) => ks.includes(u[0])))).map(([k, ic, , t, s]) => `<a class="urow" href="#utility/${k}"><span class="uic">${icon(ic)}</span><span class="grow"><b>${t}</b>${s ? `<small>${s}</small>` : ""}</span>${icon("ChevronRight")}</a>`).join("")}</div>`).join("")}
         <h3 class="ugroup">Impostazioni</h3>
         <div class="card row"><div class="grow"><b>Accesso</b><div class="muted small">${me ? esc(me) : "Nome non scelto"} · ${code ? "dati condivisi attivi" : "codice del viaggio non inserito"}</div></div><button class="btn small${code ? "" : " primary"}" id="whoami">${icon(code ? "UserRound" : "KeyRound")} ${code ? "Cambia" : "Inserisci"}</button></div>`;
-      $("#whoami").onclick = askWho;
+      $("#whoami").onclick = () => askWho();   // senza argomenti: chiede il codice solo se manca
       view.insertAdjacentHTML("beforeend", `<div class="card row"><div class="grow"><b>Tema</b><div class="muted small">Auto segue l'iPhone</div></div>
         <div class="seg">${[["", "Auto"], ["light", "Chiaro"], ["dark", "Scuro"]].map(([k, t]) => `<button data-theme="${k}" class="${theme === k ? "on" : ""}">${t}</button>`).join("")}</div></div>`);
       $$("[data-theme]", view).forEach(b => b.onclick = () => { buzz(); setTheme(b.dataset.theme); });
@@ -1746,17 +1748,18 @@
     const st = LS.get("rate", { r: 170, d: null });
     view.innerHTML = `${back}<h2>Yen ↔ Euro</h2><p class="lead" id="rate"></p>
       <div class="card">
-        <div class="conv"><div><label for="jpy">Yen</label><input type="number" inputmode="decimal" id="jpy" value="1000"></div><span class="muted" style="padding-top:18px">=</span><div><label for="eur">Euro</label><input type="number" inputmode="decimal" id="eur"></div></div>
+        <div class="conv"><div><label for="jpy">Yen</label><input inputmode="decimal" id="jpy" value="1.000" autocomplete="off"></div><span class="muted" style="padding-top:18px">=</span><div><label for="eur">Euro</label><input inputmode="decimal" id="eur" autocomplete="off"></div></div>
         <div class="qchips">${[100, 500, 1000, 3000, 5000, 10000, 30000].map(v => `<button class="chip" data-y="${v}">${fmtInt(v)} ¥</button>`).join("")}</div>
       </div>
       <div class="card small"><b>A occhio:</b> 1.000 ¥ ≈ <span id="k">${(1000 / st.r).toFixed(2).replace(".", ",")}</span> €. Un pasto in un ristorantino costa 1.000–1.500 ¥, un caffè al konbini 150 ¥ e una corsa in metro 180–300 ¥.</div>`;
     let rate = st.r;
     const jpy = $("#jpy"), eur = $("#eur");
     const showRate = d => { $("#rate").textContent = `1 € = ${rate.toFixed(2).replace(".", ",")} ¥ · ${d ? "aggiornato al " + new Date(d).toLocaleDateString("it-IT") : "tasso indicativo (offline)"}`; $("#k").textContent = (1000 / rate).toFixed(2).replace(".", ","); };
-    const fromY = () => eur.value = jpy.value ? (jpy.value / rate).toFixed(2) : "";
-    const fromE = () => jpy.value = eur.value ? Math.round(eur.value * rate) : "";
+    // scritti come in Italia: 1.000 ¥ e 5,64 € (si legge anche 1000 e 5.64)
+    const fromY = () => { const y = parseNum(jpy.value, true); eur.value = y >= 0 ? (y / rate).toFixed(2).replace(".", ",") : ""; };
+    const fromE = () => { const e = parseNum(eur.value); jpy.value = e >= 0 ? fmtInt(e * rate) : ""; };
     jpy.oninput = fromY; eur.oninput = fromE;
-    $$("[data-y]").forEach(b => b.onclick = () => { jpy.value = b.dataset.y; fromY(); });
+    $$("[data-y]").forEach(b => b.onclick = () => { jpy.value = fmtInt(b.dataset.y); fromY(); });
     fromY(); showRate(st.d);
     if (!st.d || Date.now() - new Date(st.d) > 12 * 3600e3) {
       fetch("https://api.frankfurter.dev/v1/latest?base=EUR&symbols=JPY").then(r => r.json()).then(j => {
@@ -1777,7 +1780,7 @@
       <div class="card"><h3 style="margin-top:0">Per zona</h3>${perZ.map(([z, v]) => `<div style="margin-bottom:12px"><div class="row small"><span class="dot" style="background:${z.colore}"></span><span class="grow">${z.nome}</span><b>${eur(v)}</b></div><div class="bar"><i style="width:${v / max * 100}%;background:${z.colore}"></i></div></div>`).join("")}</div>
       <div class="card"><h3 style="margin-top:0">Dettaglio</h3><table class="budget">${act.sort((a, b) => b.eur - a.eur).map(p => `<tr data-place="${p.id}" style="cursor:pointer"><td>${esc(p.n)} <span class="muted small">· ${zona[p.z].nome}</span></td><td>${eur(p.eur)}</td></tr>`).join("")}</table>
       ${out.length ? `<h3>Scartati</h3><table class="budget">${out.map(p => `<tr class="muted"><td>${esc(p.n)}</td><td>${eur(p.eur)}</td></tr>`).join("")}</table>` : ""}</div>
-      <p class="muted small">Le spese condivise tra le due coppie (chi ha pagato cosa) arriveranno nella prossima versione.</p>`;
+      <p class="muted small">Quello che spendete davvero, e chi deve quanto a chi, è in <a href="#utility/spese">Spese</a>.</p>`;
   }
 
   function renderChecklist(back) {
@@ -1988,7 +1991,7 @@
       <div class="btns">${isNew ? `<button class="btn" data-close>Annulla</button>` : `<button class="btn" id="p-del" style="color:var(--shu)">${icon("Trash2")} Elimina</button>`}<button class="btn primary" id="p-save">Salva</button></div>
     `, el => {
       const v = id => $("#" + id, el)?.value.trim() || "";
-      const drawDocs = () => { const box = $("#p-docs", el); if (box) box.innerHTML = docsOf(pid).map(a => `<div class="docrow">${docBtn(a)}<button type="button" class="iconbtn danger" data-deldoc="${a.id}" aria-label="Elimina il documento">${icon("Trash2")}</button></div>`).join(""); };
+      const drawDocs = () => { const box = $("#p-docs", el); if (box) box.innerHTML = docsOf(pid).map(a => `<div class="docrow"${isNew ? ` data-unsaved="${a.id}"` : ""}>${docBtn(a)}<button type="button" class="iconbtn danger" data-deldoc="${a.id}" aria-label="Elimina il documento">${icon("Trash2")}</button></div>`).join(""); };
       drawDocs();
       $("#p-docs", el)?.addEventListener("click", e => {
         const b = e.target.closest("[data-deldoc]"); if (!b) return;
@@ -2015,7 +2018,8 @@
         if (isNew) notifyOthers("pren", stored);
         if (t === "hotel" && (item.jp !== p.jp || item.indirizzo !== p.indirizzo || item.titolo !== p.titolo || !p.lat)) geocodeHotel(stored);
         if (item.luogo && !booked.has(item.luogo)) { booked.add(item.luogo); savePlan(); }   // biglietto preso = "prenotato" spuntato
-        saved = true; closeSheet(); toast("Salvato ✓"); rerender();
+        const clash = t === "hotel" && lists.prenotazioni.find(o => o.tipo === "hotel" && o.id !== pid && o.dal < item.al && item.dal < (o.al || o.dal));
+        saved = true; closeSheet(); toast(clash ? `Salvato · attenzione, si sovrappone a ${clash.titolo}` : "Salvato ✓"); rerender();
       };
       $("#p-del", el)?.addEventListener("click", () => {
         const old = { ...p }; let back = false; saved = true;
@@ -2399,16 +2403,17 @@
       $$("[data-per]", el).forEach(b => b.classList.toggle("sel", st.perChi.includes(b.dataset.per)));
       $$("[data-grp]", el).forEach(b => { const g = b.dataset.grp === "all" ? T.viaggiatori : COPPIE[+b.dataset.grp]; b.classList.toggle("on", g.length === st.perChi.length && g.every(n => st.perChi.includes(n))); });
       $$("[data-cat]", el).forEach(b => b.classList.toggle("on", b.dataset.cat === st.cat));
+      $("#s-st", el).dataset.unsaved = JSON.stringify(st);   // anche i pulsanti contano come modifiche da non perdere chiudendo
       const imp = parseNum($("#s-imp", el).value, st.valuta === "JPY") || 0;
       $("#s-conv", el).textContent = imp ? (st.valuta === "JPY" ? `≈ ${eurF(imp / rate())}` : `≈ ${fmtInt(imp * rate())} ¥`) + (st.perChi.length ? ` · ${eurF((st.valuta === "JPY" ? imp / rate() : imp) / st.perChi.length)} a testa` : "") : "";
     };
     openSheet(`<div class="ttl"><span class="pic" style="background:${s.cat === "rimborso" ? "var(--ok)" : "#7b4fa0"}">${icon(s.cat === "rimborso" ? "HandCoins" : "Receipt")}</span><h2>${isNew ? (s.cat === "rimborso" ? "Rimborso" : "Nuova spesa") : "Modifica spesa"}</h2></div>
       <label class="fl"><span>Descrizione</span><input id="s-desc" value="${esc(s.desc || "")}" placeholder="es. Cena izakaya" autocomplete="off"></label>
       <div class="grid2" style="grid-template-columns:1fr auto;align-items:end">
-        <label class="fl"><span>Importo</span><input id="s-imp" inputmode="decimal" value="${s.importo ?? ""}" placeholder="0" style="font-size:1.3rem;font-weight:800"></label>
+        <label class="fl"><span>Importo</span><input id="s-imp" inputmode="decimal" value="${s.importo == null ? "" : String(s.importo).replace(".", ",")}" placeholder="0" style="font-size:1.3rem;font-weight:800"></label>
         <div class="seg" style="margin-bottom:12px"><button data-val="JPY">¥</button><button data-val="EUR">€</button></div>
       </div>
-      <p class="small muted" id="s-conv" style="margin:-4px 0 10px"></p>
+      <p class="small muted" id="s-conv" style="margin:-4px 0 10px"></p><i id="s-st" hidden></i>
       <div class="fl"><span>${s.cat === "rimborso" ? "Chi restituisce" : "Ha pagato"}</span><div class="whos">${T.viaggiatori.map(n => `<button data-paid="${n}">${avatar(n, 30)}${n}</button>`).join("")}</div></div>
       <div class="fl"><span>${s.cat === "rimborso" ? "A chi" : "Diviso tra"}</span>
         <div class="seg wide"><button data-grp="all">Tutti e 4</button><button data-grp="0">${COPPIE[0].map(n => n[0]).join(" & ")}</button><button data-grp="1">${COPPIE[1].map(n => n[0]).join(" & ")}</button></div>
