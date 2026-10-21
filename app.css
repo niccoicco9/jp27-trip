@@ -158,6 +158,9 @@ svg.i { width: 1.15em; height: 1.15em; flex: none; vertical-align: -.2em; }
 .round { width: 38px; height: 38px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); display: grid; place-items: center; flex: none; box-shadow: var(--shadow-s); }
 .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
 .sync-dot.on { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
+.sync-dot.err { background: var(--shu); box-shadow: 0 0 0 3px color-mix(in srgb, var(--shu) 25%, transparent); }
+.sync-dot { position: relative; cursor: pointer; }
+.sync-dot::after { content: ""; position: absolute; inset: -18px -14px -18px -4px; }   /* il pallino è piccolo: si tocca un'area più grande, senza invadere il + */
 
 main { max-width: 720px; margin: 0 auto; padding: 16px 16px 24px; }
 main.full { max-width: none; padding: 0; }
@@ -605,6 +608,8 @@ a.mini:not(.hotel) b { font-size: .8rem; color: var(--shu); }
 .mcard .ph { width: 84px; height: 84px; border-radius: 14px; flex: none; }
 .mcard b { display: block; font-size: .95rem; line-height: 1.25; }
 .mcard .btn.small { min-height: 34px; padding: 6px 12px; }
+.mini .btn.small, .mcard .btn.small { position: relative; }
+.mini .btn.small::after, .mcard .btn.small::after { content: ""; position: absolute; inset: -5px -3px; }   /* compatti a vista, ma 44 pt da toccare */
 .mnum { position: absolute; left: -4px; top: -4px; width: 26px; height: 26px; border-radius: 50%; color: #fff; font-weight: 800; font-size: .8rem; display: grid; place-items: center; box-shadow: 0 0 0 3px var(--card); }
 .ml-pin { cursor: pointer; display: block; filter: drop-shadow(0 2px 3px rgba(0,0,0,.25)); }
 .ml-you { width: 18px; height: 18px; border-radius: 50%; background: #2e7bf6; border: 3px solid #fff; box-shadow: 0 0 0 8px rgba(46, 123, 246, .2), 0 2px 6px rgba(0,0,0,.3); }

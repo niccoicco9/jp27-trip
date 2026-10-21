@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 94;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 95;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -69,7 +69,7 @@
 
   const CAT = {
     tempio: ["Landmark", "#b4572e", "Tempio"], santuario: ["Torii", "#d4442f", "Santuario"], parco: ["Trees", "#4f8a3c", "Parco"],
-    museo: ["Palette", "#7b4fa0", "Museo"], quartiere: ["Lamp", "#c8902a", "Quartiere"], shopping: ["ShoppingBag", "#2e6fb0", "Shopping"],
+    museo: ["Palette", "#7b4fa0", "Museo"], quartiere: ["Lamp", "#c8902a", "Quartiere"], shopping: ["ShoppingBag", "#a64d8f", "Shopping"],
     divertimento: ["FerrisWheel", "#e0607e", "Divertimento"], natura: ["Mountain", "#1f9488", "Natura"], vista: ["Binoculars", "#2b4c7e", "Panorama"],
     cibo: ["Utensils", "#d9822b", "Cibo"], castello: ["Castle", "#6b5a45", "Castello"], onsen: ["Bath", "#3a8fb7", "Onsen"], esperienza: ["Sparkles", "#b8860b", "Esperienza"],
   };
@@ -83,9 +83,16 @@
   const creditLabel = id => FOTO[id]?.g ? `Foto: Google${FOTO[id].a ? " · " + FOTO[id].a : ""}` : "Foto: Wikimedia Commons";
   function photo(id, w, cls = "") {
     const u = photoUrl(id, w), p = byId[id];
-    if (u) return `<div class="ph ${cls}" data-bg="${u}"></div>`;
+    if (u) return `<div class="ph ${cls}" data-bg="${u}" data-pid="${id}"></div>`;
     const [ic, col] = cat(p);
     return `<div class="ph none ${cls}" style="background:linear-gradient(135deg, ${zona[p.z].colore}, ${col})">${icon(ic)}</div>`;
+  }
+  // foto che non arriva (offline, link rotto): al posto del riquadro vuoto, i colori e l'icona del luogo
+  function noPhoto(el) {
+    const p = byId[el.dataset.pid || el.closest("[data-place]")?.dataset.place]; if (!p || el.closest(".hero")) return;
+    const [ic, col] = cat(p);
+    el.classList.add("none"); el.style.background = `linear-gradient(135deg, ${zona[p.z].colore}, ${col})`; el.insertAdjacentHTML("beforeend", icon(ic));
+    el.parentElement.querySelector(":scope > .cat-ic")?.remove();   // l'icona piccola sulla foto ora sarebbe doppia
   }
 
   // caricamento pigro delle foto: si scaricano solo quando stanno per comparire (risparmio dati)
@@ -103,7 +110,7 @@
     };
     if (seenPh.has(u)) { el.classList.add("now"); return put(); }   // già vista: dissolvenza breve
     const pre = new Image(); pre.src = u;
-    (pre.decode ? pre.decode() : Promise.resolve()).then(() => { seenPh.add(u); put(); }, () => { el.classList.add("in"); el.classList.remove("wait"); });
+    (pre.decode ? pre.decode() : Promise.resolve()).then(() => { seenPh.add(u); put(); }, () => { el.classList.add("in"); el.classList.remove("wait"); noPhoto(el); });
   }
   const lazyIO = "IntersectionObserver" in window ? new IntersectionObserver(es => es.forEach(e => {
     if (!e.isIntersecting) return;
@@ -176,6 +183,8 @@
   const closedPill = p => `<span class="pill warn">${icon("Clock")} chiuso di ${esc(p.chiuso)}!</span>`;
   // numeri interi sempre con il punto delle migliaia (1.500 ¥ come 12.000 ¥)
   const fmtInt = n => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  // euro sempre col punto delle migliaia, come gli yen ("it-IT" da solo scrive 7654,32 ma 12.345,67)
+  const fmtEur = v => { const [i, d] = Math.abs(v).toFixed(2).split("."); return (v < 0 && +(i + d) ? "-" : "") + fmtInt(+i) + "," + d; };
   const fmtKm = km => km < .05 ? "qui" : km < 1 ? `${Math.round(km * 1000 / 10) * 10} m` : `${km.toFixed(km < 10 ? 1 : 0).replace(".", ",")} km`;
   const dayIndex = iso => DAYS.indexOf(iso);
   const getDay = iso => (plan[iso] ||= { l: "", n: "", i: [] });
@@ -355,9 +364,11 @@
       code = ""; LS.set("code", ""); setTimeout(() => askWho(true), 400);
     }
     const el = $("#syncdot");
-    el.hidden = false; el.className = "sync-dot" + (s === "online" ? " on" : "");
-    el.title = s === "online" ? "Dati condivisi: sincronizzati" : s === "offline" ? "Offline: le modifiche partiranno appena torna la rete" : "Errore di sincronizzazione";
+    el.hidden = false; el.className = "sync-dot" + (s === "online" ? " on" : s === "offline" ? "" : " err");
+    el.title = s === "online" ? "Dati condivisi: sincronizzati" : s === "offline" ? "Offline: le modifiche partiranno appena torna la rete" : "Errore di sincronizzazione: le modifiche restano su questo telefono. Chiudi e riapri l'app per riprovare";
+    el.setAttribute("aria-label", el.title);
   }
+  $("#syncdot").onclick = e => toast(e.currentTarget.title);   // sul telefono il "title" non si vede: lo dice un tocco
   let syncStarting = false, syncMemory = false;
   // codici del viaggio non più validi (solo l'impronta SHA-256, non il codice): chi li ha ancora vedrebbe una copia
   // vecchia e separata dei dati, quindi l'app chiede quello nuovo
@@ -662,8 +673,8 @@
     const ds = dayOf(id);
     const [ic, col, cname] = cat(p);
     openSheet(`
-      <div class="cover ph${photoUrl(id) ? "" : " none"}"${photoUrl(id) ? ` data-full="${photoUrl(id, 1600)}" data-small="${photoUrl(id, 960)}"` : ""} style="${photoUrl(id) ? `background-image:url('${photoUrl(id, 960)}')` : `background:linear-gradient(135deg, ${zona[p.z].colore}, ${col})`}">${photoUrl(id) ? `<a class="credit" href="${credit(id)}" target="_blank" rel="noopener">${esc(creditLabel(id))}</a>` : icon(ic)}</div>
-      <div class="row" style="gap:6px;margin-bottom:8px">${zonePill(p.z)}<span class="pill ghost" style="color:${col}">${icon(ic)} ${cname}</span></div>
+      <div class="cover ph${photoUrl(id) ? "" : " none"}" data-pid="${id}"${photoUrl(id) ? ` data-full="${photoUrl(id, 1600)}" data-small="${photoUrl(id, 960)}"` : ""} style="${photoUrl(id) ? `background-image:url('${photoUrl(id, 960)}')` : `background:linear-gradient(135deg, ${zona[p.z].colore}, ${col})`}">${photoUrl(id) ? `<a class="credit" href="${credit(id)}" target="_blank" rel="noopener">${esc(creditLabel(id))}</a>` : icon(ic)}</div>
+      <div class="row" style="gap:6px;margin-bottom:8px">${zonePill(p.z)}<span class="pill ghost"><span style="color:${col};display:contents">${icon(ic)}</span> ${cname}</span></div>
       <h2>${esc(p.n)}</h2>
       ${p.jp ? `<p class="jpname jp">${esc(p.jp)}</p>` : ""}
       ${p.d ? `<p style="margin:0">${esc(p.d)}</p>` : ""}
@@ -681,7 +692,7 @@
       </div>
       <dl class="info">
         ${p.dur ? `<dt>Durata</dt><dd>${esc(p.dur)}</dd>` : ""}
-        ${p.eur ? `<dt>Costo</dt><dd>~${p.eur.toLocaleString("it-IT", { minimumFractionDigits: 2 })} € a persona <span class="muted">(${p.mine ? "stima vostra" : "stima Wanderlog"})</span></dd>` : ""}
+        ${p.eur ? `<dt>Costo</dt><dd>~${fmtEur(p.eur)} € a persona <span class="muted">(${p.mine ? "stima vostra" : "stima Wanderlog"})</span></dd>` : ""}
         ${p.chiuso ? `<dt>Chiuso</dt><dd>${esc(p.chiuso)}</dd>` : ""}
         ${p.pren ? `<dt>Biglietti</dt><dd><label class="check" style="border:none;padding:0"><input type="checkbox" id="bk" ${booked.has(id) ? "checked" : ""}><span>${booked.has(id) ? "<b>Prenotato</b>" : "Da prenotare in anticipo: <b>segna quando è fatto</b>"}</span></label></dd>` : ""}
         ${p.pren && PREN[p.id] && !booked.has(id) ? `<dt>Quando</dt><dd><b class="bkw ${bookWhen(p)?.cls || ""}">${esc(cap1(bookWhen(p).txt))}</b><div class="small muted" style="margin-top:2px">${esc(PREN[p.id].come)}</div></dd>` : ""}
@@ -758,8 +769,8 @@
     const KANJI = { tokyo: "東京", vicino: "鎌倉", kyoto: "京都", osaka: "大阪", nara: "奈良", fuji: "箱根", kanazawa: "金沢" };
     const z0 = dayZone(T.inizio) || "tokyo", zNow = (!before && !after && dayZone(today)) || z0;
     const greet = `<div class="greet"><h2>${saluto}</h2><div class="gpills">
-      <span class="gpill"><em style="color:#c8402f">JP</em><span data-clock="Asia/Tokyo"></span></span>
-      <span class="gpill"><em style="color:#3f8a4f">IT</em><span data-clock="Europe/Rome"></span></span>
+      <span class="gpill"><em style="color:var(--shu)">JP</em><span data-clock="Asia/Tokyo"></span></span>
+      <span class="gpill"><em style="color:var(--ok)">IT</em><span data-clock="Europe/Rome"></span></span>
       <span class="gpill" id="wpill" hidden></span></div></div>`;
 
     let hero;
@@ -878,9 +889,11 @@
     let km = 0; for (let j = 1; j < done.length; j++) km += kmBetween(byId[done[j - 1]], byId[done[j]]) * 1.25;
     const sp = lists.spese.filter(s => s.data === today && s.cat !== "rimborso"), tot = sp.reduce((a, s) => a + s.eur, 0);
     const tom = DAYS[dayIndex(today) + 1], td = tom && plan[tom], first = td?.i?.map(id => byId[id]).find(Boolean);
-    return `<div class="card evening"><h3 style="margin:0">Com'è andata oggi</h3>
-      <div class="stat"><div><b>${done.length}/${ids.length}</b><small>tappe</small></div><div><b>${km < 1 ? "–" : fmtKm(km)}</b><small>a piedi (stima)</small></div><div><b>${tot ? Math.round(tot) + " €" : "–"}</b><small>spesi oggi</small></div></div>
-      ${tom ? `<p class="small" style="margin:12px 0 0"><b>Domani</b> · ${esc(td?.l || (td?.i?.length ? dayTitle(tom) : "giornata libera"))}${first ? ` · prima tappa ${esc(first.n)}${td.t?.[first.id] ? " alle " + esc(td.t[first.id]) : ""}` : ""}</p>` : `<p class="small" style="margin:12px 0 0"><b>Domani si torna a casa.</b> Buon viaggio! ✈️</p>`}</div>`;
+    // giornata libera e senza spese: niente "0/0 tappe · – · –", solo cosa c'è domani
+    const stats = ids.length || tot;
+    return `<div class="card evening"><h3 style="margin:0">${stats ? "Com'è andata oggi" : "Buonanotte"}</h3>
+      ${stats ? `<div class="stat"><div><b>${done.length}/${ids.length}</b><small>tappe</small></div><div><b>${km < 1 ? "–" : fmtKm(km)}</b><small>a piedi (stima)</small></div><div><b>${tot ? fmtInt(tot) + " €" : "–"}</b><small>spesi oggi</small></div></div>` : ""}
+      ${tom ? `<p class="small" style="margin:${stats ? 12 : 6}px 0 0"><b>Domani</b> · ${esc(td?.l || (td?.i?.length ? dayTitle(tom) : "giornata libera"))}${first ? ` · prima tappa ${esc(first.n)}${td.t?.[first.id] ? " alle " + esc(td.t[first.id]) : ""}` : ""}</p>` : `<p class="small" style="margin:${stats ? 12 : 6}px 0 0"><b>Domani si torna a casa.</b> Buon viaggio! ✈️</p>`}</div>`;
   }
   // vicino a te: luoghi della lista entro 1,5 km (anche di altri giorni), su richiesta
   let nearPos = null;
@@ -1783,7 +1796,7 @@
   function renderBudget(back) {
     const act = LUOGHI.filter(p => p.eur && !p.out), out = LUOGHI.filter(p => p.eur && p.out);
     const sum = a => a.reduce((s, p) => s + p.eur, 0);
-    const eur = v => v.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+    const eur = v => fmtEur(v) + " €";
     const perZ = ZONE.map(z => [z, sum(act.filter(p => p.z === z.id))]).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
     const max = Math.max(...perZ.map(x => x[1]));
     const planned = new Set(DAYS.flatMap(d => plan[d]?.i || []));
@@ -2145,7 +2158,10 @@
         mergeCustom(); rerender(); toast("Salvato ✓"); inSheet("pop", () => openPlace(p.id));
       };
       $("#b-cancel", el).onclick = async () => { if (await canLeave()) inSheet("pop", () => openPlace(p.id)); };
-      $("#b-orig", el)?.addEventListener("click", () => { delItem("luoghi", ed.id); mergeCustom(); rerender(); toast("Ripristinato com'era su Wanderlog"); inSheet("pop", () => openPlace(p.id)); });
+      $("#b-orig", el)?.addEventListener("click", () => {
+        const old = { ...ed }; delItem("luoghi", ed.id); mergeCustom(); rerender(); inSheet("pop", () => openPlace(p.id));
+        toast("Ripristinato com'era su Wanderlog", () => { putItem("luoghi", old); mergeCustom(); rerender(); if (sheetOpen() && $("#sheet-body .cover")?.dataset.pid === p.id) openPlace(p.id); });
+      });
     });
   }
   function editLuogo(p, day, fromPlace) {
@@ -2291,15 +2307,15 @@
   // elimina un luogo per tutti: i vostri spariscono, quelli di Wanderlog finiscono tra gli eliminati (ripristinabili).
   // Viene tolto anche dai giorni in cui era in programma; "Annulla" rimette tutto com'era
   function deletePlace(p) {
-    const id = p.id, wasBooked = booked.has(id), pos = dayOf(id).map(d => [d, plan[d].i.indexOf(id)]);
+    const id = p.id, wasBooked = booked.has(id), pos = dayOf(id).map(d => [d, plan[d].i.indexOf(id), plan[d].t?.[id]]);
     const old = p.mine ? lists.luoghi.find(x => x.id === id) : null;
-    for (const [d] of pos) plan[d].i = plan[d].i.filter(x => x !== id);
+    for (const [d] of pos) { const dd = plan[d]; dd.i = dd.i.filter(x => x !== id); if (dd.t?.[id]) { delete dd.t[id]; if (!Object.keys(dd.t).length) delete dd.t; } }
     booked.delete(id); savePlan();
     if (p.mine) delItem("luoghi", id); else putItem("luoghi", { id: "h" + id, hide: id });
     closeSheet(); rerender(); buzz();
     toast(pos.length ? `Luogo eliminato e tolto da ${pos.length === 1 ? "1 giorno" : pos.length + " giorni"}` : "Luogo eliminato", () => {
       if (old) putItem("luoghi", old); else delItem("luoghi", "h" + id);
-      for (const [d, k] of pos) getDay(d).i.splice(k, 0, id);
+      for (const [d, k, tm] of pos) { const dd = getDay(d); dd.i.splice(k, 0, id); if (tm) (dd.t ||= {})[id] = tm; }
       if (wasBooked) booked.add(id);
       savePlan(); rerender();
     });
@@ -2308,7 +2324,7 @@
   // ——— SPESE condivise tra le due coppie ———
   const COPPIE = [["Niccolò", "Antonella"], ["Miriam", "Paolo"]];
   const coupleName = c => c.join(" & ");
-  const SCAT = { cibo: ["Utensils", "Cibo", "#d9822b"], trasporti: ["TrainFront", "Trasporti", "#1f9488"], alloggio: ["BedDouble", "Alloggio", "#2e6fb0"], attivita: ["Ticket", "Attività", "#d4442f"], shopping: ["ShoppingBag", "Shopping", "#7b4fa0"], altro: ["Receipt", "Altro", "#6b5a45"], rimborso: ["HandCoins", "Rimborso", "var(--ok)"] };
+  const SCAT = { cibo: ["Utensils", "Cibo", "#d9822b"], trasporti: ["TrainFront", "Trasporti", "#1f9488"], alloggio: ["BedDouble", "Alloggio", "#2e6fb0"], attivita: ["Ticket", "Attività", "#d4442f"], shopping: ["ShoppingBag", "Shopping", "#a64d8f"], altro: ["Receipt", "Altro", "#6b5a45"], rimborso: ["HandCoins", "Rimborso", "var(--ok)"] };
   // categoria di una spesa: quelle fisse con icona, quelle create da voi con emoji; sconosciuta → Altro
   const CCOL = ["#db2777", "#65a30d", "#4f46e5", "#0891b2", "#ca8a04", "#e11d48", "#059669", "#c026d3", "#475569", "#0d9488"];   // diversi dai colori delle categorie fisse
   function catOf(k) {
@@ -2333,7 +2349,7 @@
         <p class="small muted" style="margin:8px 0 0">Tocca una categoria per vedere solo quelle spese. I rimborsi non contano.</p>` : `<p class="small muted" style="margin:10px 0 0">Nessuna spesa a tuo carico per ora.</p>`}</div>`;
   }
   const rate = () => LS.get("rate", { r: 170 }).r || 170;
-  const eurF = v => v.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+  const eurF = v => fmtEur(v) + " €";
   const eurPM = v => { const r = Math.sign(v) * Math.round(Math.abs(v) * 100) / 100 || 0; return (r > 0 ? "+" : "") + eurF(r); };   // saldo: niente "+0,00" o "-0,00"; arrotonda allo stesso modo + e − (16,915 → +16,92 e −16,92)
   const avatar = (n, s = 26) => `<span class="avatar" style="width:${s}px;height:${s}px;font-size:${s * .42}px;background:${AVATAR[n] || "#888"}">${n[0]}</span>`;
   function balances() {
@@ -2455,7 +2471,7 @@
       $$("[data-grp]", el).forEach(b => b.onclick = () => { st.perChi = [...(b.dataset.grp === "all" ? T.viaggiatori : COPPIE[+b.dataset.grp])]; draw(el); });
       $("#s-save", el).onclick = () => {
         const importo = parseNum($("#s-imp", el).value, st.valuta === "JPY");
-        if (!(importo > 0)) return toast("Inserisci l'importo");
+        if (!(importo > 0)) return toast("Scrivi l'importo");
         if (!st.perChi.length) return toast("Scegli tra chi dividere");
         const eur = st.valuta === "JPY" ? (s.valuta === "JPY" && s.importo === importo && s.eur ? s.eur : importo / rate()) : importo;
         const saved = putItem("spese", { ...s, ...st, desc: $("#s-desc", el).value.trim(), importo, eur: Math.round(eur * 100) / 100, data: $("#s-data", el).value, ts: s.ts || Date.now() });
