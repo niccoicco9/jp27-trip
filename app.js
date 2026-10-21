@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 88;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 89;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -239,10 +239,48 @@
     for (const d of new Set([...Object.keys(plan), ...Object.keys(synced.plan)])) if (!same(plan[d], synced.plan[d]) && !(blank(plan[d]) && blank(synced.plan[d]))) days[d] = plan[d] || { l: "", n: "", i: [] };
     return { days, add: [...booked].filter(x => !synced.booked.includes(x)), rem: synced.booked.filter(x => !booked.has(x)) };
   }
+  // Un giorno cambiato non si invia intero (chi arriva per ultimo cancellerebbe le tappe aggiunte intanto dagli
+  // altri, anche da offline): si inviano le singole operazioni, che Firestore applica sopra le modifiche degli altri.
+  // i: tappe aggiunte in fondo/tolte una per una (riscritte intere solo se cambia l'ordine) · f: spunte · t: orari per tappa
+  function dayOps(a = {}, b = {}) {
+    const op = { set: {}, add: {}, rem: {}, t: {} }, ai = a.i || [], bi = b.i || [];
+    const kept = bi.filter(x => ai.includes(x)), added = bi.filter(x => !ai.includes(x)), gone = ai.filter(x => !bi.includes(x));
+    if (sig(kept) !== sig(ai.filter(x => bi.includes(x))) || sig(bi) !== sig([...kept, ...added])) op.set.i = bi;
+    else { if (added.length) op.add.i = added; if (gone.length) op.rem.i = gone; }
+    const af = a.f || [], bf = b.f || [];
+    if (bf.some(x => !af.includes(x))) op.add.f = bf.filter(x => !af.includes(x));
+    if (af.some(x => !bf.includes(x))) op.rem.f = af.filter(x => !bf.includes(x));
+    for (const k of new Set([...Object.keys(a.t || {}), ...Object.keys(b.t || {})])) if (a.t?.[k] !== b.t?.[k]) op.t[k] = b.t?.[k] ?? null;
+    for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) if (!["i", "f", "t"].includes(k) && !same(a[k], b[k])) op.set[k] = b[k] ?? "";
+    return op;
+  }
+  // unisce un giorno cambiato qui (mine) e dagli altri (theirs) partendo dall'ultima versione comune (base):
+  // restano le tappe aggiunte da entrambi, spariscono quelle tolte da almeno uno
+  function mergeDay(base = {}, mine = {}, theirs = {}) {
+    const out = { l: "", n: "", ...theirs };
+    for (const k of new Set([...Object.keys(base), ...Object.keys(mine)])) if (!["i", "f", "t"].includes(k) && !same(base[k], mine[k])) out[k] = mine[k] ?? "";
+    const pick = (b, m, t) => x => (m.includes(x) || t.includes(x)) && !(b.includes(x) && (!m.includes(x) || !t.includes(x)));
+    const b = base.i || [], m = mine.i || [], t = theirs.i || [], keep = pick(b, m, t);
+    const reordered = sig(m.filter(x => b.includes(x))) !== sig(b.filter(x => m.includes(x)));
+    const [first, second] = reordered ? [m, t] : [t, m], i = first.filter(keep);
+    second.forEach((x, k) => {
+      if (!keep(x) || i.includes(x)) return;
+      const next = second.slice(k + 1).find(y => i.includes(y));   // prima della tappa che la segue dall'altra parte, se no in fondo
+      i.splice(next ? i.indexOf(next) : i.length, 0, x);
+    });
+    out.i = i;
+    const bf = base.f || [], mf = mine.f || [], tf = theirs.f || [];
+    if (mine.f || theirs.f) out.f = [...new Set([...tf, ...mf])].filter(pick(bf, mf, tf));
+    const tt = { ...theirs.t };
+    for (const k of new Set([...Object.keys(base.t || {}), ...Object.keys(mine.t || {})])) if (base.t?.[k] !== mine.t?.[k]) { if (mine.t?.[k]) tt[k] = mine.t[k]; else delete tt[k]; }
+    if (Object.keys(tt).length || theirs.t) out.t = tt;
+    return out;
+  }
   function pushChanges() {
     const ch = localChanges();
     if (!Object.keys(ch.days).length && !ch.add.length && !ch.rem.length) return;
-    sync.patch({ ...ch, by: me || "?" });
+    const days = Object.fromEntries(Object.keys(ch.days).map(d => [d, dayOps(synced.plan[d], plan[d])]));
+    sync.patch({ ...ch, days, by: me || "?" });
     synced = { plan: clone(plan), booked: [...booked] };
   }
   function savePlan() {
@@ -271,11 +309,13 @@
   }
   function onRemote(data, first) {
     if (!data) { if (first) { sync.pushMain({ plan, booked: [...booked], by: me || "?" }); synced = { plan: clone(plan), booked: [...booked] }; } return; }
-    // tiene le modifiche locali non ancora inviate, prende tutto il resto dal server
-    const mine = localChanges();
+    // tiene le modifiche locali non ancora inviate, prende tutto il resto dal server: un giorno cambiato da
+    // entrambe le parti si unisce tappa per tappa, così non si perde né la modifica di qui né quella degli altri
+    const mine = localChanges(), base = synced.plan;
     const remote = cleanPlan(data.plan);
     synced = { plan: clone(remote), booked: [...(Array.isArray(data.booked) ? data.booked : [])] };
-    const nextPlan = { ...remote, ...clone(mine.days) };
+    const nextPlan = { ...remote };
+    for (const d of Object.keys(mine.days)) nextPlan[d] = mergeDay(base[d], plan[d] || { l: "", n: "", i: [] }, remote[d]);
     const nextBooked = new Set([...(Array.isArray(data.booked) ? data.booked : []).filter(x => !mine.rem.includes(x)), ...mine.add]);
     if (Object.keys(mine.days).length || mine.add.length || mine.rem.length) { clearTimeout(pushT); pushT = setTimeout(pushChanges, 400); }
     // niente di nuovo (es. conferma della propria modifica): la pagina resta com'è, senza ricostruirla
@@ -2254,7 +2294,7 @@
   }
   const rate = () => LS.get("rate", { r: 170 }).r || 170;
   const eurF = v => v.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
-  const eurPM = v => { const r = Math.round(v * 100) / 100 || 0; return (r > 0 ? "+" : "") + eurF(r); };   // saldo: niente "+0,00" o "-0,00"
+  const eurPM = v => { const r = Math.sign(v) * Math.round(Math.abs(v) * 100) / 100 || 0; return (r > 0 ? "+" : "") + eurF(r); };   // saldo: niente "+0,00" o "-0,00"; arrotonda allo stesso modo + e − (16,915 → +16,92 e −16,92)
   const avatar = (n, s = 26) => `<span class="avatar" style="width:${s}px;height:${s}px;font-size:${s * .42}px;background:${AVATAR[n] || "#888"}">${n[0]}</span>`;
   function balances() {
     const net = Object.fromEntries(T.viaggiatori.map(n => [n, 0]));

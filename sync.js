@@ -7,7 +7,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   initializeFirestore, persistentLocalCache, doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, serverTimestamp,
-  FieldPath, arrayUnion, arrayRemove, disableNetwork, enableNetwork, terminate, clearIndexedDbPersistence, getDoc, Bytes,
+  FieldPath, arrayUnion, arrayRemove, deleteField, disableNetwork, enableNetwork, terminate, clearIndexedDbPersistence, getDoc, Bytes,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 export const LISTS = ["spese", "prenotazioni", "luoghi", "categorie", "allegati"];
@@ -36,19 +36,26 @@ export function start(config, code, h, { memory = false } = {}) {
     }, fail));
   }
 
-  // Aggiorna solo i giorni cambiati e le singole spunte: così due persone che modificano
-  // giorni diversi (anche offline) non si sovrascrivono a vicenda.
-  async function patch({ days, add, rem, by }) {
-    const args = [new FieldPath("by"), by, new FieldPath("at"), serverTimestamp()];
-    for (const [d, v] of Object.entries(days)) args.push(new FieldPath("plan", d), v);
+  // Aggiorna solo quello che è cambiato, tappa per tappa (days: operazioni di app.js › dayOps) e spunta per spunta:
+  // così due persone che modificano lo stesso giorno, anche offline, non si cancellano le tappe a vicenda.
+  // Aggiungere e togliere dallo stesso campo non si può nella stessa scrittura: le rimozioni vanno in una seconda,
+  // inviata subito dopo (Firestore le applica in ordine, anche se partono al ritorno della rete).
+  function patch({ days, add, rem, by }) {
+    const args = [new FieldPath("by"), by, new FieldPath("at"), serverTimestamp()], later = [];
+    for (const [d, op] of Object.entries(days)) {
+      for (const [k, v] of Object.entries(op.set)) args.push(new FieldPath("plan", d, k), v);
+      for (const [k, v] of Object.entries(op.t)) args.push(new FieldPath("plan", d, "t", k), v ?? deleteField());
+      for (const [k, v] of Object.entries(op.add)) args.push(new FieldPath("plan", d, k), arrayUnion(...v));
+      for (const [k, v] of Object.entries(op.rem)) later.push(new FieldPath("plan", d, k), arrayRemove(...v));
+    }
     if (add.length) args.push(new FieldPath("booked"), arrayUnion(...add));
-    try {
-      await updateDoc(main, ...args);
-      if (rem.length) await updateDoc(main, new FieldPath("booked"), arrayRemove(...rem));
-    } catch (err) {
+    if (rem.length) later.push(new FieldPath("booked"), arrayRemove(...rem));
+    const done = [updateDoc(main, ...args)];
+    if (later.length) done.push(updateDoc(main, ...later));
+    return Promise.all(done).catch(err => {
       if (err.code === "not-found") return h.recreate();   // documento non ancora creato: lo crea l'app
       fail(err);
-    }
+    });
   }
 
   // iOS congela l'app quando va in background e chiude la connessione senza avvisare: al rientro
