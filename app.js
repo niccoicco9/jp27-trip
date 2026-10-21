@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 87;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 88;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -161,9 +161,11 @@
   const nowJP = () => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Tokyo", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date());
   const kmBetween = (a, b) => { const r = x => x * Math.PI / 180; return 2 * 6371 * Math.asin(Math.sqrt(Math.sin(r(b.lat - a.lat) / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lng - a.lng) / 2) ** 2)); };
   // importi scritti all'italiana: "1.500" = millecinquecento, "1.500,50" e "12,5" con la virgola decimale
-  function parseNum(t) {
+  // yen: niente decimali, quindi "1,200" (come sugli scontrini giapponesi) è milleduecento
+  function parseNum(t, yen) {
     t = String(t || "").trim().replace(/[\s¥€'’]/g, "");
     if (!t) return NaN;
+    if (yen && /^\d{1,3}([.,]\d{3})+$/.test(t)) return +t.replace(/[.,]/g, "");
     if (t.includes(",") && t.includes(".")) t = t.lastIndexOf(",") > t.lastIndexOf(".") ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
     else if (t.includes(",")) t = t.replace(",", ".");
     else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
@@ -2337,7 +2339,7 @@
       $$("[data-per]", el).forEach(b => b.classList.toggle("sel", st.perChi.includes(b.dataset.per)));
       $$("[data-grp]", el).forEach(b => { const g = b.dataset.grp === "all" ? T.viaggiatori : COPPIE[+b.dataset.grp]; b.classList.toggle("on", g.length === st.perChi.length && g.every(n => st.perChi.includes(n))); });
       $$("[data-cat]", el).forEach(b => b.classList.toggle("on", b.dataset.cat === st.cat));
-      const imp = parseNum($("#s-imp", el).value) || 0;
+      const imp = parseNum($("#s-imp", el).value, st.valuta === "JPY") || 0;
       $("#s-conv", el).textContent = imp ? (st.valuta === "JPY" ? `≈ ${eurF(imp / rate())}` : `≈ ${fmtInt(imp * rate())} ¥`) + (st.perChi.length ? ` · ${eurF((st.valuta === "JPY" ? imp / rate() : imp) / st.perChi.length)} a testa` : "") : "";
     };
     openSheet(`<div class="ttl"><span class="pic" style="background:${s.cat === "rimborso" ? "var(--ok)" : "#7b4fa0"}">${icon(s.cat === "rimborso" ? "HandCoins" : "Receipt")}</span><h2>${isNew ? (s.cat === "rimborso" ? "Rimborso" : "Nuova spesa") : "Modifica spesa"}</h2></div>
@@ -2371,7 +2373,7 @@
       $$("[data-per]", el).forEach(b => b.onclick = () => { const n = b.dataset.per; st.perChi = st.perChi.includes(n) ? st.perChi.filter(x => x !== n) : [...st.perChi, n]; draw(el); });
       $$("[data-grp]", el).forEach(b => b.onclick = () => { st.perChi = [...(b.dataset.grp === "all" ? T.viaggiatori : COPPIE[+b.dataset.grp])]; draw(el); });
       $("#s-save", el).onclick = () => {
-        const importo = parseNum($("#s-imp", el).value);
+        const importo = parseNum($("#s-imp", el).value, st.valuta === "JPY");
         if (!(importo > 0)) return toast("Inserisci l'importo");
         if (!st.perChi.length) return toast("Scegli tra chi dividere");
         const eur = st.valuta === "JPY" ? (s.valuta === "JPY" && s.importo === importo && s.eur ? s.eur : importo / rate()) : importo;

@@ -114,7 +114,6 @@ window.LUOGHI = [
   // ——— OSAKA ———
   { id: "o1", n: "Umeda Sky Building", jp: "梅田スカイビル", z: "osaka", lat: 34.7053, lng: 135.4906, c: "vista", d: "Due grattacieli uniti in cima da un osservatorio all'aperto (Floating Garden).", pren: true },
   { id: "o2", n: "Shitennō-ji", jp: "四天王寺", z: "osaka", lat: 34.6536, lng: 135.5164, c: "tempio", d: "Uno dei templi più antichi del Giappone (593), con pagoda a 5 piani e stagno delle tartarughe." },
-  { id: "o3", n: "Ikoma Sanjō Yūenchi", jp: "生駒山上遊園地", z: "osaka", lat: 34.6787, lng: 135.6779, c: "divertimento", d: "Luna park retrò in cima al monte Ikoma, con vista sulla piana di Osaka.", chiuso: "gio" },
   { id: "o4", n: "Parco di Minoh", jp: "箕面公園", z: "osaka", lat: 34.8450, lng: 135.4710, c: "natura", d: "Passeggiata nel bosco lungo il fiume fino alla cascata. Assaggiate le foglie d'acero fritte (momiji tempura)." },
   { id: "o5", n: "Hoshi no Buranko", jp: "星のブランコ", z: "osaka", lat: 34.7528, lng: 135.6853, c: "natura", d: "Ponte sospeso pedonale di 280 m sopra le cime degli alberi (Katano)." },
   { id: "o6", n: "Castello di Osaka", jp: "大阪城", z: "osaka", lat: 34.6873, lng: 135.5262, c: "castello", d: "Il castello del 1597 (ricostruito) con museo e un parco enorme intorno.", pren: true, eur: 7 },
@@ -147,6 +146,7 @@ window.LUOGHI = [
   { id: "n8", n: "Tsubosaka-dera", jp: "壺阪寺", z: "nara", lat: 34.4290, lng: 135.8240, c: "tempio", d: "Tempio del 717 con influenze indiane e un grande Buddha tra i ciliegi.", pren: true },
   { id: "n9", n: "Tanzan Jinja", jp: "談山神社", z: "nara", lat: 34.4644, lng: 135.8536, c: "santuario", d: "Santuario sulle colline con una rara pagoda a 13 piani." },
   { id: "n10", n: "Hōzan-ji (Ikoma Shōten)", jp: "宝山寺", z: "nara", lat: 34.6912, lng: 135.6840, c: "tempio", d: "Tempio del 1678 aggrappato alla parete del monte Ikoma, con scalinate e lanterne." },
+  { id: "o3", n: "Ikoma Sanjō Yūenchi", jp: "生駒山上遊園地", z: "nara", lat: 34.6787, lng: 135.6779, c: "divertimento", d: "Luna park retrò in cima al monte Ikoma, con vista sulla piana di Osaka.", chiuso: "gio" },
   { id: "n11", n: "Santuario Uneme", jp: "采女神社", z: "nara", lat: 34.6810, lng: 135.8302, c: "santuario", d: "Il curioso santuario \"girato di spalle\" sullo stagno Sarusawa." },
   { id: "n12", n: "Collina Wakakusa", jp: "若草山", z: "nara", lat: 34.6870, lng: 135.8520, c: "natura", d: "Collina erbosa con vista su tutta Nara. Bellissima al tramonto." },
 
@@ -222,6 +222,7 @@ window.LUOGHI = [
 // Quando prenotare (ricerca di ottobre 2026, da ricontrollare sui siti ufficiali).
 // da = quando aprono le vendite / da quando muoversi, entro = ultimo giorno utile prima di rischiare il tutto esaurito
 // (date italiane; le vendite giapponesi alle 14:00 JST = 6:00 in Italia d'inverno). come = cosa fare
+// cassa: si compra anche all'ingresso, quindi niente promemoria di prenotazione (l'app lo mostra comunque)
 window.PRENOTA = {
   k17: { da: "2026-12-01", entro: "2026-12-31", come: "Lotteria sul sito Nintendo (serve un Nintendo Account): iscrizioni per le visite di marzo durante tutto dicembre, esito il 1° febbraio, pagamento entro il 7" },
   a3:  { da: "2026-12-10", entro: "2026-12-10", come: "In vendita il 10 del mese alle 14:00 giapponesi (6:00 in Italia) per le visite di due mesi dopo: 10 dicembre per febbraio, 10 gennaio per marzo. Finiscono in poche ore, quindi va comprato il giorno stesso" },
@@ -235,20 +236,20 @@ window.PRENOTA = {
   t31: { da: "2027-01-20", entro: "2027-02-07", come: "Laboratorio a orari fissi con pochi posti: 2-3 settimane prima" },
   t20: { da: "2027-01-25", entro: "2027-02-14", come: "Biglietto a orario online, 1-2 settimane prima (nei weekend prima)" },
   t19: { da: "2027-01-25", entro: "2027-02-14", come: "Biglietto a orario online, 1-2 settimane prima. Nei giorni feriali si trova anche in cassa" },
-  o14: { da: "2027-02-01", entro: "2027-02-25", come: "Online sul sito del parco, qualche giorno prima. Si vende anche sul posto se non è esaurito" },
-  h4:  { da: "2027-02-01", entro: "2027-02-25", come: "Pass giornaliero online qualche giorno prima, oppure in cassa" },
-  v8:  { da: "2027-02-01", entro: "2027-02-25", come: "Online o in cassa, raramente esaurito (chiuso martedì e mercoledì)" },
+  o14: { da: "2027-02-01", entro: "2027-02-25", cassa: true, come: "Online sul sito del parco, qualche giorno prima. Si vende anche sul posto se non è esaurito" },
+  h4:  { da: "2027-02-01", entro: "2027-02-25", cassa: true, come: "Pass giornaliero online qualche giorno prima, oppure in cassa" },
+  v8:  { da: "2027-02-01", entro: "2027-02-25", cassa: true, come: "Online o in cassa, raramente esaurito (chiuso martedì e mercoledì)" },
   t33: { da: "2027-02-01", entro: "2027-02-20", come: "Online qualche giorno prima per l'orario del tramonto, altrimenti in cassa" },
-  o1:  { da: "2027-02-01", entro: "2027-02-28", come: "In cassa o online qualche giorno prima" },
-  o10: { da: "2027-02-01", entro: "2027-02-28", come: "In cassa o online qualche giorno prima (l'osservatorio al 16° piano è gratis)" },
-  o6:  { da: "2027-02-01", entro: "2027-02-28", come: "Online per saltare la fila alla cassa, anche il giorno stesso" },
-  h1:  { da: "2027-02-01", entro: "2027-02-25", come: "In cassa o online qualche giorno prima" },
-  n3:  { da: "2027-02-01", entro: "2027-03-01", come: "Ingresso al santuario interno in cassa" },
-  n8:  { da: "2027-02-01", entro: "2027-03-01", come: "Ingresso in cassa" },
-  v5:  { da: "2027-02-01", entro: "2027-02-25", come: "Ingresso in cassa" },
-  t3:  { da: "2027-02-01", entro: "2027-02-20", come: "In cassa; nei weekend conviene il biglietto online qualche giorno prima" },
-  t15: { da: "2027-02-01", entro: "2027-02-20", come: "Online o in cassa, anche il giorno stesso (chiuso il lunedì)" },
-  t1:  { da: "2027-02-01", entro: "2027-02-20", come: "La serra è inclusa nel biglietto dello Shinjuku Gyoen" },
+  o1:  { da: "2027-02-01", entro: "2027-02-28", cassa: true, come: "In cassa o online qualche giorno prima" },
+  o10: { da: "2027-02-01", entro: "2027-02-28", cassa: true, come: "In cassa o online qualche giorno prima (l'osservatorio al 16° piano è gratis)" },
+  o6:  { da: "2027-02-01", entro: "2027-02-28", cassa: true, come: "Online per saltare la fila alla cassa, anche il giorno stesso" },
+  h1:  { da: "2027-02-01", entro: "2027-02-25", cassa: true, come: "In cassa o online qualche giorno prima" },
+  n3:  { da: "2027-02-01", entro: "2027-03-01", cassa: true, come: "Ingresso al santuario interno in cassa" },
+  n8:  { da: "2027-02-01", entro: "2027-03-01", cassa: true, come: "Ingresso in cassa" },
+  v5:  { da: "2027-02-01", entro: "2027-02-25", cassa: true, come: "Ingresso in cassa" },
+  t3:  { da: "2027-02-01", entro: "2027-02-20", cassa: true, come: "In cassa; nei weekend conviene il biglietto online qualche giorno prima" },
+  t15: { da: "2027-02-01", entro: "2027-02-20", cassa: true, come: "Online o in cassa, anche il giorno stesso (chiuso il lunedì)" },
+  t1:  { da: "2027-02-01", entro: "2027-02-20", cassa: true, come: "La serra è inclusa nel biglietto dello Shinjuku Gyoen" },
 };
 
 // Il programma lo costruite voi: si parte con tutti i giorni vuoti.
