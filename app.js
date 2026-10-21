@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 91;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 92;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -382,6 +382,9 @@
   const fold = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[-'’·.]/g, "");
   const matches = (text, q) => { const h = fold(text).replace(/\s+/g, ""); return fold(q).split(/\s+/).filter(Boolean).every(w => h.includes(w)); };
 
+  // posizione negata (permesso tolto): dire dove riattivarla, se no il pulsante sembra rotto
+  const geoFail = err => toast(err?.code === 1 ? "Posizione non permessa: attivala in Impostazioni › Privacy e sicurezza › Localizzazione › Siti web di Safari" : "Non riesco a leggere la posizione");
+
   // ——— link Google Maps ———
   const q = p => p.mine ? `${p.lat},${p.lng}` : p.jp.replace(/（.*?）/g, "").trim() || p.n;
   const gmSearch = p => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q(p))}`;
@@ -434,7 +437,7 @@
   function toast(msg, undo) {
     const t = $("#toast"), ok = /✓\s*$/.test(msg), text = String(msg).replace(/\s*✓\s*$/, "");
     const kind = undo ? "del" : ok ? "ok" : /offline|rete|connession/i.test(text) ? "net" : "info";
-    const ic = { del: "Trash2", ok: "Check", net: "CloudOff", info: "Sparkles" }[kind], ms = undo ? 5000 : Math.min(4200, 1800 + text.length * 35);
+    const ic = { del: "Trash2", ok: "Check", net: "CloudOff", info: "Sparkles" }[kind], ms = undo ? 5000 : Math.min(6000, 1800 + text.length * 35);   // i messaggi lunghi (es. come riattivare la posizione) restano di più
     t.className = "toast " + kind + (undo ? " act" : "");
     t.innerHTML = `<span class="tic">${icon(ic)}</span><span class="tmsg">${esc(text)}</span>${undo ? `<button class="undo">Annulla</button><i class="tbar" style="animation-duration:${ms}ms"></i>` : ""}`;
     t.hidden = false;
@@ -784,13 +787,13 @@
       ${ch.length ? `<div><div class="section-h"><h3>Il viaggio in capitoli</h3><a class="small" href="#giorni" style="font-weight:600">Tutti i giorni</a></div>
       <div class="hscroll">${ch.map((c, k) => `<a class="chapter" href="#giorni/${DAYS[c.from]}" style="--c:${zona[c.z].colore}">${photoUrl(HERO_PLACE[c.z]) ? `<div class="ph" data-bg="${photoUrl(HERO_PLACE[c.z], 330)}"></div>` : `<div class="ph" style="background:${zona[c.z].colore}"></div>`}<span class="num">${k + 1}</span><b>${esc(zona[c.z].nome)}</b><small>${c.from === c.to ? `giorno ${c.from + 1}` : `giorni ${c.from + 1}–${c.to + 1}`} · ${short(DAYS[c.from])}</small></a>`).join("")}</div></div>` : ""}
       ${!before && !after ? `<div class="card"><div class="between"><h3 style="margin:0" id="wtitle">Meteo</h3><span class="muted small" id="wtime"></span></div><div class="weather" id="weather" style="margin-top:12px"><div>…</div></div></div>` : ""}
-      <div class="card">
+      ${after ? "" : `<div class="card">
         <div class="between"><h3 style="margin:0">${icon("Ticket")} Da prenotare</h3><b class="small">${doneBook}/${toBook.length}</b></div>
         <div class="progress bar-head"><i style="width:${toBook.length ? doneBook / toBook.length * 100 : 0}%"></i></div>
         <p class="muted small" style="margin:8px 0 4px">In ordine di urgenza: in cima quello da prenotare prima. Tocca il nome per sapere come.</p>
         <div id="booklist">${toBook.map((p, k) => `<label class="check${booked.has(p.id) ? " done" : ""}"${k >= 6 ? " data-more hidden" : ""}><input type="checkbox" data-book="${p.id}" ${booked.has(p.id) ? "checked" : ""}><span class="grow"><span class="bkn" data-place="${p.id}">${esc(p.n)}</span><small class="sub">${(() => { const w = !booked.has(p.id) && bookWhen(p); return w ? `<em class="bkw ${w.cls}">${esc(w.txt)}</em> · ` : ""; })()}${esc(zona[p.z].nome)}${dayOf(p.id).length ? " · " + dayOf(p.id).map(short).join(", ") : ""}</small></span><a class="iconbtn" href="${bookUrl(p)}" target="_blank" rel="noopener" aria-label="Cerca i biglietti">${icon("ExternalLink")}</a></label>`).join("")}</div>
         ${toBook.length > 6 ? `<button class="btn small ghost" id="more" style="width:100%;margin-top:8px">Mostra tutti (${toBook.length})</button>` : ""}
-      </div>
+      </div>`}
     `;
     $$("#booklist .bkn").forEach(b => b.addEventListener("click", e => e.preventDefault()));   // il nome apre la scheda, non spunta
     $$("[data-book]").forEach(cb => cb.onchange = () => {
@@ -812,7 +815,7 @@
   // quando prenotare (data.js › PRENOTA): "da" apre le vendite, "entro" è l'ultimo giorno sicuro. Data di oggi in Italia
   const PREN = window.PRENOTA || {};
   const bookBy = p => PREN[p.id]?.entro || "9999-12-31";
-  function bookWhen(p, today = new Date().toLocaleDateString("sv-SE")) {
+  function bookWhen(p, today = todayJP()) {
     const w = PREN[p.id]; if (!w) return null;
     const left = Math.round((new Date(w.entro + "T00:00:00Z") - new Date(today + "T00:00:00Z")) / 864e5);
     const fd = d => fmtDay(d, { day: "numeric", month: "short" });
@@ -863,7 +866,7 @@
       toast("Cerco la tua posizione…");
       // la posizione può arrivare dopo qualche secondo: si ridisegna Oggi solo se è ancora sullo schermo
       navigator.geolocation.getCurrentPosition(pos => { nearPos = { lat: pos.coords.latitude, lng: pos.coords.longitude, at: Date.now() }; dataVer++; if (onOggi()) keepScroll(render); },
-        () => toast("Non riesco a leggere la posizione"), { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+        geoFail, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
     });
   }
   // sera (dalle 21 in Giappone): com'è andata e cosa c'è domani
@@ -891,8 +894,15 @@
   const CITTA_METEO = [["Tokyo", 35.68, 139.76], ["Kyoto", 35.01, 135.77], ["Osaka", 34.69, 135.50], ["Nara", 34.68, 135.83], ["Fuji", 35.50, 138.76], ["Kanazawa", 36.56, 136.66]];
   const WMO = c => c === 0 ? "☀️" : c <= 2 ? "🌤️" : c === 3 ? "☁️" : c <= 48 ? "🌫️" : c <= 67 ? "🌧️" : c <= 77 ? "❄️" : c <= 82 ? "🌦️" : c <= 86 ? "🌨️" : "⛈️";
   const ZCOORD = { tokyo: ["Tokyo", 35.68, 139.76], vicino: ["Kamakura", 35.32, 139.55], kyoto: ["Kyoto", 35.01, 135.77], osaka: ["Osaka", 34.69, 135.50], nara: ["Nara", 34.68, 135.83], fuji: ["Hakone", 35.23, 139.03], kanazawa: ["Kanazawa", 36.56, 136.66], altre: ["Tokyo", 35.68, 139.76] };
+  // dove siete quel giorno: zona delle tappe; se è libero, quella dell'hotel (della notte, o di ieri se oggi si lascia) o dell'ultimo giorno in programma
+  function whereOn(d) {
+    const z = dayZone(d); if (z && z !== "altre") return z;
+    const h = hotelFor(d) || hotelFor(DAYS[dayIndex(d) - 1]); if (h?.lat) { const hz = guessZone(h.lat, h.lng); if (hz !== "altre") return hz; }
+    for (let i = dayIndex(d) - 1; i >= 0; i--) { const pz = dayZone(DAYS[i]); if (pz && pz !== "altre") return pz; }
+    return z || "tokyo";
+  }
   async function loadWeather(today) {
-    const [city, lat, lng] = ZCOORD[dayZone(today) || "tokyo"];
+    const [city, lat, lng] = ZCOORD[whereOn(today)];
     const key = city + today;
     const paint = w => {
       const pill = $("#wpill"); if (pill && w) { pill.hidden = false; pill.innerHTML = `${WMO(w.cur[1])} ${esc(city)} ${Math.round(w.cur[0])}°`; }
@@ -1079,7 +1089,7 @@
         if (e.target.closest("[data-newl]")) return editLuogo({ n: $("#pk-q", el).value.trim() }, d);
         const it = e.target.closest("[data-pick]"); if (!it) return;
         const day = getDay(d); const id = it.dataset.pick; const k = day.i.indexOf(id);
-        if (k >= 0) day.i.splice(k, 1); else { day.i.push(id); markFresh(id); buzz(); if (closedOn(byId[id], d)) toast(`Attenzione: ${byId[id].n} è chiuso di ${byId[id].chiuso}`); }
+        if (k >= 0) { day.i.splice(k, 1); if (day.t?.[id]) { delete day.t[id]; if (!Object.keys(day.t).length) delete day.t; } } else { day.i.push(id); markFresh(id); buzz(); if (closedOn(byId[id], d)) toast(`Attenzione: ${byId[id].n} è chiuso di ${byId[id].chiuso}`); }
         savePlan(); draw(el);
       };
     }, () => { if (dataVer !== v0 && location.hash.startsWith("#giorni")) keepScroll(render); });
@@ -1202,7 +1212,7 @@
       if (!navigator.geolocation) return toast("Posizione non disponibile");
       toast("Cerco la tua posizione…");
       navigator.geolocation.getCurrentPosition(pos => { lf.near = { lat: pos.coords.latitude, lng: pos.coords.longitude }; dataVer++; if (!b.isConnected) return; b.classList.add("on"); draw(); },
-        () => toast("Non riesco a leggere la posizione"), { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+        geoFail, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
     };
   }
 
@@ -1597,7 +1607,7 @@
   function locateMe() {
     if (!navigator.geolocation) return toast("Posizione non disponibile");
     navigator.geolocation.getCurrentPosition(pos => eng?.you([pos.coords.longitude, pos.coords.latitude]),
-      () => toast("Non riesco a leggere la posizione"), { enableHighAccuracy: true, timeout: 10000 });
+      geoFail, { enableHighAccuracy: true, timeout: 10000 });
   }
 
   // ——— foto offline: le miniature di tutti i luoghi (le salva il service worker) ———
@@ -2231,7 +2241,7 @@
         if (!navigator.geolocation) return toast("Posizione non disponibile");
         toast("Leggo la posizione…");
         navigator.geolocation.getCurrentPosition(pos => setPos(el, pos.coords.latitude, pos.coords.longitude, "La tua posizione attuale"),
-          () => toast("Non riesco a leggere la posizione"), { enableHighAccuracy: true, timeout: 15000 });
+          geoFail, { enableHighAccuracy: true, timeout: 15000 });
       };
       $("#l-link", el).onclick = async () => {
         let t = ""; try { t = await navigator.clipboard.readText(); } catch {}
