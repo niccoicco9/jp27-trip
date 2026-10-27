@@ -134,6 +134,7 @@ window.LUOGHI = [
   { id: "o21", n: "Parco Nakanoshima", jp: "中之島公園", z: "osaka", lat: 34.6927, lng: 135.5070, c: "parco", d: "Il primo parco pubblico di Osaka (1891), su un'isola fluviale con roseto e biblioteca." },
   { id: "o22", n: "Cascata di Minoh", jp: "箕面大滝", z: "osaka", lat: 34.8618, lng: 135.4721, c: "natura", d: "Cascata di 33 m in fondo alla passeggiata nel parco di Minoh." },
   { id: "o23", n: "Museum Meiji-Mura", jp: "博物館明治村", z: "osaka", lat: 35.3366, lng: 136.9861, c: "museo", d: "Museo all'aperto di edifici storici, inclusa la hall dell'Imperial Hotel di Frank Lloyd Wright. È a Inuyama, vicino a Nagoya." },
+  { id: "a7", n: "Meitokuan (ryokan a Minoh)", jp: "こもれびの宿 明徳庵", z: "osaka", lat: 34.8400, lng: 135.4715, c: "esperienza", d: "Piccolo ryokan di 3 camere nel parco di Minoh, sulla strada per la cascata. Cerimonia del tè, kimono, bonsai ed escursioni guidate. A circa 40 min di treno dal centro di Osaka.", note: "posizione approssimativa (Minoh 2-27)" },
 
   // ——— NARA ———
   { id: "n1", n: "Parco di Nara", jp: "奈良公園", z: "nara", lat: 34.6851, lng: 135.8430, c: "parco", d: "Il parco dei cervi che fanno l'inchino: comprate i shika senbei per dar loro da mangiare." },
@@ -175,7 +176,6 @@ window.LUOGHI = [
   { id: "a4", n: "Stagno di Monet", jp: "モネの池", z: "altre", lat: 35.6518, lng: 136.8214, c: "natura", d: "Laghetto limpidissimo con carpe koi e ninfee a Seki (Gifu), simile ai quadri di Monet." },
   { id: "a5", n: "Oku-no-in (Kōyasan)", jp: "高野山 奥之院", z: "altre", lat: 34.2130, lng: 135.6050, c: "tempio", d: "Il cimitero-foresta più suggestivo del Giappone, con il mausoleo di Kōbō Daishi. Ci si può dormire in un tempio." },
   { id: "a6", n: "Minakami", jp: "みなかみ", z: "altre", lat: 36.7786, lng: 138.969, c: "onsen", d: "Cittadina termale di montagna nella prefettura di Gunma." },
-  { id: "a7", n: "Meitokuan", jp: "明徳庵", z: "altre", lat: 35.4335, lng: 136.7750, c: "esperienza", d: "Luogo salvato in Wanderlog.", note: "posizione sulla mappa da verificare" },
   { id: "a8", n: "Castello di Gifu", jp: "岐阜城", z: "altre", lat: 35.4340, lng: 136.7820, c: "castello", d: "Castello a 4 piani sul monte Kinka. Si sale con la funivia.", note: "⚠️ segnalato come temporaneamente chiuso" },
   { id: "a9", n: "Shōbō-ji (Grande Buddha di Gifu)", jp: "正法寺 岐阜大仏", z: "altre", lat: 35.4300, lng: 136.7720, c: "tempio", d: "Grande Buddha del 1832 fatto di vimini, carta e lacca." },
   { id: "a10", n: "Kawaramachi (Gifu)", jp: "川原町", z: "altre", lat: 35.4335, lng: 136.7750, c: "quartiere", d: "Stradina storica di case di legno lungo il fiume Nagara." },
