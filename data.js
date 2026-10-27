@@ -176,7 +176,7 @@ window.LUOGHI = [
   { id: "a4", n: "Stagno di Monet", jp: "モネの池", z: "altre", lat: 35.6518, lng: 136.8214, c: "natura", d: "Laghetto limpidissimo con carpe koi e ninfee a Seki (Gifu), simile ai quadri di Monet." },
   { id: "a5", n: "Oku-no-in (Kōyasan)", jp: "高野山 奥之院", z: "altre", lat: 34.2130, lng: 135.6050, c: "tempio", d: "Il cimitero-foresta più suggestivo del Giappone, con il mausoleo di Kōbō Daishi. Ci si può dormire in un tempio." },
   { id: "a6", n: "Minakami", jp: "みなかみ", z: "altre", lat: 36.7786, lng: 138.969, c: "onsen", d: "Cittadina termale di montagna nella prefettura di Gunma." },
-  { id: "a8", n: "Castello di Gifu", jp: "岐阜城", z: "altre", lat: 35.4340, lng: 136.7820, c: "castello", d: "Castello a 4 piani sul monte Kinka. Si sale con la funivia.", note: "⚠️ segnalato come temporaneamente chiuso" },
+  { id: "a8", n: "Castello di Gifu", jp: "岐阜城", z: "altre", lat: 35.4340, lng: 136.7820, c: "castello", d: "Castello a 4 piani sul monte Kinka. Si sale con la funivia.", note: "⚠️ chiuso per lavori antisismici dal 19 maggio 2026 a fine ottobre 2027 circa: la funivia e la vista dal monte Kinka restano aperte" },
   { id: "a9", n: "Shōbō-ji (Grande Buddha di Gifu)", jp: "正法寺 岐阜大仏", z: "altre", lat: 35.4300, lng: 136.7720, c: "tempio", d: "Grande Buddha del 1832 fatto di vimini, carta e lacca." },
   { id: "a10", n: "Kawaramachi (Gifu)", jp: "川原町", z: "altre", lat: 35.4335, lng: 136.7750, c: "quartiere", d: "Stradina storica di case di legno lungo il fiume Nagara." },
 
