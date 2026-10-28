@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 98;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 99;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -1787,6 +1787,12 @@
     const fromY = () => { const y = parseNum(jpy.value, true); eur.value = y >= 0 ? (y / rate).toFixed(2).replace(".", ",") : ""; };
     const fromE = () => { const e = parseNum(eur.value); jpy.value = e >= 0 ? fmtInt(e * rate) : ""; };
     jpy.oninput = fromY; eur.oninput = fromE;
+    // toccando un campo si riparte da vuoto; se si esce senza scrivere niente torna il valore di prima
+    let prev = null;
+    [jpy, eur].forEach(inp => {
+      inp.onfocus = () => { prev = [jpy.value, eur.value]; jpy.value = eur.value = ""; };
+      inp.onblur = () => { if (prev && !jpy.value && !eur.value) [jpy.value, eur.value] = prev; prev = null; };
+    });
     $$("[data-y]").forEach(b => b.onclick = () => { jpy.value = fmtInt(b.dataset.y); fromY(); });
     fromY(); showRate(st.d);
     if (!st.d || Date.now() - new Date(st.d) > 12 * 3600e3) {
@@ -2382,9 +2388,9 @@
     view.innerHTML = `${back}<h2>Spese</h2><button id="adds" hidden aria-hidden="true"></button><p class="lead">Chi ha pagato cosa, e alla fine chi deve quanto a chi.</p>
       <div class="hero solid" style="min-height:0"><span class="kanji" aria-hidden="true">会計</span><div class="hero-in" style="min-height:190px">
         <span class="kicker">Spesa totale del gruppo</span><div class="big-n" style="font-size:2.6rem" data-count="${total}" data-fmt="eur">${eurF(total)}</div>
-        <p>${debt ? `<b>${coupleName(debt[0])}</b> devono <b>${eurF(debt[2])}</b> a ${coupleName(debt[1])}` : "Siete in pari 🤝"}</p>
+        <p>${debt ? `<b>${coupleName(debt[0])}</b> devono <b>${eurF(Math.round(debt[2] * 100) / 100)}</b> a ${coupleName(debt[1])}` : "Siete in pari 🤝"}</p>
       </div></div>
-      <div class="card"><div class="between"><h3 style="margin:0">Saldo tra le coppie</h3>${debt ? `<button class="btn small" id="settle">${icon("HandCoins")} Segna rimborso</button>` : ""}</div>
+      <div class="card"><div class="between" style="margin-bottom:12px"><h3 style="margin:0">Saldo tra le coppie</h3>${debt ? `<button class="btn small" id="settle">${icon("HandCoins")} Segna rimborso</button>` : ""}</div>
         ${COPPIE.map((c, k) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--line)"><span class="avpair">${c.map(n => avatar(n, 28)).join("")}</span><span class="grow"><b>${coupleName(c)}</b></span><b style="font-size:1.05rem;color:${cn[k] > .5 ? "var(--ok)" : cn[k] < -.5 ? "var(--shu)" : "var(--muted)"}" data-count="${cn[k]}" data-fmt="eur±">${eurPM(cn[k])}</b></div>`).join("")}
         <p class="small muted" style="margin:8px 0 0">+ deve ricevere · − deve dare. Gli importi in yen sono convertiti al cambio del giorno in cui li inserite.</p>
         <details class="perperson"><summary>Dettaglio per persona</summary>
