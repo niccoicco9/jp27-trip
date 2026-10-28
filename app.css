@@ -1038,7 +1038,8 @@ html, body, .scroller { overscroll-behavior-x: none; }
 /* indietro col dito dal bordo (iOS): la pagina attuale segue il dito, sotto c'è già quella di prima */
 .under { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; will-change: transform; transform: translate3d(-30%, 0, 0); }
 .under::after { content: ""; position: absolute; inset: 0; background: #000; opacity: var(--dim, .12); }
-#view.backswipe { position: relative; z-index: 1; background: var(--bg); will-change: transform;
+/* almeno alta quanto lo schermo: le pagine corte (es. Yen ↔ Euro) se no lasciano vedere quella sotto a metà */
+#view.backswipe { position: relative; z-index: 1; background: var(--bg); will-change: transform; min-height: 100vh;
   box-shadow: 0 100vh 0 var(--bg), -10px 0 28px rgba(20, 12, 6, .16); }
 
 /* Luoghi: con la ricerca o "vicino a me" si vede sempre l'elenco, il selettore foto/elenco si spegne */
