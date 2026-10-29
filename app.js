@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 100;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 101;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -487,6 +487,9 @@
     else setUrl(h, false);
   }
   function go(h) {
+    // Mappe offline è solo una scheda: si apre sopra la pagina dove si è, senza cambiare indirizzo
+    // (se no, chiusa la scheda, l'indirizzo restava #utility/mappe e ritoccarla non faceva più niente)
+    if (h === "#utility/mappe") { openOfflineMaps(); return; }
     const cur = location.hash || "#oggi";
     // stessa pagina: chiude la scheda aperta, altrimenti torna in cima (come ritoccare la scheda attiva su iPhone)
     if (h === cur) { if (sheetOpen()) closeSheet(); else SC.scrollTo({ top: 0, behavior: reduceMotion() ? "auto" : "smooth" }); return; }
@@ -1753,7 +1756,8 @@
     }
     if (sub === "budget") return renderBudget(back);
     if (sub === "prenotazioni") return renderPren(back);
-    if (sub === "mappe") { renderUtility(); setTimeout(openOfflineMaps, 50); return; }
+    // aperta da un indirizzo (es. riavvio dell'app lì): si resta su Utility con la scheda sopra
+    if (sub === "mappe") { history.replaceState(null, "", "#utility"); lastHash = "#utility"; subPushed = false; renderUtility(); setTimeout(openOfflineMaps, 50); return; }
     if (sub === "spese") return renderSpese(back);
     if (sub === "checklist") return renderChecklist(back);
     go("#utility");
