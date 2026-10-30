@@ -32,7 +32,8 @@ export const counts = b => ({ giorni: Object.values(b.plan || {}).filter(d => d?
   spese: (b.lists.spese || []).filter(s => !s.del).length, prenotazioni: (b.lists.prenotazioni || []).length, luoghi: (b.lists.luoghi || []).filter(x => !x.edit && !x.hide).length });
 
 // ——— tabelle ———
-// info: { days: ["2027-02-21", …], luoghi: { id: { n, z } }, zone: { id: nome }, catLuoghi: { k: nome } }
+// info: { days: ["2027-02-21", …], luoghi: { id: luogo di Wanderlog com'era (n, jp, z, c, lat, lng, d, dur, eur, pren, chiuso, note, out) },
+//         zone: { id: nome }, catLuoghi: { k: nome } } — il servizio notturno passa solo { n, z, pren, out }: le altre colonne restano vuote
 export function tables(b, info) {
   const zona = z => info.zone?.[z] || z || "", cat = {}, names = {};
   for (const [id, p] of Object.entries(info.luoghi || {})) names[id] = p;
@@ -74,12 +75,28 @@ export function tables(b, info) {
   for (const p of [...(b.lists.prenotazioni || [])].sort((a, c) => (a.dal || "9").localeCompare(c.dal || "9") || (a.ora || "").localeCompare(c.ora || "")))
     pren.push([PREN[p.tipo] || p.tipo || "", p.titolo || "", p.dal ? day(p.dal) : "", p.al ? day(p.al) : "", p.ora || "", p.oraA || "", p.codice || "", p.link || "", p.note || ""]);
 
-  const luoghi = [["Cosa", "Nome", "Giapponese", "Zona", "Categoria", "Indirizzo", "Coordinate", "Descrizione", "Da"]];
+  // tutti i luoghi dell'app: quelli di Wanderlog (con le modifiche fatte da voi) e quelli aggiunti da voi; in fondo scartati ed eliminati
+  const inDays = {};
+  days.forEach(d => { for (const id of b.plan[d]?.i || []) (inDays[id] ||= []).push(d.slice(8) + "/" + d.slice(5, 7)); });
+  const booked = new Set(b.booked || []), zoneOrd = Object.keys(info.zone || {});
+  const all = Object.entries(info.luoghi || {}).map(([id, p]) => ({ ...p, id, stato: p.out ? "scartato su Wanderlog" : "Wanderlog" }));
+  const byIdL = Object.fromEntries(all.map(p => [p.id, p]));
   for (const x of L) {
-    if (x.hide) luoghi.push(["eliminato da Wanderlog", names[x.hide]?.n || x.hide, "", zona(names[x.hide]?.z), "", "", "", "", x.by || ""]);
-    else if (x.edit) luoghi.push(["modificato (Wanderlog)", names[x.edit]?.n || x.edit, x.jp ?? "", zona(names[x.edit]?.z), "", "", "", x.d ?? "", x.by || ""]);
-    else luoghi.push(["aggiunto da voi", x.n || "", x.jp || "", zona(x.z), info.catLuoghi?.[x.c] || x.c || "", x.addr || "", x.lat != null ? `${x.lat}, ${x.lng}` : "", x.d || "", x.chi || x.by || ""]);
+    const p = byIdL[x.edit || x.hide];
+    if (x.edit && p) {
+      if (x.n) p.n = x.n;
+      for (const f of ["jp", "d", "dur"]) if (typeof x[f] === "string") p[f] = x[f];
+      if ("eur" in x) p.eur = +x.eur > 0 ? +x.eur : undefined;
+      if (typeof x.pren === "boolean") p.pren = x.pren;
+      if (!p.out) p.stato = "Wanderlog, modificato"; p.chi = x.by || "";
+    } else if (x.hide && p) { p.out = true; p.stato = "eliminato da voi"; p.chi = x.by || ""; }
+    else if (!x.edit && !x.hide && x.n) all.push({ ...x, stato: "aggiunto da voi", chi: x.chi || x.by || "" });
   }
+  const zk = p => { const k = zoneOrd.indexOf(p.z); return k < 0 ? zoneOrd.length : k; };
+  const luoghi = [["Nome", "Giapponese", "Zona", "Categoria", "Stato", "In programma", "Da prenotare", "Prenotato", "Durata", "Costo a persona", "Chiuso", "Indirizzo", "Coordinate", "Descrizione", "Note", "Aggiunto o modificato da"]];
+  for (const p of all.map((p, k) => ({ p, k })).sort((a, c) => !!a.p.out - !!c.p.out || zk(a.p) - zk(c.p) || a.k - c.k).map(x => x.p))
+    luoghi.push([p.n || p.id, p.jp || "", zona(p.z), info.catLuoghi?.[p.c] || cat[p.c] || p.c || "", p.stato, (inDays[p.id] || []).join(", "), p.pren ? "sì" : "", booked.has(p.id) ? "sì" : "",
+      p.dur || "", +p.eur > 0 ? { eur: +p.eur } : "", p.chiuso || "", p.addr || "", p.lat != null ? `${p.lat}, ${p.lng}` : "", p.d || "", p.note || "", p.chi || ""]);
 
   const pTit = Object.fromEntries((b.lists.prenotazioni || []).map(p => [p.id, p.titolo]));
   const docs = [["Documento", "Prenotazione", "Pagine"]];
@@ -87,7 +104,7 @@ export function tables(b, info) {
 
   const c = counts(b), when = new Date(b.creato);
   const info0 = [["Backup del viaggio", ""], ["Creato il", when.toLocaleString("it-IT", { timeZone: "Europe/Rome" })], ["Da", b.da || ""], ["Versione app", b.app || ""],
-    ["Giorni con tappe", c.giorni], ["Tappe", c.tappe], ["Spese", c.spese], ["Spese eliminate (nel cestino)", (b.lists.spese || []).length - c.spese], ["Prenotazioni", c.prenotazioni], ["Luoghi aggiunti", c.luoghi], ["", ""],
+    ["Giorni con tappe", c.giorni], ["Tappe", c.tappe], ["Spese", c.spese], ["Spese eliminate (nel cestino)", (b.lists.spese || []).length - c.spese], ["Prenotazioni", c.prenotazioni], ["Luoghi (senza gli scartati)", all.filter(p => !p.out).length], ["di cui aggiunti da voi", c.luoghi], ["", ""],
     ["Per ripristinare", "nell'app: Utility › Backup › Ripristina, scegliendo il file .json di questo backup"]];
   return [{ name: "Info", rows: info0 }, { name: "Programma", rows: prog }, { name: "Spese", rows: spese }, { name: "Spese eliminate", rows: cestino }, { name: "Storia spese", rows: storia }, { name: "Prenotazioni", rows: pren }, { name: "Luoghi", rows: luoghi }, { name: "Documenti", rows: docs }];
 }

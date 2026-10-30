@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 109;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 110;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2671,7 +2671,8 @@
   // ——— backup: file Excel da leggere + file .json per ripristinare tutto (modulo backup.js, caricato solo qui) ———
   const backupInfo = () => ({
     days: DAYS, zone: Object.fromEntries(ZONE.map(z => [z.id, z.nome])), catLuoghi: Object.fromEntries(Object.entries(CAT).map(([k, c]) => [k, c[2]])),
-    luoghi: Object.fromEntries(LUOGHI.slice(0, BASE_N).map(p => [p.id, { n: BASE_ORIG.get(p.id)?.n || p.n, z: p.z }])),
+    // luoghi di Wanderlog com'erano all'origine: le modifiche fatte da voi sono nel backup e le applica backup.js
+    luoghi: Object.fromEntries(LUOGHI.slice(0, BASE_N).map(p => [p.id, { ...BASE_ORIG.get(p.id), z: p.z, c: p.c, lat: p.lat, lng: p.lng, chiuso: p.chiuso, note: p.note, out: BASE_OUT.has(p.id) }])),
   });
   // rimette programma, spese, prenotazioni e luoghi come nel backup, per tutti: si scrive solo quello che è diverso.
   // I documenti allegati restano come sono (le immagini non sono nel backup)
