@@ -514,7 +514,7 @@
     if (!a || e.defaultPrevented || a.target || e.metaKey || e.ctrlKey) return;
     e.preventDefault(); go(a.getAttribute("href"));
   });
-  let sheetT = null, sheetVer = 0, sheetSnap = "";
+  let sheetT = null, sheetVer = 0, sheetSnap = "", fitViewport = null;
   const sheetOpen = () => !sheet.hidden && !sheet.classList.contains("closing");
   // dentro una scheda già aperta: "push" (avanti, es. Modifica) o "pop" (indietro, es. Annulla/Salva) fanno scorrere il contenuto
   let sheetNav = "";
@@ -522,7 +522,7 @@
   function openSheet(html, onMount, onClose) {
     const nav = sheetOpen() ? sheetNav : ""; sheetNav = "";
     if (!sheetOpen()) sheetVer = dataVer;   // riaperta da dentro (es. dopo una modifica): conta da quando si è aperta la prima volta
-    clearTimeout(sheetT); if (sheet.hidden) sheetCard.style.animation = ""; sheet.classList.remove("closing"); $(".sheet-bg").style.opacity = ""; sheetCard.style.transition = "";
+    clearTimeout(sheetT); if (sheet.hidden) sheetCard.style.animation = ""; sheet.classList.remove("closing"); $(".sheet-bg").style.opacity = ""; sheetCard.style.transition = ""; fitViewport?.();
     if (!layers.includes(sheetLayer)) pushLayer(sheetLayer);
     $("#sheet-body").innerHTML = html; sheet.hidden = false; SC.classList.add("locked");
     if (nav) { const b = $("#sheet-body"); b.classList.remove("push", "pop"); void b.offsetWidth; b.classList.add(nav); }
@@ -549,14 +549,20 @@
     if (!sheetOpen()) return;
     if (!fromHistory) dropLayer(sheetLayer);
     SC.classList.remove("locked");
-    if (instant || reduceMotion()) { sheet.hidden = true; sheetCard.style.transform = ""; }
+    // tastiera aperta (es. dopo una ricerca): si chiude insieme alla scheda, non dopo
+    const kbUp = document.body.classList.contains("kb-up");
+    if (sheetCard.contains(document.activeElement)) document.activeElement.blur();
+    if (instant || reduceMotion()) { sheet.hidden = true; sheetCard.style.transform = ""; fitViewport?.(); }
     else {
-      sheet.classList.add("closing");
+      sheet.classList.add("closing");   // finché scende, la scheda resta dov'è anche se la tastiera si abbassa (vedi fitViewport)
       // dopo un trascinamento la scheda continua alla velocità del dito (lancio veloce = chiusura più rapida)
       const ms = v > 0 ? Math.round(Math.min(340, Math.max(180, (sheetCard.offsetHeight / v) * .9))) : 340;
-      sheetCard.style.transition = `transform ${ms}ms cubic-bezier(.32, .72, 0, 1)`; sheetCard.style.transform = "translate3d(0, 105%, 0)";
+      // sopra la tastiera una scheda corta, scesa solo della sua altezza, resterebbe a metà schermo quando la tastiera sparisce:
+      // scende fino in fondo allo schermo
+      const to = kbUp ? `${Math.round(Math.max(sheetCard.offsetHeight * 1.05, innerHeight - sheet.getBoundingClientRect().top - sheetCard.offsetTop + 24))}px` : "105%";
+      sheetCard.style.transition = `transform ${ms}ms cubic-bezier(.32, .72, 0, 1)`; sheetCard.style.transform = `translate3d(0, ${to}, 0)`;
       sheet.style.setProperty("--close-ms", ms + "ms");
-      sheetT = setTimeout(() => { sheet.hidden = true; sheet.classList.remove("closing"); sheetCard.style.transition = ""; sheetCard.style.transform = ""; }, ms);
+      sheetT = setTimeout(() => { sheet.hidden = true; sheet.classList.remove("closing"); sheetCard.style.transition = ""; sheetCard.style.transform = ""; fitViewport?.(); }, ms);
     }
     // chiusa senza aver cambiato niente: la pagina sotto resta com'è (niente ricostruzione, foto già pronte)
     const f = sheetOnClose === rerender && dataVer === sheetVer ? null : sheetOnClose; sheetOnClose = null; f?.();
@@ -3174,13 +3180,16 @@
   const vv = window.visualViewport;
   if (vv) {
     const fit = () => {
+      // scheda che si sta chiudendo: la tastiera che scende la spostava in basso di colpo a metà animazione (scatto con le
+      // schede corte, es. due risultati di ricerca). Si aggiorna appena è chiusa (closeSheet richiama fitViewport)
+      if (sheet.classList.contains("closing")) return;
       const r = document.documentElement.style, h = Math.round(vv.height), top = Math.round(vv.offsetTop);
       r.setProperty("--vv-h", h + "px"); r.setProperty("--vv-top", top + "px");
       document.body.classList.toggle("kb-up", innerHeight - h > 120);   // tastiera aperta (non la sola barra di Safari)
       const a = document.activeElement;
       if (sheetOpen() && isTyping(a) && sheetCard.contains(a)) a.scrollIntoView({ block: "nearest" });
     };
-    vv.addEventListener("resize", fit); vv.addEventListener("scroll", fit); fit();
+    vv.addEventListener("resize", fit); vv.addEventListener("scroll", fit); fit(); fitViewport = fit;
   }
 
   // tastiera giusta per ogni campo: "Cerca" nelle ricerche, maiuscola iniziale nei testi, "Fine" negli importi
