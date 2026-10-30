@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 101;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 102;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -702,7 +702,8 @@
         ${p.chiuso ? `<dt>Chiuso</dt><dd>${esc(p.chiuso)}</dd>` : ""}
         ${p.pren ? `<dt>Biglietti</dt><dd><label class="check" style="border:none;padding:0"><input type="checkbox" id="bk" ${booked.has(id) ? "checked" : ""}><span>${booked.has(id) ? "<b>Prenotato</b>" : "Da prenotare in anticipo: <b>segna quando è fatto</b>"}</span></label></dd>` : ""}
         ${p.pren && PREN[p.id] && !booked.has(id) ? `<dt>Quando</dt><dd><b class="bkw ${bookWhen(p)?.cls || ""}">${esc(cap1(bookWhen(p).txt))}</b><div class="small muted" style="margin-top:2px">${esc(PREN[p.id].come)}</div></dd>` : ""}
-        <dt>In programma</dt><dd>${ds.length ? ds.map(d => `<a href="#giorni/${d}">Giorno ${dayIndex(d) + 1} · ${fmtDay(d)}</a>`).join("<br>") : "<span class='muted'>non ancora</span>"}</dd>
+        <dt>In programma</dt><dd>${ds.length ? ds.map(d => `<div class="pday"><a href="#giorni/${d}">Giorno ${dayIndex(d) + 1} · ${fmtDay(d, { weekday: "short", day: "numeric", month: "short" })}</a>${p.gone ? "" : timeIn(`class="ptime" data-ptime="${d}" value="${esc(plan[d]?.t?.[id] || "")}" aria-label="Ora in programma"`)}</div>`).join("")
+          + (p.gone ? "" : `<div class="small muted">Tocca l'ora per segnare quando andarci</div>`) : "<span class='muted'>non ancora</span>"}</dd>
       </dl>
       ${p.gone ? "" : `<h3>Aggiungi a un giorno</h3>
       <select id="addday"><option value="">Scegli il giorno…</option>${DAYS.map((d, i) => `<option value="${d}" ${plan[d]?.i?.includes(id) ? "disabled" : ""}>Giorno ${i + 1} · ${fmtDay(d, { weekday: "short", day: "numeric", month: "short" })}${plan[d]?.l ? " — " + esc(plan[d].l) : ""}</option>`).join("")}</select>`}
@@ -718,8 +719,15 @@
       $("#onmap", el).onclick = () => { mapFocus = id; go("#mappa"); };
       if ($("#addday", el)) $("#addday", el).onchange = e => {
         const d = e.target.value; if (!d) return;
-        getDay(d).i.push(id); savePlan(); toast(closedOn(p, d) ? `Attenzione: quel giorno è chiuso (${p.chiuso})` : `Aggiunto al giorno ${dayIndex(d) + 1}`); again();
+        getDay(d).i.push(id); savePlan(); toast(closedOn(p, d) ? `Attenzione: quel giorno è chiuso (${p.chiuso})` : `Aggiunto al giorno ${dayIndex(d) + 1}: ora puoi mettere l'orario`); again();
       };
+      // ora in cui andarci, giorno per giorno (la stessa che si mette in Giorni › Modifica)
+      $$("[data-ptime]", el).forEach(inp => inp.onchange = () => {
+        const dd = getDay(inp.dataset.ptime); dd.t ||= {};
+        if (inp.value) dd.t[id] = inp.value; else delete dd.t[id];
+        if (!Object.keys(dd.t).length) delete dd.t;
+        savePlan(); buzz(); sheetSnap = sheetFields();   // già salvata: chiudendo la scheda non chiede di ignorarla
+      });
     }, rerender);
   }
   document.addEventListener("click", e => {
@@ -968,7 +976,8 @@
         ${day.i.length > 1 ? `<a href="${gmRoute(day.i)}" target="_blank" rel="noopener">${icon("Route")}<span>Percorso</span></a>` : `<button disabled>${icon("Route")}<span>Percorso</span></button>`}
         <button id="edit" class="${editMode ? "on" : ""}" ${day.i.length || editMode ? "" : "disabled"}>${icon(editMode ? "Check" : "Pencil")}<span>${editMode ? "Fatto" : "Modifica"}</span></button>
       </div>
-      ${editMode && day.i.length ? `<p class="small muted" style="margin:0 0 6px">Trascina il numero per cambiare l'ordine · metti un orario alle tappe</p>` : ""}
+      ${editMode && day.i.length ? `<p class="small muted" style="margin:0 0 6px">Trascina il numero per cambiare l'ordine · metti un orario alle tappe</p>`
+        : day.i.length > 1 ? `<p class="small muted" style="margin:0 0 6px">Tieni premuta una tappa per spostarla · scorri a sinistra per toglierla</p>` : ""}
       ${day.i.length ? `<ul class="tl${editMode ? " editing" : ""}">${day.i.map((id, k) => {
         const p = byId[id]; if (!p) return "";
         const next = byId[day.i[k + 1]], tm = day.t?.[id];
@@ -1014,33 +1023,71 @@
       if (!Object.keys(dd.t).length) delete dd.t;
       savePlan();
     });
-    // trascina il numero per riordinare
-    $$("[data-grip]").forEach(g => g.addEventListener("pointerdown", e => {
-      e.preventDefault();
-      const li = g.closest("li"), items = [...li.parentElement.children], from = items.indexOf(li);
-      const rects = items.map(x => x.getBoundingClientRect()), y0 = e.clientY, h = rects[from].height;
-      let to = from;
-      g.setPointerCapture(e.pointerId); li.classList.add("dragging"); buzz();
-      const move = ev => {
-        const dy = ev.clientY - y0, mid = rects[from].top + h / 2 + dy;
+    // riordino: la tappa segue il dito e le altre le fanno posto; vicino al bordo alto o basso la pagina scorre da sola,
+    // così anche nei giorni lunghi l'ultima tappa arriva fino in cima. Restituisce move(y) / end()
+    const startReorder = (li, y0) => {
+      const items = [...li.parentElement.children], from = items.indexOf(li), s0 = SC.scrollTop;
+      const rects = items.map(x => { const r = x.getBoundingClientRect(); return { top: r.top + s0, h: r.height }; }), h = rects[from].h;
+      let to = from, y = y0, raf = 0;
+      li.classList.add("dragging"); buzz();
+      const paint = () => {
+        const dy = y - y0 + SC.scrollTop - s0, mid = rects[from].top + h / 2 + dy;
         li.style.transform = `translateY(${dy}px)`;
-        to = rects.filter((r, j) => j !== from && r.top + r.height / 2 < mid).length;
+        to = rects.filter((r, j) => j !== from && r.top + r.h / 2 < mid).length;
         items.forEach((x, j) => { if (j === from) return; x.style.transform = from < to && j > from && j <= to ? `translateY(${-h}px)` : to < from && j >= to && j < from ? `translateY(${h}px)` : ""; });
       };
-      const up = () => {
-        g.removeEventListener("pointermove", move); g.removeEventListener("pointerup", up); g.removeEventListener("pointercancel", up);
-        items.forEach(x => (x.style.transform = "")); li.classList.remove("dragging");
-        if (to !== from) { const dd = getDay(d), [id] = dd.i.splice(from, 1); dd.i.splice(to, 0, id); savePlan(); buzz(); }
-        keepScroll(() => renderGiorni());
+      const tick = () => {
+        raf = 0;
+        const top = ($(".top")?.offsetHeight || 0) + 70, bottom = innerHeight - 150;   // sopra la testata, sotto la barra delle schede
+        const v = y < top ? -Math.min(18, (top - y) / 4) : y > bottom ? Math.min(18, (y - bottom) / 4) : 0;
+        const before = SC.scrollTop; if (v) SC.scrollTop += v;
+        paint(); if (v && SC.scrollTop !== before) raf = requestAnimationFrame(tick);
       };
+      return {
+        move(ny) { y = ny; if (!raf) raf = requestAnimationFrame(tick); },
+        end() {
+          cancelAnimationFrame(raf);
+          items.forEach(x => (x.style.transform = "")); li.classList.remove("dragging");
+          if (to !== from) { const dd = getDay(d), [id] = dd.i.splice(from, 1); dd.i.splice(to, 0, id); savePlan(); buzz(); }
+          keepScroll(() => renderGiorni());
+        },
+      };
+    };
+    // in Modifica: trascina il numero
+    $$("[data-grip]").forEach(g => g.addEventListener("pointerdown", e => {
+      e.preventDefault();
+      const r = startReorder(g.closest("li"), e.clientY);
+      g.setPointerCapture(e.pointerId);
+      const move = ev => r.move(ev.clientY);
+      const up = () => { g.removeEventListener("pointermove", move); g.removeEventListener("pointerup", up); g.removeEventListener("pointercancel", up); r.end(); };
       g.addEventListener("pointermove", move); g.addEventListener("pointerup", up); g.addEventListener("pointercancel", up);
     }));
+    // fuori da Modifica: tieni premuta una tappa e trascinala (come nei Promemoria di iPhone)
+    let reorder = null;
+    if (!editMode) $$(".tl li").forEach(li => {
+      let t = null, x0 = 0, y0 = 0;
+      const block = e => { if (reorder) { e.preventDefault(); reorder.move(e.touches[0].clientY); } };   // niente scorrimento della pagina mentre si sposta
+      const stop = e => {
+        clearTimeout(t); t = null;
+        if (!reorder) return;
+        e.preventDefault();   // niente tocco dopo: non apre la scheda del luogo
+        document.removeEventListener("touchmove", block); const r = reorder; reorder = null; r.end();
+      };
+      li.addEventListener("touchstart", e => {
+        if (e.touches.length > 1 || e.target.closest("a, button, input, select, .hop")) return;
+        x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
+        clearTimeout(t); t = setTimeout(() => { t = null; reorder = startReorder(li, y0); document.addEventListener("touchmove", block, { passive: false }); }, 420);
+      }, { passive: true });
+      li.addEventListener("touchmove", e => { if (t && Math.hypot(e.touches[0].clientX - x0, e.touches[0].clientY - y0) > 8) { clearTimeout(t); t = null; } }, { passive: true });
+      li.addEventListener("touchend", stop); li.addEventListener("touchcancel", stop);
+    });
     // scorri una tappa verso sinistra per toglierla
     if (!editMode) $$(".tl li").forEach((li, k) => {
       const card = $(".place", li); if (!card) return;
       let x0 = 0, y0 = 0, dx = 0, on = null;
       li.addEventListener("touchstart", e => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; on = null; card.style.transition = "none"; }, { passive: true });
       li.addEventListener("touchmove", e => {
+        if (reorder) return;   // la tappa si sta spostando: non è uno scorrimento per toglierla
         const mx = e.touches[0].clientX - x0, my = e.touches[0].clientY - y0;
         if (on === null && (Math.abs(mx) > 10 || Math.abs(my) > 10)) on = Math.abs(mx) > Math.abs(my) * 1.3 && mx < 0;
         if (!on) return;
@@ -1083,9 +1130,10 @@
   })();
   function keepScroll(fn) { const y = SC.scrollTop; fn(); SC.scrollTop = y; }
 
-  function openPicker(d) {
+  // changed: il giorno è già cambiato prima di aprire (es. luogo nuovo appena creato da qui), chiudendo va ridisegnato
+  function openPicker(d, changed) {
     let fz = dayZone(d) || "all", fq = "";
-    const v0 = dataVer;
+    const v0 = changed ? -1 : dataVer;
     const draw = el => {
       const list = LUOGHI.filter(p => !p.out && (fz === "all" || p.z === fz) && (!fq || matches(p.n + " " + p.jp + " " + p.d, fq)));
       $("#pk-list", el).innerHTML = list.map(p => {
@@ -2244,6 +2292,7 @@
         <label class="fl"><span>Durata</span><input id="l-dur" value="${esc(p.dur || "")}" placeholder="es. 1 ora" autocomplete="off"></label>
         <label class="fl"><span>Costo a persona (€)</span><input id="l-eur" inputmode="decimal" value="${p.eur ? String(p.eur).replace(".", ",") : ""}" placeholder="Facoltativo"></label>
       </div>
+      ${day ? `<label class="fl"><span>Ora in programma · giorno ${dayIndex(day) + 1}</span>${timeIn(`id="l-ora" value="${esc(plan[day]?.t?.[p.id] || "")}"`)}</label>` : ""}
       <label class="check" style="border:none;padding:0 0 12px"><input type="checkbox" id="l-pren" ${st.pren ? "checked" : ""}><span>Da prenotare in anticipo</span></label>
       ${isNew ? "" : `<button class="btn" id="l-del" style="width:100%;margin-bottom:10px;color:var(--shu)">${icon("Trash2")} Elimina luogo</button>`}
       <div class="btns"><button class="btn" ${fromPlace ? 'id="l-cancel"' : "data-close"}>Annulla</button><button class="btn primary" id="l-save">Salva</button></div>
@@ -2309,7 +2358,11 @@
         item.img = img;
         const saved = putItem("luoghi", item);
         toast(isNew ? "Luogo aggiunto ✓" : "Salvato ✓");
-        if (day) { const dd = getDay(day); if (!dd.i.includes(saved.id)) dd.i.push(saved.id); savePlan(); openPicker(day); }
+        if (day) {
+          const dd = getDay(day), ora = $("#l-ora", el)?.value; if (!dd.i.includes(saved.id)) dd.i.push(saved.id);
+          if (ora) (dd.t ||= {})[saved.id] = ora;
+          savePlan(); openPicker(day, true);
+        }
         else if (isNew || fromPlace) { rerender(); inSheet("pop", () => openPlace(saved.id)); }
         else { closeSheet(); rerender(); }
       };

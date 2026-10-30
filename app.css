@@ -737,6 +737,11 @@ body.on-map .map-loading { padding-top: var(--head, 60px); }
 .tl.editing .place .ph, .tl.editing .place .cat-ic { display: none; }
 .tl.editing .place > div:first-child { display: none; }
 .tl .ttime { width: 92px; min-height: 38px; padding: 6px 8px; font-size: .85rem; }
+/* scheda luogo: "In programma" con l'ora di ogni giorno accanto */
+.pday { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.pday .tin { flex: none; }
+.pday .ptime { width: 92px; min-height: 38px; padding: 6px 8px; font-size: 16px; }
+.pday .tin > i { padding: 0 9px; }
 
 /* Utility a gruppi */
 .ugroup { margin: 22px 0 10px; font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
