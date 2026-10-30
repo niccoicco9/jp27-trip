@@ -3,13 +3,13 @@
 
   // ——— storage (protetto: in privato o con dati bloccati può fallire) ———
   let dataVer = 0;   // cresce a ogni modifica salvata: le pagine tenute in memoria più vecchie si ricostruiscono
-  const UI_KEYS = new Set(["selDay", "lview", "mapMode", "notifyQ", "skipCode", "lastPage"]);   // solo preferenze di navigazione: non cambiano le pagine
+  const UI_KEYS = new Set(["selDay", "lview", "mapMode", "notifyQ", "skipCode", "lastPage", "lastBackup", "preRestore"]);   // solo preferenze di navigazione: non cambiano le pagine
   const LS = {
     get(k, d) { try { const v = localStorage.getItem("jp27:" + k); return v ? JSON.parse(v) : d; } catch { return d; } },
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 102;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 103;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -1785,6 +1785,9 @@
         <div class="seg">${[["", "Auto"], ["light", "Chiaro"], ["dark", "Scuro"]].map(([k, t]) => `<button data-theme="${k}" class="${theme === k ? "on" : ""}">${t}</button>`).join("")}</div></div>`);
       $$("[data-theme]", view).forEach(b => b.onclick = () => { buzz(); setTheme(b.dataset.theme); });
       notifCard();
+      const lb = LS.get("lastBackup", 0), ago = lb ? Math.floor((Date.now() - lb) / 864e5) : -1;
+      view.insertAdjacentHTML("beforeend", `<div class="card row"><div class="grow"><b>Backup</b><div class="muted small">${ago < 0 ? "Mai fatto su questo telefono" : `Ultimo su questo telefono: ${ago === 0 ? "oggi" : ago === 1 ? "ieri" : ago + " giorni fa"}`}</div></div><button class="btn small" id="backup">${icon("Download")} Apri</button></div>`);
+      $("#backup").onclick = openBackup;
       view.insertAdjacentHTML("beforeend", `<div class="card row"><div class="grow"><b>Versione ${APP_VERSION}</b><div class="muted small">Se qualcosa non sembra aggiornato, scarica di nuovo l'app (le mappe offline restano).</div></div><button class="btn small" id="forceupd">${icon("RotateCcw")} Aggiorna adesso</button></div>`);
       $("#forceupd").onclick = forceUpdate;
       if (code) syncCard();
@@ -2596,6 +2599,66 @@
   async function whenSync() { for (let i = 0; i < 40 && !sync; i++) await new Promise(r => setTimeout(r, 250)); return sync; }
   async function savePush(sub, st) { const s = await whenSync(); s?.put("push", { id: st.sid, sub: JSON.stringify(sub), who: me || "", prefs: st.prefs }); }
   async function currentSub() { try { return await (await navigator.serviceWorker.ready).pushManager.getSubscription(); } catch { return null; } }
+  // ——— backup: file Excel da leggere + file .json per ripristinare tutto (modulo backup.js, caricato solo qui) ———
+  const backupInfo = () => ({
+    days: DAYS, zone: Object.fromEntries(ZONE.map(z => [z.id, z.nome])), catLuoghi: Object.fromEntries(Object.entries(CAT).map(([k, c]) => [k, c[2]])),
+    luoghi: Object.fromEntries(LUOGHI.slice(0, BASE_N).map(p => [p.id, { n: BASE_ORIG.get(p.id)?.n || p.n, z: p.z }])),
+  });
+  // rimette programma, spese, prenotazioni e luoghi come nel backup, per tutti: si scrive solo quello che è diverso.
+  // I documenti allegati restano come sono (le immagini non sono nel backup)
+  function applyBackup(B, b) {
+    plan = cleanPlan(b.plan); booked = new Set(Array.isArray(b.booked) ? b.booked : []);
+    savePlan();
+    for (const name of B.RESTORE_LISTS) {
+      const next = cleanList(name, b.lists[name] || []), ids = new Set(next.map(x => x.id)), now = new Map(lists[name].map(x => [x.id, x]));
+      for (const id of now.keys()) if (!ids.has(id)) sync?.del(name, id);
+      for (const x of next) if (sig(now.get(x.id)) !== sig(x)) { const { at, ...rest } = x; sync?.put(name, rest); }
+      lists[name] = next; LS.set(name, next);
+    }
+    mergeCustom();
+  }
+  const nOf = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const backupTxt = k => `${nOf(k.tappe, "tappa", "tappe")} in ${nOf(k.giorni, "giorno", "giorni")} · ${nOf(k.spese, "spesa", "spese")} · ${nOf(k.prenotazioni, "prenotazione", "prenotazioni")} · ${nOf(k.luoghi, "luogo aggiunto", "luoghi aggiunti")}`;
+  async function openBackup() {
+    let B; try { B = await import("./backup.js"); } catch { return toast("Backup non disponibile: riapri l'app con la rete"); }
+    const now = () => B.snapshot({ plan, booked, lists, by: me, app: APP_VERSION }), c = B.counts(now());
+    const prev = LS.get("preRestore", null);
+    openSheet(`<div class="ttl"><span class="pic" style="background:#2e6fb0">${icon("Download")}</span><h2>Backup</h2></div>
+      <p class="lead">Una copia di programma, spese, prenotazioni e luoghi: un file Excel da leggere (si apre anche in Fogli Google) e un file per ripristinare tutto. Salvali su Drive, File o mandateli via mail.</p>
+      <div class="card small">${backupTxt(c)}</div>
+      <button class="btn primary" id="bk-save" style="width:100%">${icon("Download")} Salva il backup</button>
+      <h3>Ripristina</h3>
+      <p class="small muted" style="margin-top:0">Riporta tutto com'era in un backup, per tutti e quattro. I documenti allegati non vengono toccati.</p>
+      <button class="btn" id="bk-load" style="width:100%">${icon("RotateCcw")} Ripristina da un file…</button><input type="file" id="bk-file" accept=".json,application/json" hidden>
+      ${prev ? `<button class="btn" id="bk-undo" style="width:100%;margin-top:10px">${icon("Undo2")} Torna a com'era prima dell'ultimo ripristino</button>
+        <p class="small muted">Copia del ${new Date(prev.creato).toLocaleString("it-IT", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}</p>` : ""}`, el => {
+      $("#bk-save", el).onclick = async () => {
+        const b = now(), day = new Date().toISOString().slice(0, 10), name = `Giappone2027-backup-${day}`;
+        const files = [new File([B.xlsx(B.tables(b, backupInfo()))], name + ".xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+          new File([JSON.stringify(b)], name + ".json", { type: "application/json" })];
+        try {
+          if (navigator.canShare?.({ files })) await navigator.share({ files, title: "Backup Giappone 2027" });
+          else for (const f of files) { const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }
+        } catch (err) { if (err?.name === "AbortError") return; toast("Non sono riuscito a salvare il backup"); return; }
+        LS.set("lastBackup", Date.now()); toast("Backup salvato ✓"); buzz();
+      };
+      $("#bk-load", el).onclick = () => $("#bk-file", el).click();
+      $("#bk-file", el).onchange = async e => {
+        const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
+        const { b, err } = B.readBackup(await f.text()); if (err) return toast(err);
+        const k = B.counts(b), when = new Date(b.creato).toLocaleString("it-IT", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        if (!await ask({ title: "Ripristinare questo backup?", text: `Backup del ${when}${b.da ? ` (di ${b.da})` : ""}: ${backupTxt(k)}. Programma, spese, prenotazioni e luoghi tornano com'erano allora, per tutti e quattro. Quello che c'è adesso resta salvato qui e si può riavere.`, ok: "Ripristina", danger: true, icon: "RotateCcw" })) return;
+        LS.set("preRestore", now()); applyBackup(B, b);
+        closeSheet(); rerender(); buzz(); toast("Backup ripristinato ✓");
+      };
+      $("#bk-undo", el)?.addEventListener("click", async () => {
+        if (!await ask({ title: "Tornare a prima del ripristino?", text: "Programma, spese, prenotazioni e luoghi tornano com'erano subito prima dell'ultimo ripristino, per tutti e quattro.", ok: "Torna indietro", danger: true, icon: "Undo2" })) return;
+        const p = LS.get("preRestore", null); if (!p) return;
+        LS.set("preRestore", now()); applyBackup(B, p);
+        closeSheet(); rerender(); buzz(); toast("Fatto: tutto com'era prima del ripristino");
+      });
+    });
+  }
   function notifCard() {
     if (!T.notifyUrl) return;
     const st = LS.get("push", null), box = document.createElement("div"); box.className = "card"; box.id = "notif";
