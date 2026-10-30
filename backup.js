@@ -29,7 +29,7 @@ export function readBackup(text) {
   return { b };
 }
 export const counts = b => ({ giorni: Object.values(b.plan || {}).filter(d => d?.i?.length).length, tappe: Object.values(b.plan || {}).reduce((a, d) => a + (d?.i?.length || 0), 0),
-  spese: (b.lists.spese || []).length, prenotazioni: (b.lists.prenotazioni || []).length, luoghi: (b.lists.luoghi || []).filter(x => !x.edit && !x.hide).length });
+  spese: (b.lists.spese || []).filter(s => !s.del).length, prenotazioni: (b.lists.prenotazioni || []).length, luoghi: (b.lists.luoghi || []).filter(x => !x.edit && !x.hide).length });
 
 // ——— tabelle ———
 // info: { days: ["2027-02-21", …], luoghi: { id: { n, z } }, zone: { id: nome }, catLuoghi: { k: nome } }
@@ -51,9 +51,24 @@ export function tables(b, info) {
     ids.forEach((id, j) => prog.push([n, day(d), j ? "" : g.l || "", g.t?.[id] || "", names[id]?.n || id, zona(names[id]?.z), g.f?.includes(id) ? "sì" : "", j ? "" : g.n || ""]));
   });
 
-  const spese = [["Data", "Descrizione", "Categoria", "Importo", "Valuta", "Euro", "Pagato da", "Per chi", "Inserita da"]];
-  for (const s of [...(b.lists.spese || [])].sort((a, c) => (a.data || "").localeCompare(c.data || "") || (a.ts || 0) - (c.ts || 0)))
-    spese.push([s.data ? day(s.data) : "", s.desc || "", SPESE[s.cat] || cat[s.cat] || s.cat || "", +s.importo || 0, s.valuta || "", { eur: +s.eur || 0 }, s.pagatoDa || "", (s.perChi || []).join(", "), s.by || ""]);
+  // spese: quelle che contano, quelle nel cestino (eliminate, con chi e quando) e la storia di ogni cambio
+  const ora = t => t ? new Date(t).toLocaleString("it-IT", { timeZone: "Europe/Rome", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+  const spCols = s => [s.data ? day(s.data) : "", s.desc || "", SPESE[s.cat] || cat[s.cat] || s.cat || "", +s.importo || 0, s.valuta || "", { eur: +s.eur || 0 }, s.pagatoDa || "", (s.perChi || []).join(", "), s.da || s.by || ""];
+  const spHead = ["Data", "Descrizione", "Categoria", "Importo", "Valuta", "Euro", "Pagato da", "Per chi", "Inserita da"];
+  const allSp = [...(b.lists.spese || [])].sort((a, c) => (a.data || "").localeCompare(c.data || "") || (a.ts || 0) - (c.ts || 0));
+  const spese = [[...spHead, "Modificata"]];
+  for (const s of allSp.filter(s => !s.del)) { const m = (s.storia || []).filter(x => x.a === "mod"); spese.push([...spCols(s), m.length ? `sì, ${m.length === 1 ? "1 volta" : m.length + " volte"} (ultima: ${m[m.length - 1].by})` : ""]); }
+  const cestino = [[...spHead, "Eliminata da", "Eliminata il (ora italiana)"]];
+  for (const s of allSp.filter(s => s.del).sort((a, c) => (c.del.t || 0) - (a.del.t || 0))) cestino.push([...spCols(s), (s.del.by || "") + (s.del.backup ? " (ripristino backup)" : ""), ora(s.del.t)]);
+  const AZ = { mod: "modificata", del: "eliminata", rip: "ripristinata" };
+  const ev = [];
+  for (const s of allSp) {
+    const nome = (s.desc || SPESE[s.cat] || cat[s.cat] || "Spesa") + (s.data ? ` (${s.data.split("-").reverse().join("/")})` : ""), imp = `${+s.importo || 0} ${s.valuta === "EUR" ? "€" : "¥"}`;
+    const prima = k => (s.storia || []).flatMap(x => x.c || []).find(c => c.k === k)?.da;   // com'era quando è stata aggiunta
+    if (s.ts) ev.push([s.ts, ora(s.ts), s.da || s.by || "", "aggiunta", nome, `${prima("Importo") || imp} · pagata da ${prima("Ha pagato") || s.pagatoDa || "?"}`]);
+    for (const x of s.storia || []) ev.push([x.t || 0, ora(x.t), x.by || "", AZ[x.a] || x.a || "", nome, (x.c || []).map(c => `${c.k}: ${c.da} → ${c.a}`).join(" · ") || (x.a === "mod" ? "" : imp)]);
+  }
+  const storia = [["Quando (ora italiana)", "Chi", "Cosa", "Spesa", "Dettaglio"], ...ev.sort((a, c) => c[0] - a[0]).map(r => r.slice(1))];
 
   const pren = [["Tipo", "Titolo", "Dal", "Al", "Ora", "Arrivo", "Codice", "Link", "Note"]];
   for (const p of [...(b.lists.prenotazioni || [])].sort((a, c) => (a.dal || "9").localeCompare(c.dal || "9") || (a.ora || "").localeCompare(c.ora || "")))
@@ -72,9 +87,9 @@ export function tables(b, info) {
 
   const c = counts(b), when = new Date(b.creato);
   const info0 = [["Backup del viaggio", ""], ["Creato il", when.toLocaleString("it-IT", { timeZone: "Europe/Rome" })], ["Da", b.da || ""], ["Versione app", b.app || ""],
-    ["Giorni con tappe", c.giorni], ["Tappe", c.tappe], ["Spese", c.spese], ["Prenotazioni", c.prenotazioni], ["Luoghi aggiunti", c.luoghi], ["", ""],
+    ["Giorni con tappe", c.giorni], ["Tappe", c.tappe], ["Spese", c.spese], ["Spese eliminate (nel cestino)", (b.lists.spese || []).length - c.spese], ["Prenotazioni", c.prenotazioni], ["Luoghi aggiunti", c.luoghi], ["", ""],
     ["Per ripristinare", "nell'app: Utility › Backup › Ripristina, scegliendo il file .json di questo backup"]];
-  return [{ name: "Info", rows: info0 }, { name: "Programma", rows: prog }, { name: "Spese", rows: spese }, { name: "Prenotazioni", rows: pren }, { name: "Luoghi", rows: luoghi }, { name: "Documenti", rows: docs }];
+  return [{ name: "Info", rows: info0 }, { name: "Programma", rows: prog }, { name: "Spese", rows: spese }, { name: "Spese eliminate", rows: cestino }, { name: "Storia spese", rows: storia }, { name: "Prenotazioni", rows: pren }, { name: "Luoghi", rows: luoghi }, { name: "Documenti", rows: docs }];
 }
 
 // ——— file Excel (.xlsx): un archivio zip di file XML, scritto a mano ———

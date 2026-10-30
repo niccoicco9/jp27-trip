@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 103;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 104;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -41,7 +41,12 @@
         if (!(importo > 0)) return null;
         const eur = +x.eur > 0 ? +x.eur : valuta === "EUR" ? importo : Math.round(importo / rate0 * 100) / 100;
         const per = (Array.isArray(x.perChi) ? x.perChi : []).filter(n => T.viaggiatori.includes(n));
-        return { ...x, importo, valuta, eur, perChi: per.length ? per : [...T.viaggiatori], pagatoDa: T.viaggiatori.includes(x.pagatoDa) ? x.pagatoDa : T.viaggiatori[0], desc: str(x.desc), cat: str(x.cat) || "altro" };
+        const out = { ...x, importo, valuta, eur, perChi: per.length ? per : [...T.viaggiatori], pagatoDa: T.viaggiatori.includes(x.pagatoDa) ? x.pagatoDa : T.viaggiatori[0], desc: str(x.desc), cat: str(x.cat) || "altro" };
+        // cestino (del) e storia delle modifiche: niente campi undefined, Firestore li rifiuta
+        if (x.del && typeof x.del === "object") out.del = { ...x.del, by: str(x.del.by) || "?", t: +x.del.t || 0 }; else delete out.del;
+        if (Array.isArray(x.storia)) out.storia = x.storia.filter(o => o && typeof o === "object").map(o => ({ ...o, a: str(o.a), by: str(o.by) || "?", t: +o.t || 0, c: (Array.isArray(o.c) ? o.c : []).filter(c => c && typeof c === "object").map(c => ({ k: str(c.k), da: str(c.da), a: str(c.a) })) }));
+        else delete out.storia;
+        return out;
       }
       if (name === "allegati") { const n = Math.round(+x.pagine); return str(x.pren) && n >= 1 && n <= 30 ? { ...x, pagine: n, nome: str(x.nome).slice(0, 60) || "Documento", t: +x.t || 0 } : null; }
       if (name === "categorie") return str(x.n) ? { ...x, n: str(x.n).slice(0, 24), e: str(x.e) || "🏷️", col: /^#[0-9a-f]{6}$/i.test(x.col) ? x.col : "#8a6d4b" } : null;
@@ -901,7 +906,7 @@
     if (nowJP() < "21:00") return "";
     const d = plan[today] || {}, ids = (d.i || []).filter(id => byId[id]), done = ids.filter(id => d.f?.includes(id));
     let km = 0; for (let j = 1; j < done.length; j++) km += kmBetween(byId[done[j - 1]], byId[done[j]]) * 1.25;
-    const sp = lists.spese.filter(s => s.data === today && s.cat !== "rimborso"), tot = sp.reduce((a, s) => a + s.eur, 0);
+    const sp = speseVive().filter(s => s.data === today && s.cat !== "rimborso"), tot = sp.reduce((a, s) => a + s.eur, 0);
     const tom = DAYS[dayIndex(today) + 1], td = tom && plan[tom], first = td?.i?.map(id => byId[id]).find(Boolean);
     // giornata libera e senza spese: niente "0/0 tappe · – · –", solo cosa c'è domani
     const stats = ids.length || tot;
@@ -2404,7 +2409,7 @@
   let spFilter = null, spMine = false;   // grafico: categoria scelta e "la mia parte"
   // grafico a ciambella: totale per categoria (del gruppo o solo la mia parte); tocca una riga per filtrare
   function catCard() {
-    const sp = lists.spese.filter(s => s.cat !== "rimborso");
+    const sp = speseVive().filter(s => s.cat !== "rimborso");
     if (!sp.length) return "";
     const share = s => { const per = s.perChi?.length ? s.perChi : T.viaggiatori; return spMine ? (per.includes(me) ? s.eur / per.length : 0) : s.eur; };
     const tot = {}; for (const s of sp) { const k = catOf(s.cat).k; tot[k] = (tot[k] || 0) + share(s); }
@@ -2425,6 +2430,7 @@
     const net = Object.fromEntries(T.viaggiatori.map(n => [n, 0]));
     let total = 0;
     for (const s of lists.spese) {
+      if (s.del) continue;   // nel cestino: non conta
       const per = s.perChi?.length ? s.perChi : T.viaggiatori;
       net[s.pagatoDa] = (net[s.pagatoDa] || 0) + s.eur;
       for (const n of per) net[n] = (net[n] || 0) - s.eur / per.length;
@@ -2438,12 +2444,45 @@
     const c = COPPIE.find(c => c.length === per.length && c.every(n => per.includes(n)));
     return c ? coupleName(c) : per.join(", ");
   }
+  // ——— cestino e storia: una spesa eliminata non sparisce (del: { by, t }) e ogni modifica resta scritta (storia) ———
+  const speseVive = () => lists.spese.filter(s => !s.del);
+  const spImp = s => s.valuta === "JPY" ? fmtInt(s.importo) + " ¥" : eurF(s.importo);
+  const quando = t => new Date(t).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const conStoria = (s, a, c) => [...(s.storia || []), { a, by: me || "?", t: Date.now(), ...(c ? { c } : {}) }].slice(-20);
+  // cosa è cambiato, già scritto come si legge (Firestore non accetta liste dentro liste: una voce per campo)
+  function spDiff(a, b) {
+    const f = { Importo: spImp, "Ha pagato": s => s.pagatoDa, "Diviso tra": s => splitLabel(s.perChi), Descrizione: s => s.desc || "—", Categoria: s => catOf(s.cat).n, Giorno: s => s.data ? short(s.data) : "—" };
+    return Object.entries(f).map(([k, fn]) => ({ k, da: fn(a), a: fn(b) })).filter(x => x.da !== x.a);
+  }
+  // quanto ci guadagna ognuno con una spesa (pagato − sua parte); eliminata = niente
+  function spNet(s) {
+    const out = {}; if (!s || s.del) return out;
+    const per = s.perChi?.length ? s.perChi : T.viaggiatori;
+    out[s.pagatoDa] = (out[s.pagatoDa] || 0) + s.eur;
+    for (const n of per) out[n] = (out[n] || 0) - s.eur / per.length;
+    return out;
+  }
+  // il cambio fa perdere soldi a qualcuno che non è chi lo fa → gli altri ricevono l'avviso
+  const hurtsOthers = (a, b) => { const x = spNet(a), y = spNet(b); return T.viaggiatori.some(n => n !== me && (y[n] || 0) < (x[n] || 0) - .005); };
+  function storiaHtml(s) {
+    const verbo = { mod: "l'ha modificata", del: "l'ha eliminata", rip: "l'ha ripristinata" };
+    const rows = [`<li><b>${esc(s.da || s.by || "?")}</b> l'ha aggiunta${s.ts ? " · " + quando(s.ts) : ""}</li>`,
+      ...(s.storia || []).map(x => `<li><b>${esc(x.by)}</b> ${verbo[x.a] || "l'ha cambiata"}${x.t ? " · " + quando(x.t) : ""}${x.c?.length ? x.c.map(c => `<br><span class="muted">${esc(c.k)}: ${esc(c.da)} → <b>${esc(c.a)}</b></span>`).join("") : ""}</li>`)];
+    return `<details class="perperson"${s.storia?.some(x => x.a === "mod") ? " open" : ""}><summary>Storia della spesa</summary><ul class="spstoria small">${rows.join("")}</ul></details>`;
+  }
+  function restoreSpesa(s) {
+    const { del, ...rest } = s, back = putItem("spese", { ...rest, storia: conStoria(s, "rip") });
+    if (hurtsOthers(s, back)) notifyOthers("spesa-rip", back);
+    toast("Spesa ripristinata ✓"); rerender();
+  }
 
   function renderSpese(back) {
     if (!code) { view.innerHTML = `${back}<h2>Spese</h2><p class="lead">Chi ha pagato cosa, e alla fine chi deve quanto a chi.</p>${needCodeBox("Le spese")}`; bindPcards(); return; }
     const { net, total, cn } = balances();   // cn: saldo di ogni coppia
     const debt = Math.abs(cn[0]) < .5 ? null : cn[0] > 0 ? [COPPIE[1], COPPIE[0], cn[0]] : [COPPIE[0], COPPIE[1], -cn[0]];
-    const items = [...lists.spese].filter(s => !spFilter || catOf(s.cat).k === spFilter).sort((a, b) => (b.data || "").localeCompare(a.data || "") || (b.ts || 0) - (a.ts || 0));
+    const trash = lists.spese.filter(s => s.del).sort((a, b) => b.del.t - a.del.t);
+    const trashNew = trash.some(s => s.del.by !== me && Date.now() - s.del.t < 3 * 864e5);   // tolte dagli altri negli ultimi giorni: il cestino si apre da solo
+    const items = speseVive().filter(s => !spFilter || catOf(s.cat).k === spFilter).sort((a, b) => (b.data || "").localeCompare(a.data || "") || (b.ts || 0) - (a.ts || 0));
     let lastD = null;
     view.innerHTML = `${back}<h2>Spese</h2><button id="adds" hidden aria-hidden="true"></button><p class="lead">Chi ha pagato cosa, e alla fine chi deve quanto a chi.</p>
       <div class="hero solid" style="min-height:0"><span class="kanji" aria-hidden="true">会計</span><div class="hero-in" style="min-height:190px">
@@ -2465,10 +2504,19 @@
         const head = s.data !== lastD ? `<h3>${s.data ? cap1(fmtDay(s.data, { weekday: "long", day: "numeric", month: "long" })) : "Senza data"}</h3>` : ""; lastD = s.data;
         return `${head}<div class="card spesa${s.id === freshId ? " fresh" : ""}" data-spesa="${s.id}"><div class="row">
           <span class="pic" style="background:${c.col}">${c.html}</span>
-          <div class="grow"><b>${esc(s.desc || cl)}</b><div class="small muted">${s.cat === "rimborso" ? `${esc(s.pagatoDa)} → ${esc(splitLabel(s.perChi))}` : `pagato da ${esc(s.pagatoDa)} · per ${esc(splitLabel(s.perChi))}`}</div></div>
+          <div class="grow"><b>${esc(s.desc || cl)}</b><div class="small muted">${s.cat === "rimborso" ? `${esc(s.pagatoDa)} → ${esc(splitLabel(s.perChi))}` : `pagato da ${esc(s.pagatoDa)} · per ${esc(splitLabel(s.perChi))}`}${s.storia?.some(x => x.a === "mod") ? ` · <span class="spmod">modificata</span>` : ""}</div></div>
           <div style="text-align:right"><b>${s.valuta === "JPY" ? fmtInt(s.importo) + " ¥" : eurF(s.importo)}</b>${s.valuta === "JPY" ? `<div class="small muted">${eurF(s.eur)}</div>` : ""}</div>
         </div></div>`;
-      }).join("") : `<p class="empty">Nessuna spesa ancora. La prima cena a Shinjuku? 🍜</p>`}`;
+      }).join("") : `<p class="empty">Nessuna spesa ancora. La prima cena a Shinjuku? 🍜</p>`}
+      ${trash.length ? `<details class="perperson cestino"${trashNew ? " open" : ""}><summary>${icon("Trash2")} Eliminate (${trash.length})</summary>
+        <p class="small muted" style="margin:0 0 10px">Non contano nei conti. Se una è stata tolta per sbaglio, ripristinala: torna per tutti e quattro.</p>
+        ${trash.map(s => { const c = catOf(s.cat); return `<div class="card spdel"><div class="row">
+          <span class="pic" style="background:${c.col}">${c.html}</span>
+          <div class="grow"><b>${esc(s.desc || c.n)}</b><div class="small muted">pagata da ${esc(s.pagatoDa)}${s.data ? " · " + short(s.data) : ""}</div><div class="small spmod">eliminata da ${esc(s.del.by)}${s.del.t ? " · " + quando(s.del.t) : ""}${s.del.backup ? " (ripristino di un backup)" : ""}</div></div>
+          <div style="text-align:right"><b>${spImp(s)}</b><div><button class="btn small" data-sprip="${s.id}" style="margin-top:6px">${icon("RotateCcw")} Ripristina</button></div></div>
+        </div></div>`; }).join("")}
+      </details>` : ""}`;
+    $$("[data-sprip]").forEach(b => b.onclick = () => { const s = lists.spese.find(x => x.id === b.dataset.sprip); if (s) restoreSpesa(s); });
     $("#adds").onclick = () => editSpesa({});
     $$("[data-fcat]").forEach(b => b.onclick = () => { spFilter = spFilter === b.dataset.fcat ? null : b.dataset.fcat; buzz(); keepScroll(render); });
     $("#spclr")?.addEventListener("click", () => { spFilter = null; keepScroll(render); });
@@ -2523,6 +2571,7 @@
         <div class="newcat" id="s-newcat" hidden><input id="nc-e" placeholder="🍡" maxlength="4" autocomplete="off" aria-label="Emoji"><input id="nc-n" placeholder="Nome, es. Onsen" maxlength="24" autocomplete="off"><button class="btn small primary" id="nc-ok">Crea</button></div></div>`}
       <label class="fl"><span>Giorno</span><input type="date" id="s-data" value="${s.data || (today >= T.inizio && today <= T.fine ? today : today)}"></label>
       <div class="btns">${isNew ? `<button class="btn" data-close>Annulla</button>` : `<button class="btn" id="s-del" style="color:var(--shu)">${icon("Trash2")} Elimina</button>`}<button class="btn primary" id="s-save">Salva</button></div>
+      ${isNew ? "" : storiaHtml(s)}
     `, el => {
       drawCats(el); draw(el);
       if (quick) $("#s-imp", el).focus();   // spesa veloce: si scrive subito l'importo
@@ -2543,11 +2592,20 @@
         if (!(importo > 0)) return toast("Scrivi l'importo");
         if (!st.perChi.length) return toast("Scegli tra chi dividere");
         const eur = st.valuta === "JPY" ? (s.valuta === "JPY" && s.importo === importo && s.eur ? s.eur : importo / rate()) : importo;
-        const saved = putItem("spese", { ...s, ...st, desc: $("#s-desc", el).value.trim(), importo, eur: Math.round(eur * 100) / 100, data: $("#s-data", el).value, ts: s.ts || Date.now() });
+        const next = { ...s, ...st, desc: $("#s-desc", el).value.trim(), importo, eur: Math.round(eur * 100) / 100, data: $("#s-data", el).value, ts: s.ts || Date.now(), da: s.da || (isNew ? me : s.by) || me || "?" };
+        const c = isNew ? [] : spDiff(s, next);
+        if (c.length) next.storia = conStoria(s, "mod", c);
+        const saved = putItem("spese", next);
         if (isNew) notifyOthers("spesa", saved);
+        else if (hurtsOthers(s, saved)) notifyOthers("spesa-mod", saved, { c });
         closeSheet(); toast("Spesa salvata ✓"); rerender();
       };
-      $("#s-del", el)?.addEventListener("click", () => { const old = { ...s }; delItem("spese", s.id); closeSheet(); rerender(); toast("Spesa eliminata", () => { putItem("spese", old); rerender(); }); });
+      $("#s-del", el)?.addEventListener("click", () => {
+        const old = { ...s }, gone = putItem("spese", { ...s, da: s.da || s.by || "?", del: { by: me || "?", t: Date.now() }, storia: conStoria(s, "del") });
+        const n = hurtsOthers(old, gone) ? notifyOthers("spesa-del", gone, { wait: 5500 }) : null;
+        closeSheet(); rerender();
+        toast("Spesa nel cestino", () => { unNotify(n); putItem("spese", old); rerender(); });
+      });
     });
   }
 
@@ -2560,7 +2618,7 @@
     let km = 0; for (const d of DAYS) { const s = stopsOf(d); for (let j = 1; j < s.length; j++) km += kmBetween(byId[s[j - 1]], byId[s[j]]) * 1.25; }
     const zs = []; for (const d of DAYS) { const z = dayZone(d); if (z && zs[zs.length - 1]?.z !== z) zs.push({ z, n: 0 }); if (z) zs[zs.length - 1].n++; }
     const cities = [...new Set(zs.map(x => x.z))];
-    const sp = lists.spese.filter(x => x.cat !== "rimborso"), tot = sp.reduce((a, x) => a + x.eur, 0);
+    const sp = speseVive().filter(x => x.cat !== "rimborso"), tot = sp.reduce((a, x) => a + x.eur, 0);
     const byCat = {}; for (const x of sp) { const k = catOf(x.cat).k; byCat[k] = (byCat[k] || 0) + x.eur; }
     const topCat = Object.entries(byCat).sort((a, b) => b[1] - a[1])[0];
     const byWho = {}; for (const x of sp) byWho[x.pagatoDa] = (byWho[x.pagatoDa] || 0) + x.eur;
@@ -2611,7 +2669,9 @@
     savePlan();
     for (const name of B.RESTORE_LISTS) {
       const next = cleanList(name, b.lists[name] || []), ids = new Set(next.map(x => x.id)), now = new Map(lists[name].map(x => [x.id, x]));
-      for (const id of now.keys()) if (!ids.has(id)) sync?.del(name, id);
+      if (name === "spese") {   // le spese che il backup non ha finiscono nel cestino, non spariscono
+        for (const x of now.values()) if (!ids.has(x.id)) next.push(x.del ? x : { ...x, del: { by: me || "?", t: Date.now(), backup: true } });
+      } else for (const id of now.keys()) if (!ids.has(id)) sync?.del(name, id);
       for (const x of next) if (sig(now.get(x.id)) !== sig(x)) { const { at, ...rest } = x; sync?.put(name, rest); }
       lists[name] = next; LS.set(name, next);
     }
@@ -2704,21 +2764,29 @@
   }, 4000);
   // spese e prenotazioni nuove → avviso agli altri (in coda se si è offline, riparte appena torna la rete)
   let flushing = false;
-  function notifyOthers(kind, it) {
-    if (!T.notifyUrl || !code) return;
-    const item = kind === "spesa" ? { id: it.id, desc: it.desc, importo: it.importo, valuta: it.valuta, eur: it.eur, pagatoDa: it.pagatoDa, perChi: it.perChi, cat: it.cat }
+  // spese eliminate/modificate/ripristinate ("spesa-del", "spesa-mod", "spesa-rip"): c = cosa è cambiato ·
+  // wait: parte solo dopo qualche secondo, finché si può ancora annullare (resta in coda anche se si chiude l'app)
+  function notifyOthers(kind, it, { c, wait = 0 } = {}) {
+    if (!T.notifyUrl || !code) return null;
+    const item = kind.startsWith("spesa") ? { id: it.id, desc: it.desc, importo: it.importo, valuta: it.valuta, eur: it.eur, pagatoDa: it.pagatoDa, perChi: it.perChi, cat: it.cat, da: it.da || "", ...(c?.length ? { c } : {}) }
       : { id: it.id, tipo: it.tipo, titolo: it.titolo, dal: it.dal, ora: it.ora };
-    LS.set("notifyQ", [...LS.get("notifyQ", []), { kind, by: me || "Qualcuno", item, t: Date.now() }].slice(-30)); flushNotify();
+    const n = uid();
+    LS.set("notifyQ", [...LS.get("notifyQ", []), { n, kind, by: me || "Qualcuno", item, t: Date.now(), ...(wait ? { due: Date.now() + wait } : {}) }].slice(-30));
+    flushNotify(); if (wait) setTimeout(flushNotify, wait + 200);
+    return n;
   }
+  const unNotify = n => { if (n) LS.set("notifyQ", LS.get("notifyQ", []).filter(x => x.n !== n)); };
   async function flushNotify() {
     if (flushing || !navigator.onLine || !T.notifyUrl || !code) return; flushing = true;
+    const key = x => x.n || x.kind + x.t + x.item?.id, done = new Set();
     try {
-      const keep = [];
       for (const x of LS.get("notifyQ", [])) {
-        if (Date.now() - x.t > 2 * 864e5) continue;   // dopo due giorni non ha più senso
-        try { const r = await fetch(T.notifyUrl + "/notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, kind: x.kind, by: x.by, item: x.item }) }); if (r.status >= 500) keep.push(x); } catch { keep.push(x); }
+        if (x.due > Date.now()) continue;   // si può ancora annullare
+        if (Date.now() - x.t > 2 * 864e5) { done.add(key(x)); continue; }   // dopo due giorni non ha più senso
+        try { const r = await fetch(T.notifyUrl + "/notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, kind: x.kind, by: x.by, item: x.item }) }); if (r.status < 500) done.add(key(x)); } catch {}
       }
-      LS.set("notifyQ", keep);
+      // si rilegge la coda: quello che è stato aggiunto o annullato intanto resta com'è
+      LS.set("notifyQ", LS.get("notifyQ", []).filter(x => !done.has(key(x))));
     } finally { flushing = false; }
   }
   addEventListener("online", flushNotify); setTimeout(flushNotify, 3000);
@@ -2740,7 +2808,7 @@
     const voli = lists.prenotazioni.filter(p => p.tipo === "volo").length;
     view.insertAdjacentHTML("beforeend", `<div class="card" id="synccard"><b>Dati condivisi</b>
       <div class="muted small">Stato: ${syncStatus === "online" ? "collegato" : syncStatus === "offline" ? "offline" : syncStatus === "error" ? "errore" : "non avviato"} · ultimo contatto col server: ${ago(serverAt)}</div>
-      <div class="muted small">Sul telefono: ${lists.prenotazioni.length} prenotazioni (${voli} voli), ${lists.spese.length} spese</div>
+      <div class="muted small">Sul telefono: ${lists.prenotazioni.length} prenotazioni (${voli} voli), ${speseVive().length} spese${lists.spese.length > speseVive().length ? ` (+${lists.spese.length - speseVive().length} nel cestino)` : ""}</div>
       <div class="muted small" id="srvchk">Sul server: controllo…</div>
       ${syncErr ? `<div class="small" style="color:#d4442f">Errore: ${esc(syncErr)}</div>` : ""}
       <div class="btns"><button class="btn small" id="syncfix">${icon("RotateCcw")} Riscarica i dati dal server</button></div></div>`);

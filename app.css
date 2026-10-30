@@ -1066,3 +1066,11 @@ body.has-fab .scroller { padding-bottom: calc(var(--nav-h) + 24px + 76px + env(s
 .tbplus::after, .iconbtn::after, .sheet-x::after { content: ""; position: absolute; inset: -6px; }
 .seg button::after { content: ""; position: absolute; inset: -8px 0; }
 .tbback::after { content: ""; position: absolute; inset: -3px -4px; }
+/* spese: modificate, cestino e storia */
+.spmod { color: var(--shu); font-weight: 700; }
+.card.spdel { margin-bottom: var(--sp-2); opacity: .85; }
+.card.spdel .pic { filter: grayscale(.8); }
+.cestino summary { display: flex; align-items: center; gap: 6px; }
+.cestino summary .i { width: 16px; height: 16px; }
+.spstoria { margin: 0; padding-left: 18px; }
+.spstoria li { margin: 6px 0; line-height: 1.45; }
