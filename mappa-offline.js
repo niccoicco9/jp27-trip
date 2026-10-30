@@ -114,8 +114,19 @@
       glyphs: abs("mappe/fonts/") + "{fontstack}/{range}.pbf",
       sprite: abs("mappe/sprites/" + (dark ? "dark" : "light")),
       sources: { protomaps: { type: "vector", tiles: ["jp://{z}/{x}/{y}"], maxzoom: 15, attribution: "© OpenStreetMap" } },
-      layers: basemaps.layers("protomaps", flavor, { lang: "en" }),
+      layers: clean(basemaps.layers("protomaps", flavor, { lang: "en" }), dark),
     };
+  }
+  // come la mappa Google: via numeri delle strade, sensi unici, numeri civici e punti che non c'entrano (scuole, negozi…);
+  // restano stazioni, aeroporti, traghetti, fermate dei bus e natura. I binari, sottili e tratteggiati, diventano ben visibili
+  const POI_KEEP = ["station", "aerodrome", "ferry_terminal", "bus_stop", "park", "garden", "zoo", "peak", "beach"];
+  function clean(layers, dark) {
+    return layers.filter(l => !["roads_shields", "roads_oneway", "address_label"].includes(l.id)).map(l => {
+      if (l.id === "pois") return { ...l, filter: ["all", ["in", ["get", "kind"], ["literal", POI_KEEP]], ...l.filter.slice(2)] };
+      if (l.id === "roads_rail") return { ...l, paint: { "line-color": dark ? "#6f6658" : "#9a8c78", "line-opacity": .9,
+        "line-width": ["interpolate", ["exponential", 1.6], ["zoom"], 5, .4, 10, 1.2, 14, 2.2, 18, 5] } };
+      return l;
+    });
   }
 
   async function create(el, { dark, center, zoom }) {

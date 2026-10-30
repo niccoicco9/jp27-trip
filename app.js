@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 110;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 111;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -1317,6 +1317,14 @@
     });
     return mapsPromise;
   }
+  // a piedi e in treno: via numeri di strade e autostrade, uscite, sensi unici e blocchi "1丁目";
+  // restano stazioni (con i nomi), linee dei treni, fermate dei bus, parchi, quartieri e aeroporti
+  const MAP_CLEAN = [
+    { featureType: "road", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+    { featureType: "road.highway", elementType: "labels", stylers: [{ visibility: "off" }] },
+    { featureType: "administrative.land_parcel", elementType: "labels", stylers: [{ visibility: "off" }] },
+    { featureType: "transit.station", elementType: "labels", stylers: [{ visibility: "on" }] },
+  ];
   const MAP_LIGHT = [
     { elementType: "geometry", stylers: [{ color: "#f2ede4" }] },
     { elementType: "labels.text.fill", stylers: [{ color: "#5f564b" }] },
@@ -1327,8 +1335,8 @@
     { featureType: "poi", stylers: [{ visibility: "off" }] },
     { featureType: "poi.park", elementType: "geometry", stylers: [{ visibility: "on" }, { color: "#dae4c8" }] },
     { featureType: "transit.line", elementType: "geometry", stylers: [{ color: "#c9b79c" }] },
-    { featureType: "transit.station", elementType: "labels.icon", stylers: [{ visibility: "on" }] },
     { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#d8cdbb" }] },
+    ...MAP_CLEAN,
   ];
   const MAP_DARK = [
     { elementType: "geometry", stylers: [{ color: "#1b1916" }] },
@@ -1341,6 +1349,7 @@
     { featureType: "poi.park", elementType: "geometry", stylers: [{ visibility: "on" }, { color: "#1d2619" }] },
     { featureType: "transit.line", elementType: "geometry", stylers: [{ color: "#4a4236" }] },
     { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#3a352d" }] },
+    ...MAP_CLEAN,
   ];
 
   // segnaposto (stesso disegno per i due motori)
