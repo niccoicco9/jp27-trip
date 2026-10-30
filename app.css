@@ -1074,3 +1074,9 @@ body.has-fab .scroller { padding-bottom: calc(var(--nav-h) + 24px + 76px + env(s
 .cestino summary .i { width: 16px; height: 16px; }
 .spstoria { margin: 0; padding-left: 18px; }
 .spstoria li { margin: 6px 0; line-height: 1.45; }
+/* schede dentro la parte visibile dello schermo: con la tastiera aperta finiscono sopra la tastiera (vedi visualViewport in app.js) */
+.sheet { top: var(--vv-top, 0px); bottom: auto; height: var(--vv-h, 100%); }
+.sheet-card { max-height: min(92dvh, calc(var(--vv-h, 100dvh) - 16px)); }
+body.kb-up .sheet-card { bottom: 0; padding-bottom: 16px; border-radius: 26px 26px 0 0; }   /* sopra la tastiera non serve lo spazio della barra home */
+/* con la tastiera aperta lo spazio è poco: i pulsanti fissi in fondo alla scheda (es. "Fatto") non coprono i risultati, stanno in fondo alla lista */
+body.kb-up .sheetfoot { position: static !important; }

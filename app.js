@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 104;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 105;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -1154,7 +1154,7 @@
       <div class="searchbox">${icon("Search")}<input type="search" id="pk-q" placeholder="Cerca un luogo…" autocomplete="off"></div>
       <div class="chips">${[["all", "Tutte"], ...ZONE.map(z => [z.id, z.nome])].map(([id, n]) => `<button class="chip${id === fz ? " on" : ""}" data-pz="${id}">${id !== "all" ? `<span class="dot" style="background:${zona[id].colore}"></span>` : ""}${esc(n)}</button>`).join("")}</div>
       <div id="pk-list"></div>
-      <div style="position:sticky;bottom:0;padding-top:10px;background:linear-gradient(transparent, var(--bg) 30%)"><button class="btn primary" data-close style="width:100%">Fatto</button></div>
+      <div class="sheetfoot" style="position:sticky;bottom:0;padding-top:10px;background:linear-gradient(transparent, var(--bg) 30%)"><button class="btn primary" data-close style="width:100%">Fatto</button></div>
     `, el => {
       draw(el);
       $("#pk-q", el).oninput = e => { fq = e.target.value.toLowerCase().trim(); draw(el); };
@@ -3142,6 +3142,20 @@
   const isTyping = el => el && (el.tagName === "TEXTAREA" || el.tagName === "SELECT" || (el.tagName === "INPUT" && !/checkbox|radio|button|submit|range/.test(el.type)));
   document.addEventListener("focusin", e => { if (isTyping(e.target)) document.body.classList.add("kb"); });
   document.addEventListener("focusout", () => setTimeout(() => { if (!isTyping(document.activeElement)) document.body.classList.remove("kb"); }, 80));
+  // tastiera aperta su iPhone: copre il fondo dello schermo ma la pagina non si accorcia, e le schede (attaccate in basso)
+  // finivano sotto la tastiera quando sono corte (es. un solo risultato nella ricerca). Le schede seguono la parte visibile
+  // dello schermo (visualViewport): stanno sopra la tastiera e, se non ci stanno, scorrono dentro
+  const vv = window.visualViewport;
+  if (vv) {
+    const fit = () => {
+      const r = document.documentElement.style, h = Math.round(vv.height), top = Math.round(vv.offsetTop);
+      r.setProperty("--vv-h", h + "px"); r.setProperty("--vv-top", top + "px");
+      document.body.classList.toggle("kb-up", innerHeight - h > 120);   // tastiera aperta (non la sola barra di Safari)
+      const a = document.activeElement;
+      if (sheetOpen() && isTyping(a) && sheetCard.contains(a)) a.scrollIntoView({ block: "nearest" });
+    };
+    vv.addEventListener("resize", fit); vv.addEventListener("scroll", fit); fit();
+  }
 
   // tastiera giusta per ogni campo: "Cerca" nelle ricerche, maiuscola iniziale nei testi, "Fine" negli importi
   new MutationObserver(() => $$("input:not([data-kb]), textarea:not([data-kb])").forEach(i => {
