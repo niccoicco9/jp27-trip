@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 107;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 108;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -975,7 +975,7 @@
     view.innerHTML = `
       <div class="daystrip" id="strip">${DAYS.map((x, k) => { const z = dayZone(x), prev = k ? dayZone(DAYS[k - 1]) : null, move = z && prev && z !== prev; return `<a class="dchip${x === d ? " on" : ""}${x === today ? " today" : ""}" href="#giorni/${x}" style="--c:${z ? zona[z].colore : "var(--muted)"}" aria-label="Giorno ${k + 1}${z ? ", " + zona[z].nome : landsOn(x) ? ", arrivo" : flightOn(x) ? ", partenza" : ""}${move ? ", trasferimento" : ""}"><small>${fmtDay(x, { weekday: "short" }).replace(".", "")}</small><b>${fmtDay(x, { day: "numeric" })}</b><em>${move ? icon("TrainFront") : ""}${z ? ZSHORT[z] : landsOn(x) ? "arrivo" : flightOn(x) ? "partenza" : "libero"}</em></a>`; }).join("")}</div>
       <div class="daycover" id="cover">${first ? `<div class="ph" data-bg="${photoUrl(first.id, 960)}"></div>` : art()}
-        <span class="dn">Giorno ${i + 1} / ${DAYS.length}</span>
+        <span class="dn">Giorno ${i + 1}<small>/ ${DAYS.length}</small></span>
         <div class="dtxt"><div class="kicker">${fmtDay(d)}</div>${editMode ? `<input id="dlabel" value="${esc(day.l)}" placeholder="Dai un nome al giorno…" aria-label="Nome del giorno">` : `<div class="dtitle">${esc(dayTitle(d))}</div>`}</div>
       </div>
       ${editMode ? `<textarea id="dnote" rows="2" placeholder="Nota del giorno (orari, treni, cose da ricordare)…" style="margin-bottom:14px">${esc(day.n || "")}</textarea>`

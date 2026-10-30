@@ -371,7 +371,23 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: color-m
 }
 .daycover input::placeholder { color: rgba(255,255,255,.7); }
 .daycover input:focus { outline: none; border-bottom: 2px solid rgba(255,255,255,.6); }
-.daycover .dn { position: absolute; top: 12px; left: 14px; font-family: var(--serif); font-weight: 800; background: rgba(0,0,0,.5); padding: 3px 10px; border-radius: 99px; font-size: .82rem; }
+/* pillola "liquid glass" senza backdrop-filter (dentro main Safari lo applica in ritardo): vetro chiaro sopra un velo scuro
+   che tiene leggibile il testo anche sulle copertine chiare, luce sul bordo in alto e riflesso morbido */
+.daycover .dn {
+  position: absolute; top: 12px; left: 12px; display: inline-flex; align-items: baseline; gap: 5px; overflow: hidden;
+  padding: 6px 13px 6px 12px; border-radius: 99px; font-size: .8rem; font-weight: 700; letter-spacing: .01em; line-height: 1.2;
+  background: linear-gradient(180deg, rgba(255,255,255,.34), rgba(255,255,255,.08) 60%, rgba(255,255,255,.16)), rgba(28,18,12,.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.7),
+    inset 0 -1px 0 rgba(255,255,255,.18),
+    inset 0 0 0 .5px rgba(255,255,255,.4),
+    inset 0 0 10px rgba(255,255,255,.12),
+    0 4px 16px rgba(0,0,0,.18);
+  text-shadow: 0 1px 2px rgba(0,0,0,.28);
+}
+.daycover .dn::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(90% 120% at 20% -30%, rgba(255,255,255,.35), transparent 60%); }
+.daycover .dn small { font-size: inherit; font-weight: 600; opacity: .72; }
 .daynote { display: flex; gap: 10px; align-items: flex-start; background: var(--warn-bg); color: var(--warn-fg); border-radius: 16px; padding: 12px 14px; font-size: .88rem; margin-bottom: 14px; }
 .daynote svg { margin-top: 2px; }
 
