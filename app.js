@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 105;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 106;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2592,16 +2592,21 @@
         if (!(importo > 0)) return toast("Scrivi l'importo");
         if (!st.perChi.length) return toast("Scegli tra chi dividere");
         const eur = st.valuta === "JPY" ? (s.valuta === "JPY" && s.importo === importo && s.eur ? s.eur : importo / rate()) : importo;
-        const next = { ...s, ...st, desc: $("#s-desc", el).value.trim(), importo, eur: Math.round(eur * 100) / 100, data: $("#s-data", el).value, ts: s.ts || Date.now(), da: s.da || (isNew ? me : s.by) || me || "?" };
-        const c = isNew ? [] : spDiff(s, next);
-        if (c.length) next.storia = conStoria(s, "mod", c);
+        // si parte dalla spesa com'è adesso, non da quando si è aperta la scheda: se intanto un altro l'ha
+        // eliminata resta nel cestino, e la storia scritta dagli altri non si perde
+        const cur = isNew ? s : lists.spese.find(x => x.id === s.id) || s;
+        const next = { ...cur, ...st, desc: $("#s-desc", el).value.trim(), importo, eur: Math.round(eur * 100) / 100, data: $("#s-data", el).value, ts: cur.ts || Date.now(), da: cur.da || (isNew ? me : cur.by) || me || "?" };
+        const c = isNew ? [] : spDiff(cur, next);
+        if (c.length) next.storia = conStoria(cur, "mod", c);
         const saved = putItem("spese", next);
         if (isNew) notifyOthers("spesa", saved);
-        else if (hurtsOthers(s, saved)) notifyOthers("spesa-mod", saved, { c });
-        closeSheet(); toast("Spesa salvata ✓"); rerender();
+        else if (hurtsOthers(cur, saved)) notifyOthers("spesa-mod", saved, { c });
+        closeSheet(); toast(cur.del ? `Intanto ${cur.del.by} l'ha eliminata: la modifica è salvata nel cestino` : "Spesa salvata ✓"); rerender();
       };
       $("#s-del", el)?.addEventListener("click", () => {
-        const old = { ...s }, gone = putItem("spese", { ...s, da: s.da || s.by || "?", del: { by: me || "?", t: Date.now() }, storia: conStoria(s, "del") });
+        const cur = lists.spese.find(x => x.id === s.id) || s;   // com'è adesso (vedi Salva)
+        if (cur.del) { closeSheet(); rerender(); return toast(`L'ha già eliminata ${cur.del.by}: è nel cestino`); }
+        const old = { ...cur }, gone = putItem("spese", { ...cur, da: cur.da || cur.by || "?", del: { by: me || "?", t: Date.now() }, storia: conStoria(cur, "del") });
         const n = hurtsOthers(old, gone) ? notifyOthers("spesa-del", gone, { wait: 5500 }) : null;
         closeSheet(); rerender();
         toast("Spesa nel cestino", () => { unNotify(n); putItem("spese", old); rerender(); });
@@ -2647,7 +2652,7 @@
   // Le manda il servizio notifiche (Cloudflare, gratuito): l'app registra questo telefono in Firestore (viaggi/{codice}/push)
   // e gli segnala le spese e prenotazioni nuove; i promemoria a orario li decide il servizio da solo.
   const VAPID = "BIRse5R_V9V2eO33I-EUwgiO2zR6uYtwm2c-zn6xTvUBB5Ot5yig1WfJI0A5FYwL_JX55CtfcrzCwvmWLRLNVfM";
-  const PREFS = [["spese", "Nuove spese", "quando un altro aggiunge una spesa o un rimborso"], ["pren", "Nuove prenotazioni", "hotel, voli, treni e biglietti aggiunti dagli altri"],
+  const PREFS = [["spese", "Spese", "quando un altro aggiunge una spesa o un rimborso, o ne elimina o cambia uno e i conti cambiano"], ["pren", "Nuove prenotazioni", "hotel, voli, treni e biglietti aggiunti dagli altri"],
     ["bigl", "Biglietti da prenotare", "30, 14, 7 e 3 giorni prima, finché non è spuntato"], ["part", "Prima di partire", "una settimana e il giorno prima, check-in del volo"],
     ["matt", "Ogni mattina in viaggio", "alle 8: tappe del giorno, meteo e hotel"], ["trasf", "Sera prima di un trasferimento", "alle 20: treno, orario e valigie"]];
   const pushOK = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
@@ -2763,7 +2768,7 @@
     savePush(sub, st);
   }, 4000);
   // spese e prenotazioni nuove → avviso agli altri (in coda se si è offline, riparte appena torna la rete)
-  let flushing = false;
+  let flushing = null, flushT = null, retryMs = 0;
   // spese eliminate/modificate/ripristinate ("spesa-del", "spesa-mod", "spesa-rip"): c = cosa è cambiato ·
   // wait: parte solo dopo qualche secondo, finché si può ancora annullare (resta in coda anche se si chiude l'app)
   function notifyOthers(kind, it, { c, wait = 0 } = {}) {
@@ -2772,24 +2777,45 @@
       : { id: it.id, tipo: it.tipo, titolo: it.titolo, dal: it.dal, ora: it.ora };
     const n = uid();
     LS.set("notifyQ", [...LS.get("notifyQ", []), { n, kind, by: me || "Qualcuno", item, t: Date.now(), ...(wait ? { due: Date.now() + wait } : {}) }].slice(-30));
-    flushNotify(); if (wait) setTimeout(flushNotify, wait + 200);
+    flushNotify();
     return n;
   }
   const unNotify = n => { if (n) LS.set("notifyQ", LS.get("notifyQ", []).filter(x => x.n !== n)); };
-  async function flushNotify() {
-    if (flushing || !navigator.onLine || !T.notifyUrl || !code) return; flushing = true;
-    const key = x => x.n || x.kind + x.t + x.item?.id, done = new Set();
-    try {
+  // now === true: parte anche quello che si potrebbe ancora annullare (vedi sotto, app in sottofondo)
+  async function flushNotify(now) {
+    if (flushing) { await flushing; return flushNotify(now); }   // uno alla volta: finito quello in corso si riguarda la coda
+    flushing = (async () => {
+      clearTimeout(flushT); flushT = null;
+      if (!navigator.onLine || !T.notifyUrl || !code) return;   // offline: riparte con l'evento "online"
+      const key = x => x.n || x.kind + x.t + x.item?.id, done = new Set(), tried = new Set();
+      let fail = false;
       for (const x of LS.get("notifyQ", [])) {
-        if (x.due > Date.now()) continue;   // si può ancora annullare
+        if (x.due > Date.now() && now !== true) continue;   // si può ancora annullare
         if (Date.now() - x.t > 2 * 864e5) { done.add(key(x)); continue; }   // dopo due giorni non ha più senso
-        try { const r = await fetch(T.notifyUrl + "/notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, kind: x.kind, by: x.by, item: x.item }) }); if (r.status < 500) done.add(key(x)); } catch {}
+        tried.add(key(x));
+        // keepalive: la richiesta arriva anche se iOS ferma l'app subito dopo
+        try { const r = await fetch(T.notifyUrl + "/notify", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, kind: x.kind, by: x.by, item: x.item }) }); if (r.status < 500) done.add(key(x)); else fail = true; } catch { fail = true; }
       }
       // si rilegge la coda: quello che è stato aggiunto o annullato intanto resta com'è
-      LS.set("notifyQ", LS.get("notifyQ", []).filter(x => !done.has(key(x))));
-    } finally { flushing = false; }
+      const q = LS.get("notifyQ", []).filter(x => !done.has(key(x)));
+      LS.set("notifyQ", q);
+      // prossimo giro: quando finisce un'attesa per "Annulla" (subito se è finita mentre si inviava altro),
+      // o dopo un errore (30 s, poi sempre più di rado fino a 10 min)
+      retryMs = fail ? Math.min(retryMs * 2 || 3e4, 6e5) : 0;
+      const wait = Math.min(...q.map(x => x.due > Date.now() ? x.due - Date.now() + 200 : !tried.has(key(x)) ? 0 : retryMs || Infinity));
+      if (wait < Infinity) flushT = setTimeout(flushNotify, wait);
+    })();
+    try { await flushing; } finally { flushing = null; }
   }
   addEventListener("online", flushNotify); setTimeout(flushNotify, 3000);
+  // l'app va in sottofondo: su iPhone si ferma e l'attesa per "Annulla" non finirebbe mai → l'avviso parte subito
+  // e "Annulla" sparisce (la spesa resta nel cestino, si può sempre ripristinare). Al rientro si riguarda la coda.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") return flushNotify();
+    if (!LS.get("notifyQ", []).some(x => x.due > Date.now())) return;
+    if ($("#toast .undo")) $("#toast").hidden = true;
+    flushNotify(true);
+  });
   // avviso offline: l'app funziona lo stesso, le modifiche partono appena torna la rete
   let offT = null;
   function offPill(on) {
