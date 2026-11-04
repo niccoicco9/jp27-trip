@@ -509,5 +509,290 @@ window.FOTO = {
 "u": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9a/Tanigawa01.JPG/960px-Tanigawa01.JPG",
 "f": "Tanigawa01.JPG",
 "h": "ja"
+},
+"t2": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/0/06/Tokyo_Disney_Sea_Mountain.jpg/960px-Tokyo_Disney_Sea_Mountain.jpg",
+"f":"Tokyo_Disney_Sea_Mountain.jpg",
+"h":"commons"
+},
+"k13": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/8/8e/Sento_Imperial_Palace_-_pond.JPG/960px-Sento_Imperial_Palace_-_pond.JPG",
+"f":"Sento_Imperial_Palace_-_pond.JPG",
+"h":"commons"
+},
+"a7": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/6/64/Minoh_Falls_Minoh_Osaka_pref_Japan01s5.jpg/960px-Minoh_Falls_Minoh_Osaka_pref_Japan01s5.jpg",
+"f":"Minoh_Falls_Minoh_Osaka_pref_Japan01s5.jpg",
+"h":"commons"
+},
+"n7": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e0/Meoto_Daikoku_Shrine_in_Kasuga_Grand_Shrine.JPG/960px-Meoto_Daikoku_Shrine_in_Kasuga_Grand_Shrine.JPG",
+"f":"Meoto_Daikoku_Shrine_in_Kasuga_Grand_Shrine.JPG",
+"h":"commons"
+},
+"o19": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0e/Dotonbori_Glico_LED_signs_at_3rd_November_2014.JPG/960px-Dotonbori_Glico_LED_signs_at_3rd_November_2014.JPG",
+"f":"Dotonbori_Glico_LED_signs_at_3rd_November_2014.JPG",
+"h":"commons"
+},
+"t39": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/0/01/The_Iceberg_building.JPG/960px-The_Iceberg_building.JPG",
+"f":"The_Iceberg_building.JPG",
+"h":"commons"
+},
+"h2": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/2/26/Hakone_yumoto_02.jpg/960px-Hakone_yumoto_02.jpg",
+"f":"Hakone_yumoto_02.jpg",
+"h":"commons"
+},
+"h9": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/7/74/%E6%B2%B3%E5%8F%A3%E6%B9%96%E7%95%94%E3%82%82%E3%81%BF%E3%81%98%E5%9B%9E%E5%BB%8A_-_panoramio.jpg/960px-%E6%B2%B3%E5%8F%A3%E6%B9%96%E7%95%94%E3%82%82%E3%81%BF%E3%81%98%E5%9B%9E%E5%BB%8A_-_panoramio.jpg",
+"f":"河口湖畔もみじ回廊_-_panoramio.jpg",
+"h":"commons"
+},
+"h10": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/0/04/Mount_Fuji_from_Oishi_Park.jpg/960px-Mount_Fuji_from_Oishi_Park.jpg",
+"f":"Mount_Fuji_from_Oishi_Park.jpg",
+"h":"commons"
+},
+"t28": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3c/Shibuya_Scramble_Square_-_SHIBUYA_SKY_10.jpg/960px-Shibuya_Scramble_Square_-_SHIBUYA_SKY_10.jpg",
+"f":"Shibuya_Scramble_Square_-_SHIBUYA_SKY_10.jpg",
+"h":"commons"
+},
+"t24": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/8/80/At_teamLab_Planets_%2848277798316%29.jpg/960px-At_teamLab_Planets_%2848277798316%29.jpg",
+"f":"At_teamLab_Planets_(48277798316).jpg",
+"h":"commons"
+},
+"t32": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9e/Capcom_Store_Tokyo_at_Shibuya_PARCO_-_Dec_2019.jpg/960px-Capcom_Store_Tokyo_at_Shibuya_PARCO_-_Dec_2019.jpg",
+"f":"Capcom_Store_Tokyo_at_Shibuya_PARCO_-_Dec_2019.jpg",
+"h":"commons"
+},
+"t1": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/1/14/Shinjuku_Gyoen_Greenhouse_20191130-1.jpg/960px-Shinjuku_Gyoen_Greenhouse_20191130-1.jpg",
+"f":"Shinjuku_Gyoen_Greenhouse_20191130-1.jpg",
+"h":"commons"
+},
+"h8": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/9/94/MtFuji_FUjiCity_Obuchi.jpg/960px-MtFuji_FUjiCity_Obuchi.jpg",
+"f":"MtFuji_FUjiCity_Obuchi.jpg",
+"h":"commons"
+},
+"t26": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cb/Warner_Bros._Studio_Tour_Tokyo_entrance_%281%29_2023-08-17.jpg/960px-Warner_Bros._Studio_Tour_Tokyo_entrance_%281%29_2023-08-17.jpg",
+"f":"Warner_Bros._Studio_Tour_Tokyo_entrance_(1)_2023-08-17.jpg",
+"h":"commons"
+},
+"k17": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c0/Nintendo_Museum_Entrance.jpg/960px-Nintendo_Museum_Entrance.jpg",
+"f":"Nintendo_Museum_Entrance.jpg",
+"h":"commons"
+},
+"n6": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b7/Ukimido_Pavilion_Nara_park.jpg/960px-Ukimido_Pavilion_Nara_park.jpg",
+"f":"Ukimido_Pavilion_Nara_park.jpg",
+"h":"commons"
+},
+"t5": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c0/The_iconic_Godzilla_in_Shinjuku_area%2C_Tokyo%2C_Japan.jpg/960px-The_iconic_Godzilla_in_Shinjuku_area%2C_Tokyo%2C_Japan.jpg",
+"f":"The_iconic_Godzilla_in_Shinjuku_area,_Tokyo,_Japan.jpg",
+"h":"commons"
+},
+"t22": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/4/46/GiGo_Building_3_-_Akihabara_31-5-2026.jpg/960px-GiGo_Building_3_-_Akihabara_31-5-2026.jpg",
+"f":"GiGo_Building_3_-_Akihabara_31-5-2026.jpg",
+"h":"commons"
+},
+"o8": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/1/15/Osaka_Shinsekai_yoru.jpg/960px-Osaka_Shinsekai_yoru.jpg",
+"f":"Osaka_Shinsekai_yoru.jpg",
+"h":"commons"
+},
+"x2": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/0/08/Ginza_area_at_dusk_from_Tokyo_Tower.jpg/960px-Ginza_area_at_dusk_from_Tokyo_Tower.jpg",
+"f":"Ginza_area_at_dusk_from_Tokyo_Tower.jpg",
+"h":"commons"
+},
+"x16": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/4/4a/Hirakata_Park.jpg/960px-Hirakata_Park.jpg",
+"f":"Hirakata_Park.jpg",
+"h":"commons"
+},
+"x3": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0b/Takeshita_st.jpg/960px-Takeshita_st.jpg",
+"f":"Takeshita_st.jpg",
+"h":"commons"
+},
+"x12": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/5/53/Harmonica_side_street_1.jpg/960px-Harmonica_side_street_1.jpg",
+"f":"Harmonica_side_street_1.jpg",
+"h":"commons"
+},
+"x8": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/5/54/Taito_Station_Akihabara_-01.jpg/960px-Taito_Station_Akihabara_-01.jpg",
+"f":"Taito_Station_Akihabara_-01.jpg",
+"h":"commons"
+},
+"x4": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a5/Ebisu_Garden_Palace_from_Tokyo_Tower_cropped.jpg/960px-Ebisu_Garden_Palace_from_Tokyo_Tower_cropped.jpg",
+"f":"Ebisu_Garden_Palace_from_Tokyo_Tower_cropped.jpg",
+"h":"commons"
+},
+"x6": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/8/84/Tokyo_Skytree_2014_%E2%85%A2.jpg/960px-Tokyo_Skytree_2014_%E2%85%A2.jpg",
+"f":"Tokyo_Skytree_2014_Ⅲ.jpg",
+"h":"commons"
+},
+"x5": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ae/%E6%98%A5%E3%81%AE%E7%B4%85%E8%91%89%E5%B1%B1%E5%85%AC%E5%9C%92.JPG/960px-%E6%98%A5%E3%81%AE%E7%B4%85%E8%91%89%E5%B1%B1%E5%85%AC%E5%9C%92.JPG",
+"f":"春の紅葉山公園.JPG",
+"h":"commons"
+},
+"x10": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/5/59/Shimokitazawa_Street_2015.jpg/960px-Shimokitazawa_Street_2015.jpg",
+"f":"Shimokitazawa_Street_2015.jpg",
+"h":"commons"
+},
+"x17": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/f/fd/Sumiyoshi-taisha%2C_keidai-2.jpg/960px-Sumiyoshi-taisha%2C_keidai-2.jpg",
+"f":"Sumiyoshi-taisha,_keidai-2.jpg",
+"h":"commons"
+},
+"a9": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a1/%E5%B2%90%E9%98%9C%E5%A4%A7%E4%BB%8F-%E6%AD%A3%E6%B3%95%E5%AF%BA_%28%E5%B2%90%E9%98%9C%E5%B8%82%29_Gifudaibutsu005.jpg/960px-%E5%B2%90%E9%98%9C%E5%A4%A7%E4%BB%8F-%E6%AD%A3%E6%B3%95%E5%AF%BA_%28%E5%B2%90%E9%98%9C%E5%B8%82%29_Gifudaibutsu005.jpg",
+"f":"岐阜大仏-正法寺_(岐阜市)_Gifudaibutsu005.jpg",
+"h":"commons"
+},
+"x14": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cd/Hozugawa-Kudari_201126b.jpg/960px-Hozugawa-Kudari_201126b.jpg",
+"f":"Hozugawa-Kudari_201126b.jpg",
+"h":"commons"
+},
+"x13": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/9/96/Kanda-Jimbocho_2021.jpg/960px-Kanda-Jimbocho_2021.jpg",
+"f":"Kanda-Jimbocho_2021.jpg",
+"h":"commons"
+},
+"a10": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/f/fc/Kawaramachi_Gifu_Japan01-r.jpg/960px-Kawaramachi_Gifu_Japan01-r.jpg",
+"f":"Kawaramachi_Gifu_Japan01-r.jpg",
+"h":"commons"
+},
+"x15": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/6/62/Goten-mon_gate%2C_Sanzen-in%2C_Ohara%2C_Kyoto_-_Jun_7%2C_2011.jpg/960px-Goten-mon_gate%2C_Sanzen-in%2C_Ohara%2C_Kyoto_-_Jun_7%2C_2011.jpg",
+"f":"Goten-mon_gate,_Sanzen-in,_Ohara,_Kyoto_-_Jun_7,_2011.jpg",
+"h":"commons"
+},
+"x1": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6d/MAGNET_by_SHIBUYA109_%2849996929368%29.jpg/960px-MAGNET_by_SHIBUYA109_%2849996929368%29.jpg",
+"f":"MAGNET_by_SHIBUYA109_(49996929368).jpg",
+"h":"commons"
+},
+"x18": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0c/Lanterns_in_Okunoin.jpg/960px-Lanterns_in_Okunoin.jpg",
+"f":"Lanterns_in_Okunoin.jpg",
+"h":"commons"
+},
+"x11": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c6/Inokashira_park_pond_2024.jpg/960px-Inokashira_park_pond_2024.jpg",
+"f":"Inokashira_park_pond_2024.jpg",
+"h":"commons"
+},
+"a3": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f0/Ghibli_Park_-_GhibliPark285.jpg/960px-Ghibli_Park_-_GhibliPark285.jpg",
+"f":"Ghibli_Park_-_GhibliPark285.jpg",
+"h":"commons"
+},
+"a2": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bd/260923_Sanmachi_Takayama_Japan03s3.jpg/960px-260923_Sanmachi_Takayama_Japan03s3.jpg",
+"f":"260923_Sanmachi_Takayama_Japan03s3.jpg",
+"h":"commons"
+},
+"x19": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3c/Osaka_tempozan_giant_ferris_wheel.jpg/960px-Osaka_tempozan_giant_ferris_wheel.jpg",
+"f":"Osaka_tempozan_giant_ferris_wheel.jpg",
+"h":"commons"
+},
+"x28": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f3/Lake-yamanaka.jpg/960px-Lake-yamanaka.jpg",
+"f":"Lake-yamanaka.jpg",
+"h":"commons"
+},
+"x27": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6e/Shiraito_water_fall_01.jpg/960px-Shiraito_water_fall_01.jpg",
+"f":"Shiraito_water_fall_01.jpg",
+"h":"commons"
+},
+"x35": {
+"u":"https://upload.wikimedia.org/wikipedia/commons/5/59/Y%C5%8Dr%C5%8D_Valley_01.jpg",
+"f":"Yōrō_Valley_01.jpg",
+"h":"commons"
+},
+"x31": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/8/88/Kiso_Valley_from_Doppyo.jpg/960px-Kiso_Valley_from_Doppyo.jpg",
+"f":"Kiso_Valley_from_Doppyo.jpg",
+"h":"commons"
+},
+"x36": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7a/Kashima-jingu_haiden-1.JPG/960px-Kashima-jingu_haiden-1.JPG",
+"f":"Kashima-jingu_haiden-1.JPG",
+"h":"commons"
+},
+"x23": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/3/36/131116_Expo_Commemoration_Park_Suita_Osaka_pref_Japan01s3.jpg/960px-131116_Expo_Commemoration_Park_Suita_Osaka_pref_Japan01s3.jpg",
+"f":"131116_Expo_Commemoration_Park_Suita_Osaka_pref_Japan01s3.jpg",
+"h":"commons"
+},
+"x30": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c1/Himeji_castle_in_may_2015.jpg/960px-Himeji_castle_in_may_2015.jpg",
+"f":"Himeji_castle_in_may_2015.jpg",
+"h":"commons"
+},
+"x22": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/8/82/151128_Hattori_Ryokuchi_Park_Osaka_pref_Japan01s3.jpg/960px-151128_Hattori_Ryokuchi_Park_Osaka_pref_Japan01s3.jpg",
+"f":"151128_Hattori_Ryokuchi_Park_Osaka_pref_Japan01s3.jpg",
+"h":"commons"
+},
+"x21": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/3/32/Harvest_Hill_%28Agriculture_park_in_Sakai%29.jpg/960px-Harvest_Hill_%28Agriculture_park_in_Sakai%29.jpg",
+"f":"Harvest_Hill_(Agriculture_park_in_Sakai).jpg",
+"h":"commons"
+},
+"x34": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c7/%E6%B4%9E%E5%B7%9D%E6%B8%A9%E6%B3%89_%E5%B1%B1%E4%B8%8A%E5%B7%9D.jpg/960px-%E6%B4%9E%E5%B7%9D%E6%B8%A9%E6%B3%89_%E5%B1%B1%E4%B8%8A%E5%B7%9D.jpg",
+"f":"洞川温泉_山上川.jpg",
+"h":"commons"
+},
+"x33": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/1/17/Daichi-ji%2C_Koka_01_-_Entrance.jpg/960px-Daichi-ji%2C_Koka_01_-_Entrance.jpg",
+"f":"Daichi-ji,_Koka_01_-_Entrance.jpg",
+"h":"commons"
+},
+"x24": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/0/02/SpaWorld.jpg/960px-SpaWorld.jpg",
+"f":"SpaWorld.jpg",
+"h":"commons"
+},
+"x20": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/9/99/Forest_of_metasequoia_glyptostroboides_at_Nagai_Botanical_Garden%2C_February_2024_-_8010.jpg/960px-Forest_of_metasequoia_glyptostroboides_at_Nagai_Botanical_Garden%2C_February_2024_-_8010.jpg",
+"f":"Forest_of_metasequoia_glyptostroboides_at_Nagai_Botanical_Garden,_February_2024_-_8010.jpg",
+"h":"commons"
+},
+"x29": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b0/Odawara-jo.jpg/960px-Odawara-jo.jpg",
+"f":"Odawara-jo.jpg",
+"h":"commons"
+},
+"x32": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c0/Looking_up_the_Nakasend%C5%8D_in_the_central_part_of_the_village%2C_Tsumago-juku%2C_Nagiso%2C_2016.jpg/960px-Looking_up_the_Nakasend%C5%8D_in_the_central_part_of_the_village%2C_Tsumago-juku%2C_Nagiso%2C_2016.jpg",
+"f":"Looking_up_the_Nakasendō_in_the_central_part_of_the_village,_Tsumago-juku,_Nagiso,_2016.jpg",
+"h":"commons"
+},
+"x26": {
+"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bb/A_view_of_Lake_Ashi_with_Peace_Torii_gate%2C_Hakone%2C_Japan1.jpg/960px-A_view_of_Lake_Ashi_with_Peace_Torii_gate%2C_Hakone%2C_Japan1.jpg",
+"f":"A_view_of_Lake_Ashi_with_Peace_Torii_gate,_Hakone,_Japan1.jpg",
+"h":"commons"
 }
 };
