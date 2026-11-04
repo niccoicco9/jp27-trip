@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 111;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 112;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -765,34 +765,35 @@
     if (!code) return "";
     const h = hotelFor(d), bs = bookingsOn(d), ci = lists.prenotazioni.filter(p => p.tipo === "hotel" && p.dal === d);
     const arr = lists.prenotazioni.filter(p => p.tipo === "volo" && p.al === d && p.dal !== d);   // atterraggi di oggi (partiti ieri)
+    const bsHtml = bs.map(p => { const [ic, col] = PTYPE[p.tipo] || PTYPE.altro; return `<div class="mini" data-pren="${p.id}"><span style="color:${col}">${icon(ic)}</span><span class="grow"><small>${p.ora ? esc(p.ora) : "Prenotato"}${p.tipo === "volo" && p.oraA ? ` → arrivo ${p.al && p.al !== p.dal ? fmtDay(p.al, { weekday: "short", day: "numeric" }) + " " : ""}${esc(p.oraA)}` : ""}</small><b>${esc(p.titolo)}</b></span>${docsOf(p.id).length ? `<button class="btn small" data-doc="${docsOf(p.id)[0].id}" aria-label="Apri il documento">${icon("Paperclip")}</button>` : ""}${p.link ? `<a class="btn small" href="${esc(p.link)}" target="_blank" rel="noopener">${icon("Link")}</a>` : ""}</div>`; }).join("");
     const noHotel = !h && d !== T.fine && !inFlight(d) ? `<a class="mini" href="#utility/prenotazioni">${icon("BedDouble")} <span class="grow">Nessun hotel per questa notte</span><b>Aggiungi</b></a>` : "";
-    return `${arr.map(p => `<div class="mini" data-pren="${p.id}"><span style="color:${PTYPE.volo[1]}">${icon("Plane")}</span><span class="grow"><small>Atterraggio${p.oraA ? " " + esc(p.oraA) : ""}${p.a ? " · " + esc(p.a) : ""}</small><b>${esc(p.titolo)}</b></span></div>`).join("")}${noHotel}${h ? `<div class="mini hotel" data-pren="${h.id}">${icon("BedDouble")}<span class="grow"><small>${ci.includes(h) ? "Check-in" + (h.ora ? " " + esc(h.ora) : "") : "Notte"}</small><b>${esc(h.titolo)}</b></span>
-        ${docsOf(h.id).length ? `<button class="btn small" data-doc="${docsOf(h.id)[0].id}" aria-label="Apri il documento">${icon("Paperclip")}</button>` : ""}<a class="btn small primary" href="${gmTo(addrQ(h))}" target="_blank" rel="noopener" aria-label="Portami all'hotel">${icon("Navigation")}</a><button class="btn small" data-taxi="${h.id}" aria-label="Mostra al tassista">${icon("CarTaxiFront")}</button></div>` : ""}
-      ${bs.map(p => { const [ic, col] = PTYPE[p.tipo] || PTYPE.altro; return `<div class="mini" data-pren="${p.id}"><span style="color:${col}">${icon(ic)}</span><span class="grow"><small>${p.ora ? esc(p.ora) : "Prenotato"}${p.tipo === "volo" && p.oraA ? ` → arrivo ${p.al && p.al !== p.dal ? fmtDay(p.al, { weekday: "short", day: "numeric" }) + " " : ""}${esc(p.oraA)}` : ""}</small><b>${esc(p.titolo)}</b></span>${docsOf(p.id).length ? `<button class="btn small" data-doc="${docsOf(p.id)[0].id}" aria-label="Apri il documento">${icon("Paperclip")}</button>` : ""}${p.link ? `<a class="btn small" href="${esc(p.link)}" target="_blank" rel="noopener">${icon("Link")}</a>` : ""}</div>`; }).join("")}`;
+    return `${arr.map(p => `<div class="mini" data-pren="${p.id}"><span style="color:${PTYPE.volo[1]}">${icon("Plane")}</span><span class="grow"><small>Atterraggio${p.oraA ? " " + esc(p.oraA) : ""}${p.a ? " · " + esc(p.a) : ""}</small><b>${esc(p.titolo)}</b></span></div>`).join("")}${bsHtml}${noHotel}${h ? `<div class="mini hotel" data-pren="${h.id}">${icon("BedDouble")}<span class="grow"><small>${ci.includes(h) ? "Check-in" + (h.ora ? " " + esc(h.ora) : "") : "Notte"}</small><b>${esc(h.titolo)}</b></span>
+        ${docsOf(h.id).length ? `<button class="btn small" data-doc="${docsOf(h.id)[0].id}" aria-label="Apri il documento">${icon("Paperclip")}</button>` : ""}<a class="btn small primary" href="${gmTo(addrQ(h))}" target="_blank" rel="noopener" aria-label="Portami all'hotel">${icon("Navigation")}</a><button class="btn small" data-taxi="${h.id}" aria-label="Mostra al tassista">${icon("CarTaxiFront")}</button></div>` : ""}`;
   }
   function oggiPren(today, before, after) {
-    if (!code || after || before) return "";
-    if (!before) return `<div class="section-h"><h3>Oggi e stanotte</h3><a class="small" href="#utility/prenotazioni" style="font-weight:600">Tutte</a></div>${dayPren(today)}`;
-    const next = [...lists.prenotazioni].filter(p => p.dal).sort((a, b) => a.dal.localeCompare(b.dal) || (a.ora || "").localeCompare(b.ora || "")).slice(0, 3);
-    const NIGHTS = nights(), covered = NIGHTS.filter(hotelFor).length;
-    return `<a class="card mini-card" href="#utility/prenotazioni"><div class="between"><b>${icon("BedDouble")} Hotel prenotati</b><b>${covered}/${NIGHTS.length} notti</b></div>
-      <div class="nights">${NIGHTS.map(d => `<i class="${hotelFor(d) ? "ok" : ""}"></i>`).join("")}</div>
-      ${next.length ? `<div class="small muted" style="margin-top:8px">Prossime: ${next.map(p => `${esc(p.titolo)} (${short(p.dal)})`).join(" · ")}</div>` : `<div class="small muted" style="margin-top:8px">Aggiungi hotel, voli e biglietti →</div>`}</a>`;
+    if (!code || after) return "";
+    // prima del viaggio solo il giorno del volo (o altro prenotato per oggi); il volo copre la notte, niente "nessun hotel"
+    if (before && !bookingsOn(today).length) return "";
+    return `<div class="section-h"><h3>${before ? "Oggi" : "Oggi e stanotte"}</h3><a class="small" href="#utility/prenotazioni" style="font-weight:600">Tutte</a></div>${dayPren(today)}`;
   }
   function renderOggi() {
     const today = todayJP();
     const idx = dayIndex(today);
     const before = today < T.inizio, after = today > T.fine;
-    const daysTo = Math.ceil((new Date((T.partenza || T.inizio) + "T00:00:00Z") - new Date(today + "T00:00:00Z")) / 864e5);   // alla partenza dall'Italia
+    // alla partenza dall'Italia: si conta con la data italiana (con quella giapponese "Si parte!" uscirebbe alle 16 del giorno prima)
+    const todayIT = fakeToday || new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome" }).format(new Date());
+    const daysTo = Math.ceil((new Date((T.partenza || T.inizio) + "T00:00:00Z") - new Date(todayIT + "T00:00:00Z")) / 864e5);
     const firstDay = id => dayOf(id)[0] || "9999";
     // prima quelli da prenotare prima (scadenza più vicina), in fondo quelli già fatti
     const toBook = LUOGHI.filter(p => p.pren && !p.out).sort((a, b) => booked.has(a.id) - booked.has(b.id) || bookBy(a).localeCompare(bookBy(b)) || firstDay(a.id).localeCompare(firstDay(b.id)) || zoneOrder[a.z] - zoneOrder[b.z]);
     const doneBook = toBook.filter(p => booked.has(p.id)).length;
+    // in viaggio le scadenze sono passate: restano solo i biglietti dei prossimi giorni non ancora spuntati
+    const bookList = before ? toBook : toBook.filter(p => !booked.has(p.id) && dayOf(p.id).some(d => d >= today));
     // il saluto segue l'ora di dove siete: in viaggio quella del Giappone
     const hh = !before && !after ? +nowJP().slice(0, 2) : new Date().getHours(), hi = "";
     const saluto = (hh >= 5 && hh < 13 ? "Buongiorno" : hh >= 13 && hh < 18 ? "Buon pomeriggio" : hh >= 18 && hh < 23 ? "Buonasera" : "Buonanotte") + (me ? ", " + esc(me) : "");
     const KANJI = { tokyo: "東京", vicino: "鎌倉", kyoto: "京都", osaka: "大阪", nara: "奈良", fuji: "箱根", kanazawa: "金沢" };
-    const z0 = dayZone(T.inizio) || "tokyo", zNow = (!before && !after && dayZone(today)) || z0;
+    const z0 = dayZone(T.inizio) || "tokyo", zNow = (!before && !after && whereOn(today)) || z0;
     const greet = `<div class="greet"><h2>${saluto}</h2><div class="gpills">
       <span class="gpill"><em style="color:var(--shu)">JP</em><span data-clock="Asia/Tokyo"></span></span>
       <span class="gpill"><em style="color:var(--ok)">IT</em><span data-clock="Europe/Rome"></span></span>
@@ -820,17 +821,18 @@
       ${hero}
       <div class="quick">${QUICK.map(([k, ic, c, t]) => `<a class="qa" href="#utility/${k}"><span class="ic" style="background:${c}">${icon(ic)}</span>${t}</a>`).join("")}</div>
       ${before ? prepCard(toBook, doneBook) : ""}
-      ${!before && !after ? tripCard(today) + eveningCard(today) + nearCard(today) : ""}
+      ${!before && !after ? tripCard(today) + eveningCard(today) : ""}
       ${oggiPren(today, before, after)}
+      ${!before && !after ? nearCard(today) : ""}
       ${ch.length ? `<div><div class="section-h"><h3>Il viaggio in capitoli</h3><a class="small" href="#giorni" style="font-weight:600">Tutti i giorni</a></div>
       <div class="hscroll">${ch.map((c, k) => `<a class="chapter" href="#giorni/${DAYS[c.from]}" style="--c:${zona[c.z].colore}">${photoUrl(HERO_PLACE[c.z]) ? `<div class="ph" data-bg="${photoUrl(HERO_PLACE[c.z], 330)}"></div>` : `<div class="ph" style="background:${zona[c.z].colore}"></div>`}<span class="num">${k + 1}</span><b>${esc(zona[c.z].nome)}</b><small>${c.from === c.to ? `giorno ${c.from + 1}` : `giorni ${c.from + 1}–${c.to + 1}`} · ${short(DAYS[c.from])}</small></a>`).join("")}</div></div>` : ""}
       ${!before && !after ? `<div class="card"><div class="between"><h3 style="margin:0" id="wtitle">Meteo</h3><span class="muted small" id="wtime"></span></div><div class="weather" id="weather" style="margin-top:12px"><div>…</div></div></div>` : ""}
-      ${after ? "" : `<div class="card">
-        <div class="between"><h3 style="margin:0">${icon("Ticket")} Da prenotare</h3><b class="small">${doneBook}/${toBook.length}</b></div>
-        <div class="progress bar-head"><i style="width:${toBook.length ? doneBook / toBook.length * 100 : 0}%"></i></div>
-        <p class="muted small" style="margin:8px 0 4px">In ordine di urgenza: in cima quello da prenotare prima. Tocca il nome per sapere come.</p>
-        <div id="booklist">${toBook.map((p, k) => `<label class="check${booked.has(p.id) ? " done" : ""}"${k >= 6 ? " data-more hidden" : ""}><input type="checkbox" data-book="${p.id}" ${booked.has(p.id) ? "checked" : ""}><span class="grow"><span class="bkn" data-place="${p.id}">${esc(p.n)}</span><small class="sub">${(() => { const w = !booked.has(p.id) && bookWhen(p); return w ? `<em class="bkw ${w.cls}">${esc(w.txt)}</em> · ` : ""; })()}${esc(zona[p.z].nome)}${dayOf(p.id).length ? " · " + dayOf(p.id).map(short).join(", ") : ""}</small></span><a class="iconbtn" href="${bookUrl(p)}" target="_blank" rel="noopener" aria-label="Cerca i biglietti">${icon("ExternalLink")}</a></label>`).join("")}</div>
-        ${toBook.length > 6 ? `<button class="btn small ghost" id="more" style="width:100%;margin-top:8px">Mostra tutti (${toBook.length})</button>` : ""}
+      ${after || !bookList.length ? "" : `<div class="card">
+        <div class="between"><h3 style="margin:0">${icon("Ticket")} ${before ? "Da prenotare" : "Ancora da prenotare"}</h3>${before ? `<b class="small">${doneBook}/${toBook.length}</b>` : ""}</div>
+        ${before ? `<div class="progress bar-head"><i style="width:${toBook.length ? doneBook / toBook.length * 100 : 0}%"></i></div>` : ""}
+        <p class="muted small" style="margin:8px 0 4px">${before ? "In ordine di urgenza: in cima quello da prenotare prima." : "In programma da oggi in poi e non ancora spuntati."} Tocca il nome per sapere come.</p>
+        <div id="booklist">${bookList.map((p, k) => `<label class="check${booked.has(p.id) ? " done" : ""}"${k >= 6 ? " data-more hidden" : ""}><input type="checkbox" data-book="${p.id}" ${booked.has(p.id) ? "checked" : ""}><span class="grow"><span class="bkn" data-place="${p.id}">${esc(p.n)}</span><small class="sub">${(() => { const w = before && !booked.has(p.id) && bookWhen(p); return w ? `<em class="bkw ${w.cls}">${esc(w.txt)}</em> · ` : ""; })()}${esc(zona[p.z].nome)}${dayOf(p.id).length ? " · " + dayOf(p.id).map(short).join(", ") : ""}</small></span><a class="iconbtn" href="${bookUrl(p)}" target="_blank" rel="noopener" aria-label="Cerca i biglietti">${icon("ExternalLink")}</a></label>`).join("")}</div>
+        ${bookList.length > 6 ? `<button class="btn small ghost" id="more" style="width:100%;margin-top:8px">Mostra tutti (${bookList.length})</button>` : ""}
       </div>`}
     `;
     $$("#booklist .bkn").forEach(b => b.addEventListener("click", e => e.preventDefault()));   // il nome apre la scheda, non spunta
@@ -838,7 +840,7 @@
       cb.checked ? booked.add(cb.dataset.book) : booked.delete(cb.dataset.book);
       savePlan(); cb.closest(".check").classList.toggle("done", cb.checked);
       const n = toBook.filter(p => booked.has(p.id)).length, w = n / toBook.length * 100 + "%";
-      const card = cb.closest(".card"); card.querySelector(".progress i").style.width = w; card.querySelector(".between b").textContent = `${n}/${toBook.length}`;
+      const card = cb.closest(".card"), bar = card.querySelector(".progress i"), cnt = card.querySelector(".between b"); if (bar) bar.style.width = w; if (cnt) cnt.textContent = `${n}/${toBook.length}`;
       const pr = $('[data-goto="booklist"]'); if (pr) { pr.querySelector("small").textContent = `${n}/${toBook.length}`; pr.querySelector(".progress i").style.width = w; }
     });
     $("#more")?.addEventListener("click", e => { $$("[data-more]").forEach(x => (x.hidden = false)); e.currentTarget.remove(); });
@@ -885,6 +887,7 @@
   function tripCard(today) {
     const d = plan[today], ids = (d?.i || []).filter(id => byId[id]);
     const quick = `<button class="btn small primary" id="qspesa">${icon("Plus")} Spesa</button>`;
+    if (!ids.length && today === T.fine) return `<div class="card tripc"><div class="between"><h3 style="margin:0">Si torna a casa ✈️</h3>${quick}</div><p class="small muted" style="margin:6px 0 0">Ultimo giorno: niente tappe in programma.${code && bookingsOn(today).length ? ` Il volo è qui sotto, in "Oggi e stanotte".` : ""}</p></div>`;
     if (!ids.length) return `<div class="card tripc"><div class="between"><h3 style="margin:0">Giornata libera</h3>${quick}</div><p class="small muted" style="margin:6px 0 0">Nessuna tappa in programma. Guardate "Vicino a te" qui sotto.</p></div>`;
     const done = new Set(d.f || []), n = ids.filter(id => done.has(id)).length, k = ids.findIndex(id => !done.has(id));
     const p = k >= 0 ? byId[ids[k]] : null, prev = k > 0 ? byId[ids[k - 1]] : null, t = d.t || {};
@@ -909,16 +912,16 @@
   }
   // sera (dalle 21 in Giappone): com'è andata e cosa c'è domani
   function eveningCard(today) {
-    if (nowJP() < "21:00") return "";
+    if (nowJP() < "21:00" || today === T.fine) return "";
     const d = plan[today] || {}, ids = (d.i || []).filter(id => byId[id]), done = ids.filter(id => d.f?.includes(id));
     let km = 0; for (let j = 1; j < done.length; j++) km += kmBetween(byId[done[j - 1]], byId[done[j]]) * 1.25;
     const sp = speseVive().filter(s => s.data === today && s.cat !== "rimborso"), tot = sp.reduce((a, s) => a + s.eur, 0);
-    const tom = DAYS[dayIndex(today) + 1], td = tom && plan[tom], first = td?.i?.map(id => byId[id]).find(Boolean);
+    const tom = DAYS[dayIndex(today) + 1], td = tom && plan[tom], first = td?.i?.map(id => byId[id]).find(Boolean), tb = !first && tom && bookingsOn(tom).find(p => p.ora);
     // giornata libera e senza spese: niente "0/0 tappe · – · –", solo cosa c'è domani
     const stats = ids.length || tot;
     return `<div class="card evening"><h3 style="margin:0">${stats ? "Com'è andata oggi" : "Buonanotte"}</h3>
       ${stats ? `<div class="stat"><div><b>${done.length}/${ids.length}</b><small>tappe</small></div><div><b>${km < 1 ? "–" : fmtKm(km)}</b><small>a piedi (stima)</small></div><div><b>${tot ? fmtInt(tot) + " €" : "–"}</b><small>spesi oggi</small></div></div>` : ""}
-      ${tom ? `<p class="small" style="margin:${stats ? 12 : 6}px 0 0"><b>Domani</b> · ${esc(td?.l || (td?.i?.length ? dayTitle(tom) : "giornata libera"))}${first ? ` · prima tappa ${esc(first.n)}${td.t?.[first.id] ? " alle " + esc(td.t[first.id]) : ""}` : ""}</p>` : `<p class="small" style="margin:${stats ? 12 : 6}px 0 0"><b>Domani si torna a casa.</b> Buon viaggio! ✈️</p>`}</div>`;
+      ${tom ? `<p class="small" style="margin:${stats ? 12 : 6}px 0 0"><b>Domani</b> · ${esc(td?.l || (td?.i?.length ? dayTitle(tom) : "giornata libera"))}${first ? ` · prima tappa ${esc(first.n)}${td.t?.[first.id] ? " alle " + esc(td.t[first.id]) : ""}` : tb ? ` · ${esc(tb.titolo)} alle ${esc(tb.ora)}` : ""}</p>` : `<p class="small" style="margin:${stats ? 12 : 6}px 0 0"><b>Domani si torna a casa.</b> Buon viaggio! ✈️</p>`}</div>`;
   }
   // vicino a te: luoghi della lista entro 1,5 km (anche di altri giorni), su richiesta
   let nearPos = null;
@@ -927,7 +930,7 @@
     const doneToday = new Set(plan[today]?.f || []);
     const list = LUOGHI.filter(p => !p.out && !doneToday.has(p.id)).map(p => [p, kmBetween(nearPos, p)]).filter(([, km]) => km <= 1.5).sort((a, b) => a[1] - b[1]).slice(0, 5);
     return `<div class="card nearl"><div class="between"><h3 style="margin:0">Vicino a te</h3><button class="btn small" id="nearbtn">${icon("RotateCcw")} Aggiorna</button></div>
-      ${list.length ? list.map(([p, km]) => `<div class="row" data-place="${p.id}">${photo(p.id, 330)}<div class="grow"><b>${esc(p.n)}</b><div class="small muted">${fmtKm(km)}${dayOf(p.id)[0] ? ` · in programma ${short(dayOf(p.id)[0])}` : " · non in programma"}</div></div>${icon("ChevronRight")}</div>`).join("") : `<p class="small muted" style="margin:10px 0 0">Nessun posto della lista entro 1,5 km.</p>`}</div>`;
+      ${list.length ? list.map(([p, km]) => `<div class="row" data-place="${p.id}">${photo(p.id, 330)}<div class="grow"><b>${esc(p.n)}</b><div class="small muted">${fmtKm(km)}${dayOf(p.id).includes(today) ? " · in programma oggi" : dayOf(p.id)[0] ? ` · in programma ${short(dayOf(p.id)[0])}` : " · non in programma"}</div></div>${icon("ChevronRight")}</div>`).join("") : `<p class="small muted" style="margin:10px 0 0">Nessun posto della lista entro 1,5 km.</p>`}</div>`;
   }
 
 
