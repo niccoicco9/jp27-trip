@@ -581,9 +581,9 @@ window.FOTO = {
 "h":"commons"
 },
 "t26": {
-"u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cb/Warner_Bros._Studio_Tour_Tokyo_entrance_%281%29_2023-08-17.jpg/960px-Warner_Bros._Studio_Tour_Tokyo_entrance_%281%29_2023-08-17.jpg",
-"f":"Warner_Bros._Studio_Tour_Tokyo_entrance_(1)_2023-08-17.jpg",
-"h":"commons"
+"u":"https://lh3.googleusercontent.com/grass-cs/AABkmLdVjZbn7yUBysbHebHUZrA76pYHaIorVe30WJWMBvZOkxrdQNEYb-G1mlcu3MfcIaFgOlOAZrdF8TNhpLa7hY_3jruLqETxV5CVDkeiLfP1PsHGbQX2hjKHid9t1A9xohCpKwmdjA=s4800-w960",
+"g":"ChIJZzjXkvLtGGARm2YFfi26zoU",
+"a":"Golffy Lifestyle"
 },
 "k17": {
 "u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c0/Nintendo_Museum_Entrance.jpg/960px-Nintendo_Museum_Entrance.jpg",
