@@ -794,5 +794,55 @@ window.FOTO = {
 "u":"https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bb/A_view_of_Lake_Ashi_with_Peace_Torii_gate%2C_Hakone%2C_Japan1.jpg/960px-A_view_of_Lake_Ashi_with_Peace_Torii_gate%2C_Hakone%2C_Japan1.jpg",
 "f":"A_view_of_Lake_Ashi_with_Peace_Torii_gate,_Hakone,_Japan1.jpg",
 "h":"commons"
+},
+"t23": {
+"u":"https://lh3.googleusercontent.com/grass-cs/AABkmLcBZ3A8rc7IYlrSv00a93WQj626FrKPqFhq2eI6oWhSoboAbllnUJp62fZFoxg-42ZfCSSLmmmPBf12tQo5RUxOX1_PKv1ORzIV7maNu8Pa0y1rykGveWwoOeX83gJxZuLO__ec4w=s4800-w960",
+"g":"ChIJGWtTCwCLGGARvcu2dbcfcIQ",
+"a":"Jonathan Tien"
+},
+"t27": {
+"u":"https://lh3.googleusercontent.com/grass-cs/AABkmLfGS1jwu6Z_5Qzgh61oSty8344cZqyCLMF4hxbdNXOG8pAIT9JvqCi1LQk9tf8CcybJMcDA4OI9W-Y90OveP90hS263oK1FZt9JczVQMMizG2rPFnt9CMvR52LgvqQBqJzPDhOI=s4800-w960",
+"g":"ChIJfyMJhWqLGGARhlEZu_MYjOg",
+"a":"Tomer Gandler"
+},
+"t31": {
+"u":"https://lh3.googleusercontent.com/grass-cs/AABkmLc3iFXUSWP8awbKhOg_nNjyJ7AhpRq787ZF-7xwIQeTnOudMXpkoqWtspLuWDfuqfmZd1JUmvNVlC4EkVtWKpzjTXgeG1RpnfFPca-_GYwfWkWRFd_E3R_CbzCaxCls2iTgRaKD4jURPstZ=s4800-w960",
+"g":"ChIJWbAa0p-LGGARUovWP5hMvjk",
+"a":"Chopsticks Studio Ginza"
+},
+"k18": {
+"u":"https://lh3.googleusercontent.com/grass-cs/AABkmLfGXuoHf5Yftn5lhnx2aPXyxrRiPQVYQ86rKBsR0Iq0SATiA-fax-gqv5RqzDACtxDTcUyL1-LjlsZnTJF3XjEUIM41WJ0cPsi6evCFPlclAqPCo15Y9BNIKiS0ZXkBiEP0MRE=s4800-w960",
+"g":"ChIJ7QGJf5MIAWARvYFqYvRcfDs",
+"a":"ラウンドワン 京都河原町店"
+},
+"o14": {
+"u":"https://lh3.googleusercontent.com/grass-cs/AABkmLejuavx0vhV4Bodj3C6_17Tz-hf2sy7oDWdWpuUxvCvbTWM1rgrVKvmIgIEsDOx2xJbmVRePm7P5FV_lYImx0T735L_br5msJdM8o8A9j3o6nlRuYBf3xFWS8mO3SsKTMI-tTMC_g=s4800-w960",
+"g":"ChIJk_2uiz6DAGARPAh9qsjaqwo",
+"a":"NARUTO＆BORUTO 忍里"
+},
+"o16": {
+"u":"https://lh3.googleusercontent.com/grass-cs/AABkmLcS2gRNGCG_JS3immzbAodUU8c9FhFZitJbN1FRZ5j6kpsKWwy3-fMTa1Z5f2rwvwn-e8YCEt50qpSMRIuu8MKCw8oG8y2RpG_iVabsYSDnNKFj_CGM5AMsuz2-mvWSrq5ZTTNA3g=s4800-w960",
+"g":"ChIJqU3TtxTnAGARbMBactGzXDM",
+"a":"ラウンドワンスタジアム 千日前店"
+},
+"o20": {
+"u":"https://lh3.googleusercontent.com/grass-cs/AABkmLfFdAG-PIltTirwccZdelPMrs6LN6qMMUxo7U4vRqbb50yG5mY0fHLXMOnbvGn2myUJe5H-KiDuEk08eBxKF1hKcB7Md2ugQ2YOWiTeIc31dgay5J9TK99RfPFjcRkq7CSsnqPkDQ=s4800-w960",
+"g":"ChIJAQDwkWrnAGARIPRWNXHSw5A",
+"a":"H V"
+},
+"x7": {
+"u":"https://lh3.googleusercontent.com/grass-cs/AABkmLc2U2TOJMyrnut_fRaWhHlf3hdP7HcamarLFI7jDpYWuCEzcnAnQwuGiGMH7WaPe0JsDSHEuRM_-sC40K1LwyIQ-DuDX7IqFeUBQr7IgU0i85bIES5rHa2E0f3Lw6CP5xJqM60vQQ=s4800-w960",
+"g":"ChIJYzyIqA37GGAR06cqMa0Wkyc",
+"a":"ピカケンタ"
+},
+"x9": {
+"u":"https://lh3.googleusercontent.com/grass-cs/AABkmLdcmyov-fjHeMJ3xw1yRDAG7k4fzgU5bBQ44mOlMHGy1QUttFFuz1gCYzPiN-Dq96WJ2iV2oZKFbWL0ngGq0FFJROYLGHGpGRDz2zdrHPH4dqhM4UaubOPJmdY7gQACfsDCVQVH=s4800-w960",
+"g":"ChIJWV5VjjnzGGAROSeJuqci1T8",
+"a":"Duong Nguyen"
+},
+"x25": {
+"u":"https://lh3.googleusercontent.com/grass-cs/AABkmLcl9NRekEtoi7g442RQMHyKwrPsc0M7wjxwf1vCskPbSSXW4cYjWpPiMayXCfg7AfZ_8FQmm42eRbBvlxS2GbvETnRN2Rq5SClSXKrT5VXoY36v18_ZSHaauI_nvQe-TzYBiDybDw=s4800-w960",
+"g":"ChIJA0tJ_yOyBmARBPvDV50Qmvs",
+"a":"yosuke katano"
 }
 };
