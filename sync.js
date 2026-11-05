@@ -75,8 +75,9 @@ export function start(config, code, h, { memory = false } = {}) {
     stop: () => { unsubs.forEach(u => u()); return terminate(db).catch(() => {}); },
     reset: () => terminate(db).then(() => clearIndexedDbPersistence(db)),
     pushMain: data => setDoc(main, { ...data, at: serverTimestamp() }, { merge: true }).catch(fail),
-    put: (name, { id, ...rest }) => setDoc(doc(main, name, id), { ...rest, at: serverTimestamp() }).catch(fail),
-    del: (name, id) => deleteDoc(doc(main, name, id)).catch(fail),
+    // true solo quando il server ha confermato (serve alla coda di riserva dell'app)
+    put: (name, { id, ...rest }) => setDoc(doc(main, name, id), { ...rest, at: serverTimestamp() }).then(() => true, e => (fail(e), false)),
+    del: (name, id) => deleteDoc(doc(main, name, id)).then(() => true, e => (fail(e), false)),
     // documenti allegati: ogni pagina (un'immagine JPEG) è un documento a sé, letto solo quando serve
     putPage: (id, k, bytes) => setDoc(doc(main, "allegati_pagine", `${id}_${k}`), { b: Bytes.fromUint8Array(bytes), at: serverTimestamp() }),
     getPage: (id, k) => getDoc(doc(main, "allegati_pagine", `${id}_${k}`)).then(s => s.exists() ? s.data().b.toUint8Array() : null),

@@ -3,13 +3,13 @@
 
   // ——— storage (protetto: in privato o con dati bloccati può fallire) ———
   let dataVer = 0;   // cresce a ogni modifica salvata: le pagine tenute in memoria più vecchie si ricostruiscono
-  const UI_KEYS = new Set(["selDay", "lview", "mapMode", "notifyQ", "skipCode", "lastPage", "lastBackup", "preRestore"]);   // solo preferenze di navigazione: non cambiano le pagine
+  const UI_KEYS = new Set(["selDay", "lview", "mapMode", "notifyQ", "skipCode", "lastPage", "lastBackup", "preRestore", "outbox"]);   // solo preferenze di navigazione: non cambiano le pagine
   const LS = {
     get(k, d) { try { const v = localStorage.getItem("jp27:" + k); return v ? JSON.parse(v) : d; } catch { return d; } },
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 115;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 116;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -309,17 +309,38 @@
     lastEdit = { by: me || "?", at: Date.now() }; LS.set("lastEdit", lastEdit);
     if (sync) { clearTimeout(pushT); pushT = setTimeout(pushChanges, 400); }
   }
+  // Coda di riserva: ogni voce scritta resta annotata qui finché il server non la conferma, e a ogni avvio
+  // della sincronizzazione si rimanda. La coda di Firestore da sola non basta: si perde se l'IndexedDB di Safari
+  // si rompe (modalità "solo in memoria") e l'app viene chiusa, o se si salva prima che la sincronizzazione parta.
+  // Rimandare è innocuo: ogni voce ha il suo id, quindi si riscrive la stessa.
+  const outbox = LS.get("outbox", {});
+  const saveOutbox = () => LS.set("outbox", outbox);
+  function sendQueued(key) {
+    const o = outbox[key];
+    if (!o || !sync) return;
+    const s = sync;
+    (o.op === "put" ? s.put(o.name, o.item) : s.del(o.name, o.id)).then(ok => {
+      if (ok && outbox[key] === o) { delete outbox[key]; saveOutbox(); }   // se nel frattempo è cambiata, resta l'ultima
+    });
+  }
+  function queue(o) {
+    const key = o.name + "/" + (o.id || o.item.id);
+    outbox[key] = { ...o, t: Date.now() }; saveOutbox(); sendQueued(key);
+  }
+  const queuePut = (name, item) => { const { at, ...rest } = item; queue({ op: "put", name, item: rest }); };
+  const queueDel = (name, id) => queue({ op: "del", name, id });
+  const flushOutbox = () => Object.keys(outbox).forEach(sendQueued);
   function putItem(name, item) {
     item = { ...item, id: item.id || uid(), by: me || "?" };
     const arr = lists[name], k = arr.findIndex(x => x.id === item.id);
     if (k < 0) markFresh(item.id);
     k >= 0 ? (arr[k] = item) : arr.push(item);
-    LS.set(name, arr); sync?.put(name, item);
+    LS.set(name, arr); queuePut(name, item);
     if (name === "luoghi") mergeCustom();
     return item;
   }
   function delItem(name, id) {
-    lists[name] = lists[name].filter(x => x.id !== id); LS.set(name, lists[name]); sync?.del(name, id);
+    lists[name] = lists[name].filter(x => x.id !== id); LS.set(name, lists[name]); queueDel(name, id);
     if (name === "luoghi") mergeCustom();
   }
   // si sta scrivendo in un campo della pagina: l'aggiornamento aspetta, per non perdere il testo
@@ -394,7 +415,7 @@
       setTimeout(() => askWho(true), 600); render();
       return;
     }
-    import("./sync.js").then(m => { sync = m.start(window.FIREBASE, code, { main: onRemote, list: onList, status: setSync, recreate: () => sync.pushMain({ plan, booked: [...booked], by: me || "?" }) }, { memory: syncMemory }); dataVer++; if (location.hash.startsWith("#giorni") && !sheetOpen()) keepScroll(render); }).catch(err => { syncStarting = false; setSync("error", err); });
+    import("./sync.js").then(m => { sync = m.start(window.FIREBASE, code, { main: onRemote, list: onList, status: setSync, recreate: () => sync.pushMain({ plan, booked: [...booked], by: me || "?" }) }, { memory: syncMemory }); flushOutbox(); dataVer++; if (location.hash.startsWith("#giorni") && !sheetOpen()) keepScroll(render); }).catch(err => { syncStarting = false; setSync("error", err); });
   }
 
   // ricerca tollerante: ignora accenti (ō → o), trattini, apostrofi e maiuscole; ogni parola deve comparire
@@ -2695,8 +2716,8 @@
       const next = cleanList(name, b.lists[name] || []), ids = new Set(next.map(x => x.id)), now = new Map(lists[name].map(x => [x.id, x]));
       if (name === "spese") {   // le spese che il backup non ha finiscono nel cestino, non spariscono
         for (const x of now.values()) if (!ids.has(x.id)) next.push(x.del ? x : { ...x, del: { by: me || "?", t: Date.now(), backup: true } });
-      } else for (const id of now.keys()) if (!ids.has(id)) sync?.del(name, id);
-      for (const x of next) if (sig(now.get(x.id)) !== sig(x)) { const { at, ...rest } = x; sync?.put(name, rest); }
+      } else for (const id of now.keys()) if (!ids.has(id)) queueDel(name, id);
+      for (const x of next) if (sig(now.get(x.id)) !== sig(x)) queuePut(name, x);
       lists[name] = next; LS.set(name, next);
     }
     mergeCustom();
