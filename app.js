@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 117;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 118;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -734,7 +734,7 @@
         ${p.chiuso ? `<dt>Chiuso</dt><dd>${esc(p.chiuso)}</dd>` : ""}
         ${p.pren ? `<dt>Biglietti</dt><dd><label class="check" style="border:none;padding:0"><input type="checkbox" id="bk" ${booked.has(id) ? "checked" : ""}><span>${booked.has(id) ? "<b>Prenotato</b>" : "Da prenotare in anticipo: <b>segna quando è fatto</b>"}</span></label></dd>` : ""}
         ${p.pren && PREN[p.id] && !booked.has(id) ? `<dt>Quando</dt><dd><b class="bkw ${bookWhen(p)?.cls || ""}">${esc(cap1(bookWhen(p).txt))}</b><div class="small muted" style="margin-top:2px">${esc(PREN[p.id].come)}</div></dd>` : ""}
-        <dt>In programma</dt><dd>${ds.length ? ds.map(d => `<div class="pday"><a href="#giorni/${d}">Giorno ${dayIndex(d) + 1} · ${fmtDay(d, { weekday: "short", day: "numeric", month: "short" })}</a>${p.gone ? "" : timeIn(`class="ptime" data-ptime="${d}" value="${esc(plan[d]?.t?.[id] || "")}" aria-label="Ora in programma"`)}</div>`).join("")
+        <dt${ds.length && !p.gone ? ' class="dt-pday"' : ""}>In programma</dt><dd>${ds.length ? ds.map(d => `<div class="pday"><a href="#giorni/${d}">Giorno ${dayIndex(d) + 1} · ${fmtDay(d, { weekday: "short", day: "numeric", month: "short" })}</a>${p.gone ? "" : `<span class="pt-r">${timeIn(`class="ptime" data-ptime="${d}" value="${esc(plan[d]?.t?.[id] || "")}" aria-label="Ora in programma"`)}<button class="iconbtn pclear" data-pclear="${d}" aria-label="Togli l'ora"${plan[d]?.t?.[id] ? "" : " hidden"}>${icon("X")}</button></span>`}</div>`).join("")
           + (p.gone ? "" : `<div class="small muted">Tocca l'ora per segnare quando andarci</div>`) : "<span class='muted'>non ancora</span>"}</dd>
       </dl>
       ${p.gone ? "" : `<h3>Aggiungi a un giorno</h3>
@@ -759,6 +759,11 @@
         if (inp.value) dd.t[id] = inp.value; else delete dd.t[id];
         if (!Object.keys(dd.t).length) delete dd.t;
         savePlan(); buzz(); sheetSnap = sheetFields();   // già salvata: chiudendo la scheda non chiede di ignorarla
+        const x = inp.closest(".pt-r")?.querySelector("[data-pclear]"); if (x) x.hidden = !inp.value;
+      });
+      // × accanto all'ora: la toglie
+      $$("[data-pclear]", el).forEach(b => b.onclick = () => {
+        const inp = b.parentNode.querySelector("[data-ptime]"); inp.value = ""; inp.onchange();
       });
     }, rerender);
   }
