@@ -305,6 +305,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: color-m
 .hero p { margin: 4px 0 0; opacity: .95; font-size: .92rem; }
 .hero .btns { margin-top: 12px; }
 .hero .btn:not(.primary) { background: rgba(20,14,10,.38); color: #fff; border-color: rgba(255,255,255,.3); box-shadow: none; }
+.hero-fuji .phi { object-position: 66% 40%; }
 .hero .credit { position: absolute; top: 10px; right: 12px; font-size: .62rem; opacity: .75; color: #fff; text-decoration: none; }
 
 /* ——— Chapters (zone) ——— */
