@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 116;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 117;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -320,7 +320,7 @@
     if (!o || !sync) return;
     const s = sync;
     (o.op === "put" ? s.put(o.name, o.item) : s.del(o.name, o.id)).then(ok => {
-      if (ok && outbox[key] === o) { delete outbox[key]; saveOutbox(); }   // se nel frattempo è cambiata, resta l'ultima
+      if ((ok === true || ok === "drop") && outbox[key] === o) { delete outbox[key]; saveOutbox(); }   // se nel frattempo è cambiata, resta l'ultima
     });
   }
   function queue(o) {
