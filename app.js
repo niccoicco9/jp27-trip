@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 120;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 121;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -3483,7 +3483,7 @@
   document.addEventListener("contextmenu", e => { if (e.target.closest("a, img, button, label, .tabs, .place, .tl li, .ph, .cover, .viewer") && !e.target.closest("input, textarea, .copiabile")) e.preventDefault(); });
   if (!maybeImport()) render();
   // schermata d'avvio: resta il tempo di vederla (anche quando l'app si apre in un lampo), poi sfuma
-  setTimeout(() => window.__bootOut?.(), Math.max(0, 1400 - performance.now()));
+  setTimeout(() => window.__bootOut?.(), Math.max(700, 1500 - performance.now()));
   // la sincronizzazione (Firebase, ~525 KB) parte dopo la prima schermata: l'app compare subito con i dati del telefono
   (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => startSync(), { timeout: 800 });
   setTimeout(() => { if (navigator.onLine) OfflineMap.warmup?.().catch(() => {}); }, 5000);

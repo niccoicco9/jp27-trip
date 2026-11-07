@@ -15,8 +15,9 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
   <link rel="apple-touch-icon" href="icon-180.png">
-  <!-- schermata d'avvio su iPhone: un'immagine per ogni misura, senza condizione chiaro/scuro
-       (iOS spesso la ignora qui e allora mostrava solo nero). Sono foto del #boot qui sotto. -->
+  <!-- schermata d'avvio su iPhone: un'immagine per ogni misura, senza condizione chiaro/scuro (iOS la ignora:
+       con quella si vedeva solo nero). Sono foto del #boot qui sotto, sotto una striscia scura alta quanto la barra
+       di stato, come appare l'app aperta dalla schermata Home. -->
   <link rel="apple-touch-startup-image" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="avvio/splash-1320x2868.png">
   <link rel="apple-touch-startup-image" media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="avvio/splash-1206x2622.png">
   <link rel="apple-touch-startup-image" media="(device-width: 420px) and (device-height: 912px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="avvio/splash-1260x2736.png">
@@ -40,7 +41,7 @@
     /* ——— schermata d'avvio ———
        Disegnata subito, prima di app.css e app.js. Le immagini in avvio/ sono foto di questa stessa schermata,
        così il passaggio dall'immagine di iOS alla pagina non fa scatti. Misure solo in % e vw (niente safe-area). */
-    #boot { position: fixed; inset: 0; z-index: 9999; overflow: hidden; pointer-events: auto;
+    #boot { position: absolute; inset: 0; z-index: 9999; overflow: hidden; pointer-events: auto;
       background: linear-gradient(180deg, #1b1d4a 0%, #2c2b66 22%, #5e3576 42%, #b04a74 60%, #e9787a 74%, #f9a982 86%, #fcd3a0 100%);
       transition: opacity .7s cubic-bezier(.32, .72, 0, 1); }
     #boot > * { position: absolute; }
