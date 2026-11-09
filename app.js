@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 122;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 123;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -309,27 +309,48 @@
     lastEdit = { by: me || "?", at: Date.now() }; LS.set("lastEdit", lastEdit);
     if (sync) { clearTimeout(pushT); pushT = setTimeout(pushChanges, 400); }
   }
-  // Coda di riserva: ogni voce scritta resta annotata qui finché il server non la conferma, e a ogni avvio
-  // della sincronizzazione si rimanda. La coda di Firestore da sola non basta: si perde se l'IndexedDB di Safari
-  // si rompe (modalità "solo in memoria") e l'app viene chiusa, o se si salva prima che la sincronizzazione parta.
-  // Rimandare è innocuo: ogni voce ha il suo id, quindi si riscrive la stessa.
+  // Coda di riserva: ogni voce scritta resta annotata qui finché il server non la conferma. La coda di Firestore
+  // da sola non basta: si perde se l'IndexedDB di Safari si rompe (modalità "solo in memoria") e l'app viene chiusa,
+  // o se si salva prima che la sincronizzazione parta.
+  // Le voci rimaste da prima (app chiusa prima della conferma) non si rimandano alla cieca: si aspetta la prima
+  // lettura dal server (onServer) e si rimandano solo se lì non sono già state scritte dopo, da noi o da altri.
+  // Così una conferma persa non sovrascrive le modifiche fatte nel frattempo dagli altri.
+  // Ogni voce ricorda il codice del viaggio: con un codice diverso non si manda. Senza codice non si annota niente.
   const outbox = LS.get("outbox", {});
-  const saveOutbox = () => LS.set("outbox", outbox);
+  let outboxSaving = false, toCheck = new Set();
+  // un solo salvataggio per giro: ripristinare un backup accoda centinaia di voci di fila
+  const saveOutbox = () => { if (outboxSaving) return; outboxSaving = true; queueMicrotask(() => { outboxSaving = false; LS.set("outbox", outbox); }); };
   function sendQueued(key) {
     const o = outbox[key];
     if (!o || !sync) return;
+    if ((o.c ?? code) !== code) { delete outbox[key]; saveOutbox(); return; }   // di un altro viaggio
     const s = sync;
     (o.op === "put" ? s.put(o.name, o.item) : s.del(o.name, o.id)).then(ok => {
       if ((ok === true || ok === "drop") && outbox[key] === o) { delete outbox[key]; saveOutbox(); }   // se nel frattempo è cambiata, resta l'ultima
     });
   }
   function queue(o) {
+    if (!code) return;
     const key = o.name + "/" + (o.id || o.item.id);
-    outbox[key] = { ...o, t: Date.now() }; saveOutbox(); sendQueued(key);
+    toCheck.delete(key);
+    outbox[key] = { ...o, c: code, t: Date.now() }; saveOutbox(); sendQueued(key);
   }
   const queuePut = (name, item) => { const { at, ...rest } = item; queue({ op: "put", name, item: rest }); };
   const queueDel = (name, id) => queue({ op: "del", name, id });
-  const flushOutbox = () => Object.keys(outbox).forEach(sendQueued);
+  // all'avvio della sincronizzazione: le voci rimaste aspettano la prima lettura dal server
+  const checkOutbox = () => { toCheck = new Set(Object.keys(outbox)); };
+  // at: id → ora dell'ultima scrittura sul server (Infinity = in arrivo dalla coda di Firestore)
+  function onServer(name, at) {
+    for (const key of toCheck) {
+      const o = outbox[key];
+      if (o && o.name !== name) continue;
+      toCheck.delete(key);
+      if (!o) continue;
+      const srv = at.get(o.id || o.item.id);
+      const done = o.op === "put" ? srv !== undefined && srv >= o.t : srv === undefined || srv >= o.t;
+      if (done) { delete outbox[key]; saveOutbox(); } else sendQueued(key);
+    }
+  }
   function putItem(name, item) {
     item = { ...item, id: item.id || uid(), by: me || "?" };
     const arr = lists[name], k = arr.findIndex(x => x.id === item.id);
@@ -415,7 +436,7 @@
       setTimeout(() => askWho(true), 600); render();
       return;
     }
-    import("./sync.js").then(m => { sync = m.start(window.FIREBASE, code, { main: onRemote, list: onList, status: setSync, recreate: () => sync.pushMain({ plan, booked: [...booked], by: me || "?" }) }, { memory: syncMemory }); flushOutbox(); dataVer++; if (location.hash.startsWith("#giorni") && !sheetOpen()) keepScroll(render); }).catch(err => { syncStarting = false; setSync("error", err); });
+    import("./sync.js").then(m => { sync = m.start(window.FIREBASE, code, { main: onRemote, list: onList, server: onServer, status: setSync, recreate: () => sync.pushMain({ plan, booked: [...booked], by: me || "?" }) }, { memory: syncMemory }); checkOutbox(); dataVer++; if (location.hash.startsWith("#giorni") && !sheetOpen()) keepScroll(render); }).catch(err => { syncStarting = false; setSync("error", err); });
   }
 
   // ricerca tollerante: ignora accenti (ō → o), trattini, apostrofi e maiuscole; ogni parola deve comparire

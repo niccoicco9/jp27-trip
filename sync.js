@@ -30,9 +30,16 @@ export function start(config, code, h, { memory = false } = {}) {
     first = false;
   }, fail));
 
+  // con includeMetadataChanges arriva anche il passaggio da copia locale a server; h.list solo quando cambiano i dati
   for (const name of LISTS) {
-    unsubs.push(onSnapshot(collection(main, name), snap => {
-      h.list(name, snap.docs.map(d => ({ ...d.data(), id: d.id })));
+    let listed = false, fromServer = false;
+    unsubs.push(onSnapshot(collection(main, name), { includeMetadataChanges: true }, snap => {
+      if (!listed || snap.docChanges().length) { listed = true; h.list(name, snap.docs.map(d => ({ ...d.data(), id: d.id }))); }
+      // prima lettura dal server: all'app serve l'ora di ogni voce per la coda di riserva
+      if (!snap.metadata.fromCache && !fromServer) {
+        fromServer = true;
+        h.server?.(name, new Map(snap.docs.map(d => [d.id, d.metadata.hasPendingWrites ? Infinity : d.get("at")?.toMillis?.() ?? 0])));
+      }
     }, fail));
   }
 
@@ -62,7 +69,8 @@ export function start(config, code, h, { memory = false } = {}) {
   // Firestore se ne accorgerebbe solo al proprio timeout (anche minuti), mostrando dati vecchi.
   // Riaprire subito la connessione fa arrivare le modifiche degli altri in un attimo: si scaricano
   // solo le differenze e le modifiche locali in coda partono appena è riaperta.
-  const outcome = e => { fail(e); return e?.code === "invalid-argument" ? "drop" : false; };
+  let stopped = false;   // dopo stop/reset le scritture rimaste a metà falliscono: non è un errore della nuova connessione
+  const outcome = e => { if (stopped) return false; fail(e); return e?.code === "invalid-argument" ? "drop" : false; };
 
   let waking = null;
   function wake() {
@@ -74,13 +82,14 @@ export function start(config, code, h, { memory = false } = {}) {
     patch,
     wake,
     // ripara: butta la copia locale di Firestore (non le modifiche già inviate) e si riparte dal server
-    stop: () => { unsubs.forEach(u => u()); return terminate(db).catch(() => {}); },
-    reset: () => terminate(db).then(() => clearIndexedDbPersistence(db)),
+    stop: () => { stopped = true; unsubs.forEach(u => u()); return terminate(db).catch(() => {}); },
+    reset: () => { stopped = true; return terminate(db).then(() => clearIndexedDbPersistence(db)); },
     pushMain: data => setDoc(main, { ...data, at: serverTimestamp() }, { merge: true }).catch(fail),
     // per la coda di riserva dell'app: true = confermata dal server, "drop" = rifiutata per sempre (voce non valida:
     // ritentarla non serve), false = da ritentare (rete, permessi, database locale)
-    put: (name, { id, ...rest }) => setDoc(doc(main, name, id), { ...rest, at: serverTimestamp() }).then(() => true, outcome),
-    del: (name, id) => deleteDoc(doc(main, name, id)).then(() => true, outcome),
+    // Promise.resolve().then: i dati non validi Firestore li rifiuta subito (eccezione), così finiscono in outcome
+    put: (name, { id, ...rest }) => Promise.resolve().then(() => setDoc(doc(main, name, id), { ...rest, at: serverTimestamp() })).then(() => true, outcome),
+    del: (name, id) => Promise.resolve().then(() => deleteDoc(doc(main, name, id))).then(() => true, outcome),
     // documenti allegati: ogni pagina (un'immagine JPEG) è un documento a sé, letto solo quando serve
     putPage: (id, k, bytes) => setDoc(doc(main, "allegati_pagine", `${id}_${k}`), { b: Bytes.fromUint8Array(bytes), at: serverTimestamp() }),
     getPage: (id, k) => getDoc(doc(main, "allegati_pagine", `${id}_${k}`)).then(s => s.exists() ? s.data().b.toUint8Array() : null),
