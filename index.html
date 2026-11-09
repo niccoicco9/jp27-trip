@@ -9,15 +9,15 @@
   <meta name="theme-color" content="#0e0d0c" media="(prefers-color-scheme: dark)">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Giappone">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
   <link rel="apple-touch-icon" href="icon-180.png">
   <!-- schermata d'avvio su iPhone: un'immagine per ogni misura, senza condizione chiaro/scuro (iOS la ignora:
-       con quella si vedeva solo nero). Sono foto del #boot qui sotto, sotto una striscia scura alta quanto la barra
-       di stato, come appare l'app aperta dalla schermata Home. -->
+       con quella si vedeva solo nero). Sono foto del #boot qui sotto a tutto schermo: con la barra di stato
+       "black-translucent" la pagina arriva fin sotto ora e batteria, quindi niente striscia scura in cima. -->
   <link rel="apple-touch-startup-image" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="avvio/splash-1320x2868.png">
   <link rel="apple-touch-startup-image" media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="avvio/splash-1206x2622.png">
   <link rel="apple-touch-startup-image" media="(device-width: 420px) and (device-height: 912px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="avvio/splash-1260x2736.png">
@@ -40,8 +40,11 @@
   <style>
     /* ——— schermata d'avvio ———
        Disegnata subito, prima di app.css e app.js. Le immagini in avvio/ sono foto di questa stessa schermata,
-       così il passaggio dall'immagine di iOS alla pagina non fa scatti. Misure solo in % e vw (niente safe-area). */
-    #boot { position: absolute; inset: 0; z-index: 9999; overflow: hidden; pointer-events: auto;
+       così il passaggio dall'immagine di iOS alla pagina non fa scatti. Misure solo in % e vw (niente safe-area).
+       Alta quanto lo schermo e non 100%: aperta dalla schermata Home, con la barra di stato trasparente il 100% della
+       pagina è più corto dello schermo (manca l'altezza della barra) e in fondo restava una fascia scura.
+       --full-h la mette lo script qui sotto (solo app dalla Home in verticale). */
+    #boot { position: absolute; top: 0; left: 0; right: 0; height: 100vh; height: var(--full-h, 100lvh); z-index: 9999; overflow: hidden; pointer-events: auto;
       background: linear-gradient(180deg, #1b1d4a 0%, #2c2b66 22%, #5e3576 42%, #b04a74 60%, #e9787a 74%, #f9a982 86%, #fcd3a0 100%);
       transition: opacity .7s cubic-bezier(.32, .72, 0, 1); }
     #boot > * { position: absolute; }
@@ -80,6 +83,15 @@
     @media (orientation: landscape) and (max-height: 520px) { #boot { display: none; } }
     @media (prefers-reduced-motion: reduce) { #boot .bt-petal { animation: none; } }
   </style>
+  <script>
+    /* iPhone, app aperta dalla schermata Home con la barra di stato trasparente: il 100% della pagina è più corto dello
+       schermo di quanto è alta la barra (812 invece di 874 punti) e, appena sparisce la schermata d'avvio, iOS accorcia
+       la pagina: la barra delle schede e tutto ciò che sta in basso restavano sollevati. --full-h = altezza dello schermo,
+       usata da #boot e da html/body (app.css). Nel browser e su Android non c'è e resta tutto come prima. */
+    (() => { if (!navigator.standalone) return; const r = document.documentElement;
+      const fit = () => { if (innerHeight > innerWidth) r.style.setProperty("--full-h", Math.max(screen.width, screen.height) + "px"); else r.style.removeProperty("--full-h"); };
+      fit(); addEventListener("resize", fit); })();
+  </script>
   <link rel="stylesheet" href="app.css">
   <script>try { const t = JSON.parse(localStorage.getItem("jp27:theme") || '""'); if (t) document.documentElement.dataset.theme = t; } catch {}</script>
 </head>

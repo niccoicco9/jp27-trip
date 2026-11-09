@@ -62,7 +62,9 @@
 /* ——— Base ——— */
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html, body { margin: 0; height: 100%; overflow: hidden; touch-action: pan-x pan-y; }   /* niente zoom con due dita */
+/* --full-h: altezza dello schermo, solo per l'app aperta dalla schermata Home (vedi index.html). Con la barra di stato
+   trasparente il 100% sarebbe più corto dello schermo e iOS accorcerebbe la pagina: barra in basso sollevata */
+html, body { margin: 0; height: 100%; height: var(--full-h, 100%); overflow: hidden; touch-action: pan-x pan-y; }   /* niente zoom con due dita */
 /* scorre solo il contenuto (testata compresa), le barre restano fuori: come nelle app di iPhone, la barra in basso
    risponde subito anche mentre la pagina scorre ancora per inerzia; il rimbalzo in cima e in fondo resta */
 .scroller { position: fixed; inset: 0; overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch;
