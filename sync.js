@@ -37,9 +37,9 @@ export function start(config, code, h, { memory = false } = {}) {
   for (const name of LISTS) {
     let listed = false, fromServer = false;
     unsubs.push(onSnapshot(collection(main, name), { includeMetadataChanges: true }, snap => {
-      // prima della lettura dal server la copia locale vale solo se è una copia vera: in memoria contiene al più
-      // le nostre scritture appena fatte, e vuota (offline) svuoterebbe le liste salvate sul telefono
-      if (snap.metadata.fromCache && !fromServer && (memory || snap.empty)) return;
+      // prima della lettura dal server la copia locale vale solo se è una copia vera: in memoria, o vuota (offline,
+      // appena riscaricata) con al più le nostre scritture appena fatte, svuoterebbe le liste salvate sul telefono
+      if (snap.metadata.fromCache && !fromServer && (memory || snap.docs.every(d => d.metadata.hasPendingWrites))) return;
       if (!listed || snap.docChanges().length) { listed = true; h.list(name, snap.docs.map(d => ({ ...d.data(), id: d.id }))); }
       // prima lettura dal server: all'app serve la versione di ogni voce per la coda di riserva
       if (!snap.metadata.fromCache && !fromServer) {

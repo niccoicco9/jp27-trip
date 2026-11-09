@@ -10,7 +10,7 @@
     set(k, v, quiet) { if (!quiet && !UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 127;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 128;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -332,7 +332,8 @@
   // Così una conferma persa non sovrascrive le modifiche fatte nel frattempo dagli altri.
   // Ogni scrittura porta un codice casuale "w", salvato nella voce: il server dice così con certezza quale
   // scrittura ha per ultima. Nella coda: w = codice di questa scrittura, bw = codice della voce su cui si è fatta
-  // la modifica ("" = voce nuova, null = non noto), own = codici delle nostre scritture precedenti non confermate.
+  // la modifica ("" = voce nuova, null = senza codice: vale ba, il suo "at"), own = codici delle nostre scritture
+  // precedenti non confermate, od = prima c'era una nostra eliminazione non confermata.
   // (Con l'"at" del server la base salvata sul telefono poteva essere vecchia e la modifica veniva scartata.)
   // Ogni voce ricorda il codice del viaggio: con un codice diverso non si manda. Senza codice non si annota niente.
   const outbox = LS.get("outbox", {});
@@ -350,23 +351,37 @@
   }
   // "at" di Firestore (Timestamp, o la sua copia salvata sul telefono) → millisecondi; 0 = assente (solo voci vecchie)
   const atMs = x => x && x.seconds != null ? x.seconds * 1000 + Math.floor((x.nanoseconds || 0) / 1e6) : 0;
+  // liste già lette dal server in questa sessione: solo da lì l'"at" delle voci è quello attuale
+  const fromSrv = new Set();
   // codice della voce su cui si fa la modifica: "" = non c'è ancora, null = c'è ma senza codice (scritta da una versione vecchia)
   const baseW = x => x ? (typeof x.w === "string" ? x.w : null) : "";
-  function queue(o, bw) {
+  // per le voci senza codice: il loro "at" (0 = non noto, la copia sul telefono può essere vecchia)
+  const baseAt = (name, x) => x && typeof x.w !== "string" && fromSrv.has(name) ? atMs(x.at) : 0;
+  // base: la voce com'era prima della modifica (undefined = non c'era)
+  function queue(o, base) {
     if (!code) return;
     const key = o.name + "/" + (o.id || o.item.id), prev = outbox[key];
     toCheck.delete(key);
     // una modifica precedente non ancora confermata: la base resta quella, e se la precedente arriva al server
     // (il suo codice è in own) questa va rimandata, non considerata fatta
-    const own = prev ? [...(prev.own || []), prev.item?.w].filter(Boolean).slice(-20) : [];
-    outbox[key] = { ...o, c: code, t: Date.now(), bw: prev ? ("bw" in prev ? prev.bw : null) : bw, own }; saveOutbox(); sendQueued(key);
+    let bw = baseW(base), ba = baseAt(o.name, base);
+    if (prev) {
+      if ("bw" in prev) { bw = prev.bw; ba = prev.ba || 0; }
+      else if ("b" in prev) { bw = prev.b > 0 ? null : ""; ba = prev.b; }   // annotata dalla versione 126
+      else { bw = null; ba = 0; }   // dalla 125 o prima: base non nota
+    }
+    const own = prev ? [...(prev.own || []), prev.item?.w].filter(Boolean).slice(-200) : [];
+    // od: una nostra eliminazione non confermata, la voce che manca sul server può averla tolta lei
+    const od = !!prev && (prev.op === "del" || !!prev.od);
+    outbox[key] = { ...o, c: code, t: Date.now(), bw, ba, own, ...(od && { od }) }; saveOutbox(); sendQueued(key);
   }
-  const queuePut = (name, item, bw) => { const { at, ...rest } = item; queue({ op: "put", name, item: rest }, bw); };
-  const queueDel = (name, id, bw) => queue({ op: "del", name, id }, bw);
+  const queuePut = (name, item, base) => { const { at, ...rest } = item; queue({ op: "put", name, item: rest }, base); };
+  const queueDel = (name, id, base) => queue({ op: "del", name, id }, base);
   // all'avvio della sincronizzazione: le voci rimaste aspettano la prima lettura dal server
   const checkOutbox = () => { toCheck = new Set(Object.keys(outbox)); };
   // srv: id → { w, at } della voce sul server (null = ancora in coda in Firestore); voce assente = non c'è sul server
   function onServer(name, srv) {
+    fromSrv.add(name);
     for (const key of toCheck) {
       const o = outbox[key];
       if (o && o.name !== name) continue;
@@ -378,9 +393,12 @@
       if (there && raw === null) done = false;
       else if ("bw" in o) {
         if (o.op === "put" && there && raw.w === o.item.w) done = true;   // arrivata
-        else if (!there) done = o.op === "del" || o.bw !== "" && o.bw !== null;   // del: già tolta · put: tolta da altri dopo che c'era
-        // sul server c'è ancora la base, o una nostra scrittura precedente, o non si sa: si rimanda
-        else done = !(o.bw === null || raw.w === o.bw || o.own?.includes(raw.w));   // altrimenti cambiata da altri: vale la loro
+        // del: già tolta · put: tolta da altri dopo che c'era (se non l'abbiamo tolta noi, es. eliminata e poi "Annulla")
+        else if (!there) done = o.op === "del" || !o.od && (typeof o.bw === "string" ? o.bw !== "" : o.ba > 0);
+        else if (o.own?.includes(raw.w)) done = false;   // c'è una nostra scrittura precedente: si rimanda
+        // voce senza codice: cambiata da altri se l'"at" non è più quello della base (base non nota: si rimanda)
+        else if (o.bw === null) done = o.ba > 0 && atMs(raw.at) !== o.ba;
+        else done = raw.w !== o.bw;   // c'è ancora la base: si rimanda · altrimenti cambiata da altri: vale la loro
       }
       else if (!("b" in o)) {   // voce annotata dalla versione 125 o prima: confronto con l'ora, come allora
         const t = there ? atMs(raw.at) : undefined;
@@ -392,16 +410,16 @@
   }
   function putItem(name, item) {
     item = { ...item, id: item.id || uid(), by: me || "?", w: uid() };
-    const arr = lists[name], k = arr.findIndex(x => x.id === item.id), bw = baseW(arr[k]);
+    const arr = lists[name], k = arr.findIndex(x => x.id === item.id), base = arr[k];
     if (k < 0) markFresh(item.id);
     k >= 0 ? (arr[k] = item) : arr.push(item);
-    LS.set(name, arr); queuePut(name, item, bw);
+    LS.set(name, arr); queuePut(name, item, base);
     if (name === "luoghi") mergeCustom();
     return item;
   }
   function delItem(name, id) {
-    const bw = baseW(lists[name].find(x => x.id === id));
-    lists[name] = lists[name].filter(x => x.id !== id); LS.set(name, lists[name]); queueDel(name, id, bw);
+    const base = lists[name].find(x => x.id === id);
+    lists[name] = lists[name].filter(x => x.id !== id); LS.set(name, lists[name]); queueDel(name, id, base);
     if (name === "luoghi") mergeCustom();
   }
   // si sta scrivendo in un campo della pagina: l'aggiornamento aspetta, per non perdere il testo
@@ -2815,11 +2833,11 @@
       const next = cleanList(name, b.lists[name] || []), ids = new Set(next.map(x => x.id)), now = new Map(lists[name].map(x => [x.id, x]));
       if (name === "spese") {   // le spese che il backup non ha finiscono nel cestino, non spariscono
         for (const x of now.values()) if (!ids.has(x.id)) next.push(x.del ? x : { ...x, del: { by: me || "?", t: Date.now(), backup: true } });
-      } else for (const id of now.keys()) if (!ids.has(id)) queueDel(name, id, baseW(now.get(id)));
+      } else for (const id of now.keys()) if (!ids.has(id)) queueDel(name, id, now.get(id));
       // voci cambiate: nuovo codice di scrittura · voci uguali: resta quella di qui (con "w" e "at" del server, non quelli del backup)
       next.forEach((x, j) => {
         const old = now.get(x.id);
-        if (sig(old) !== sig(x)) { next[j] = { ...x, w: uid() }; queuePut(name, next[j], baseW(old)); } else next[j] = old;
+        if (sig(old) !== sig(x)) { next[j] = { ...x, w: uid() }; queuePut(name, next[j], old); } else next[j] = old;
       });
       lists[name] = next; LS.set(name, next);
     }
