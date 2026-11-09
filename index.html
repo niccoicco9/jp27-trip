@@ -87,9 +87,10 @@
     /* iPhone, app aperta dalla schermata Home con la barra di stato trasparente: il 100% della pagina è più corto dello
        schermo di quanto è alta la barra (812 invece di 874 punti) e, appena sparisce la schermata d'avvio, iOS accorcia
        la pagina: la barra delle schede e tutto ciò che sta in basso restavano sollevati. --full-h = altezza dello schermo,
-       usata da #boot e da html/body (app.css). Nel browser e su Android non c'è e resta tutto come prima. */
+       usata da #boot e da html/body (app.css). Nel browser e su Android non c'è e resta tutto come prima.
+       Solo con la finestra larga quanto lo schermo: su iPad in Split View o Stage Manager è più piccola dello schermo. */
     (() => { if (!navigator.standalone) return; const r = document.documentElement;
-      const fit = () => { if (innerHeight > innerWidth) r.style.setProperty("--full-h", Math.max(screen.width, screen.height) + "px"); else r.style.removeProperty("--full-h"); };
+      const fit = () => { if (innerHeight > innerWidth && innerWidth === Math.min(screen.width, screen.height)) r.style.setProperty("--full-h", Math.max(screen.width, screen.height) + "px"); else r.style.removeProperty("--full-h"); };
       fit(); addEventListener("resize", fit); })();
   </script>
   <link rel="stylesheet" href="app.css">

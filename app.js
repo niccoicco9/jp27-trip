@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 123;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 124;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -849,7 +849,7 @@
       <span class="gpill" id="wpill" hidden></span></div></div>`;
 
     let hero;
-    if (before || after) hero = `<div class="hero${before ? " hero-fuji" : ""}">${before ? `<div class="ph" data-bg="${HERO_COVER}"></div>` : art()}<div class="hero-in">
+    if (before || after) hero = `<div class="hero${before ? " hero-fuji" : ""}">${before ? `<div class="ph" data-bg="${HERO_COVER}"></div><a class="credit" href="https://commons.wikimedia.org/wiki/File:Chureito_Pagoda_and_Mount_Fuji.jpg" target="_blank" rel="noopener">Foto: Wikimedia Commons · CC BY-SA 4.0</a>` : art()}<div class="hero-in">
         <span class="kicker">${before ? hi + (daysTo <= 0 ? "Si parte!" : daysTo === 1 ? "Manca" : "Mancano") : "Okaeri!"}</span>
         ${before && daysTo <= 0 ? `<div class="title">In volo verso il Giappone ✈️</div>` : before ? `<div class="big-n" data-count="${daysTo}">${daysTo}</div><div class="title">${daysTo === 1 ? "giorno" : "giorni"} alla partenza</div>` : `<div class="title">Viaggio concluso.<br>Arigatō, Giappone!</div>`}
         <p>In Giappone dal ${fmtDay(T.inizio, { day: "numeric", month: "long" })} al ${fmtDay(T.fine, { day: "numeric", month: "long", year: "numeric" })} · Niccolò & Antonella · Miriam & Paolo</p>
