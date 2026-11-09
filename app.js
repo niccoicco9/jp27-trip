@@ -9,7 +9,7 @@
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 125;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 126;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -321,8 +321,11 @@
   // da sola non basta: si perde se l'IndexedDB di Safari si rompe (modalità "solo in memoria") e l'app viene chiusa,
   // o se si salva prima che la sincronizzazione parta.
   // Le voci rimaste da prima (app chiusa prima della conferma) non si rimandano alla cieca: si aspetta la prima
-  // lettura dal server (onServer) e si rimandano solo se lì non sono già state scritte dopo, da noi o da altri.
+  // lettura dal server (onServer) e si rimandano solo se lì la voce è ancora quella su cui si era fatta la modifica.
   // Così una conferma persa non sovrascrive le modifiche fatte nel frattempo dagli altri.
+  // b = versione della voce sul server (il suo "at") quando la si è modificata, 0 = voce nuova o non nota.
+  // Si confrontano versioni del server tra loro, non l'ora del telefono: con l'orologio avanti o indietro
+  // il confronto sbagliava (modifiche perse o rimandate sopra quelle degli altri).
   // Ogni voce ricorda il codice del viaggio: con un codice diverso non si manda. Senza codice non si annota niente.
   const outbox = LS.get("outbox", {});
   let outboxSaving = false, toCheck = new Set();
@@ -337,39 +340,53 @@
       if ((ok === true || ok === "drop") && outbox[key] === o) { delete outbox[key]; saveOutbox(); }   // se nel frattempo è cambiata, resta l'ultima
     });
   }
-  function queue(o) {
+  // "at" di Firestore (Timestamp, o la sua copia salvata sul telefono) → millisecondi; 0 = assente
+  const atMs = x => x && x.seconds != null ? x.seconds * 1000 + Math.floor((x.nanoseconds || 0) / 1e6) : 0;
+  function queue(o, base) {
     if (!code) return;
-    const key = o.name + "/" + (o.id || o.item.id);
+    const key = o.name + "/" + (o.id || o.item.id), prev = outbox[key];
     toCheck.delete(key);
-    outbox[key] = { ...o, c: code, t: Date.now() }; saveOutbox(); sendQueued(key);
+    // una modifica precedente non ancora confermata: la base resta quella, la versione sul server non è cambiata
+    outbox[key] = { ...o, c: code, t: Date.now(), b: prev && "b" in prev ? prev.b : atMs(base) }; saveOutbox(); sendQueued(key);
   }
-  const queuePut = (name, item) => { const { at, ...rest } = item; queue({ op: "put", name, item: rest }); };
-  const queueDel = (name, id) => queue({ op: "del", name, id });
+  // base: l'"at" della voce com'era prima della modifica
+  const queuePut = (name, item, base) => { const { at, ...rest } = item; queue({ op: "put", name, item: rest }, base); };
+  const queueDel = (name, id, base) => queue({ op: "del", name, id }, base);
   // all'avvio della sincronizzazione: le voci rimaste aspettano la prima lettura dal server
   const checkOutbox = () => { toCheck = new Set(Object.keys(outbox)); };
-  // at: id → ora dell'ultima scrittura sul server (Infinity = in arrivo dalla coda di Firestore)
+  // at: id → "at" della voce sul server (null = ancora in coda in Firestore); voce assente = non c'è sul server
   function onServer(name, at) {
     for (const key of toCheck) {
       const o = outbox[key];
       if (o && o.name !== name) continue;
       toCheck.delete(key);
       if (!o) continue;
-      const srv = at.get(o.id || o.item.id);
-      const done = o.op === "put" ? srv !== undefined && srv >= o.t : srv === undefined || srv >= o.t;
+      const id = o.id || o.item.id, there = at.has(id), raw = at.get(id);
+      let done;
+      // ancora nella coda di Firestore (database locale): non ci si fida, si rimanda (la stessa scrittura, rifarla non cambia niente)
+      if (there && raw === null) done = false;
+      else if (!("b" in o)) {   // voce annotata dalla versione 124 o prima: confronto con l'ora, come allora
+        const srv = there ? atMs(raw) : undefined;
+        done = o.op === "put" ? srv !== undefined && srv >= o.t : srv === undefined || srv >= o.t;
+      }
+      // put: arrivata o cambiata da altri (versione diversa dalla base), oppure tolta da altri dopo che c'era
+      // del: già tolta, oppure riscritta da altri dopo
+      else done = !there ? o.op === "del" || o.b > 0 : atMs(raw) !== o.b;
       if (done) { delete outbox[key]; saveOutbox(); } else sendQueued(key);
     }
   }
   function putItem(name, item) {
     item = { ...item, id: item.id || uid(), by: me || "?" };
-    const arr = lists[name], k = arr.findIndex(x => x.id === item.id);
+    const arr = lists[name], k = arr.findIndex(x => x.id === item.id), base = arr[k]?.at;
     if (k < 0) markFresh(item.id);
     k >= 0 ? (arr[k] = item) : arr.push(item);
-    LS.set(name, arr); queuePut(name, item);
+    LS.set(name, arr); queuePut(name, item, base);
     if (name === "luoghi") mergeCustom();
     return item;
   }
   function delItem(name, id) {
-    lists[name] = lists[name].filter(x => x.id !== id); LS.set(name, lists[name]); queueDel(name, id);
+    const base = lists[name].find(x => x.id === id)?.at;
+    lists[name] = lists[name].filter(x => x.id !== id); LS.set(name, lists[name]); queueDel(name, id, base);
     if (name === "luoghi") mergeCustom();
   }
   // si sta scrivendo in un campo della pagina: l'aggiornamento aspetta, per non perdere il testo
@@ -2779,8 +2796,8 @@
       const next = cleanList(name, b.lists[name] || []), ids = new Set(next.map(x => x.id)), now = new Map(lists[name].map(x => [x.id, x]));
       if (name === "spese") {   // le spese che il backup non ha finiscono nel cestino, non spariscono
         for (const x of now.values()) if (!ids.has(x.id)) next.push(x.del ? x : { ...x, del: { by: me || "?", t: Date.now(), backup: true } });
-      } else for (const id of now.keys()) if (!ids.has(id)) queueDel(name, id);
-      for (const x of next) if (sig(now.get(x.id)) !== sig(x)) queuePut(name, x);
+      } else for (const id of now.keys()) if (!ids.has(id)) queueDel(name, id, now.get(id).at);
+      for (const x of next) if (sig(now.get(x.id)) !== sig(x)) queuePut(name, x, now.get(x.id)?.at);
       lists[name] = next; LS.set(name, next);
     }
     mergeCustom();

@@ -38,7 +38,7 @@ export function start(config, code, h, { memory = false } = {}) {
       // prima lettura dal server: all'app serve l'ora di ogni voce per la coda di riserva
       if (!snap.metadata.fromCache && !fromServer) {
         fromServer = true;
-        h.server?.(name, new Map(snap.docs.map(d => [d.id, d.metadata.hasPendingWrites ? Infinity : d.get("at")?.toMillis?.() ?? 0])));
+        h.server?.(name, new Map(snap.docs.map(d => [d.id, d.metadata.hasPendingWrites ? null : d.get("at") ?? 0])));   // null = ancora in coda qui
       }
     }, fail));
   }

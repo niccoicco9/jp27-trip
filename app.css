@@ -765,7 +765,6 @@ body.on-map .map-loading { padding-top: var(--head, 60px); }
 .pday .tin > i { padding: 0 9px; }
 .pday .pt-r { display: flex; align-items: center; gap: 6px; flex: none; }
 .pday .pclear { width: 38px; height: 38px; color: var(--muted); }
-.pday .pclear[hidden] { display: none; }
 .pday .pclear svg { width: 16px; height: 16px; }
 .info dt.dt-pday { line-height: 38px; }   /* in riga con "Giorno N" e il campo ora */
 .pday + .small { margin-top: 2px; }
