@@ -17,7 +17,7 @@ export function start(config, code, h, { memory = false } = {}) {
   const app = initializeApp(config, memory ? "mem" + Date.now() : undefined);
   let db;
   try { db = initializeFirestore(app, memory ? {} : { localCache: persistentLocalCache() }); }
-  catch { db = initializeFirestore(initializeApp(config, "mem" + Date.now()), {}); }
+  catch { memory = true; db = initializeFirestore(initializeApp(config, "mem" + Date.now()), {}); }
   const main = doc(db, "viaggi", code);
   const fail = err => h.status("error", err);
   let first = true;
@@ -26,6 +26,9 @@ export function start(config, code, h, { memory = false } = {}) {
   unsubs.push(onSnapshot(main, { includeMetadataChanges: true }, snap => {
     if (!(waking && snap.metadata.fromCache)) h.status(snap.metadata.fromCache ? "offline" : "online");   // niente pallino grigio mentre riapre la connessione
     if (snap.metadata.hasPendingWrites) return;   // è una nostra modifica non ancora confermata
+    // documento assente solo nella copia locale (vuota in memoria o appena installata, offline): non vuol dire
+    // che manchi sul server, e l'app lo ricreerebbe col programma di qui sopra quello degli altri
+    if (!snap.exists() && snap.metadata.fromCache) return;
     h.main(snap.exists() ? snap.data() : null, first);
     first = false;
   }, fail));
@@ -34,11 +37,15 @@ export function start(config, code, h, { memory = false } = {}) {
   for (const name of LISTS) {
     let listed = false, fromServer = false;
     unsubs.push(onSnapshot(collection(main, name), { includeMetadataChanges: true }, snap => {
+      // prima della lettura dal server la copia locale vale solo se è una copia vera: in memoria contiene al più
+      // le nostre scritture appena fatte, e vuota (offline) svuoterebbe le liste salvate sul telefono
+      if (snap.metadata.fromCache && !fromServer && (memory || snap.empty)) return;
       if (!listed || snap.docChanges().length) { listed = true; h.list(name, snap.docs.map(d => ({ ...d.data(), id: d.id }))); }
-      // prima lettura dal server: all'app serve l'ora di ogni voce per la coda di riserva
+      // prima lettura dal server: all'app serve la versione di ogni voce per la coda di riserva
       if (!snap.metadata.fromCache && !fromServer) {
         fromServer = true;
-        h.server?.(name, new Map(snap.docs.map(d => [d.id, d.metadata.hasPendingWrites ? null : d.get("at") ?? 0])));   // null = ancora in coda qui
+        // null = ancora in coda qui; w = codice dell'ultima scrittura, at = sua ora sul server
+        h.server?.(name, new Map(snap.docs.map(d => [d.id, d.metadata.hasPendingWrites ? null : { w: d.get("w"), at: d.get("at") ?? 0 }])));
       }
     }, fail));
   }

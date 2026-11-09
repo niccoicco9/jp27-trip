@@ -6,10 +6,11 @@
   const UI_KEYS = new Set(["selDay", "lview", "mapMode", "notifyQ", "skipCode", "lastPage", "lastBackup", "preRestore", "outbox", "syncBase", "docUp"]);   // solo preferenze di navigazione: non cambiano le pagine
   const LS = {
     get(k, d) { try { const v = localStorage.getItem("jp27:" + k); return v ? JSON.parse(v) : d; } catch { return d; } },
-    set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
+    // quiet: dati uguali per le pagine (solo versioni del server): niente ricostruzione
+    set(k, v, quiet) { if (!quiet && !UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 126;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 127;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -252,10 +253,16 @@
   if (!confirmed?.plan || typeof confirmed.plan !== "object" || !Array.isArray(confirmed.booked)) confirmed = { plan: clone(plan), booked: [...booked] };
   let synced = { plan: clone(confirmed.plan), booked: [...confirmed.booked] };
   let remoteSeq = 0;   // cresce a ogni stato letto dal server: una conferma arrivata dopo non lo sostituisce con uno più vecchio
-  const markConfirmed = (s, seq) => { if (seq !== remoteSeq) return; confirmed = s; LS.set("syncBase", s); };
-  // impronta dei dati indipendente dall'ordine delle chiavi e dall'orario del server ("at"):
+  // s non va più modificato (synced e confirmed si sostituiscono, non si cambiano): si salva solo se è diverso
+  let confirmedJ = "";
+  const markConfirmed = (s, seq) => {
+    if (seq !== remoteSeq) return;
+    confirmed = s; const j = JSON.stringify(s);
+    if (j !== confirmedJ) { confirmedJ = j; try { localStorage.setItem("jp27:syncBase", j); } catch {} }
+  };
+  // impronta dei dati indipendente dall'ordine delle chiavi e dalla versione del server ("at" e "w"):
   // serve a riconoscere gli aggiornamenti di Firestore che non cambiano niente (conferme delle proprie modifiche, passaggio online)
-  const sig = v => JSON.stringify(v ?? null, (k, x) => k === "at" ? undefined
+  const sig = v => JSON.stringify(v ?? null, (k, x) => k === "at" || k === "w" ? undefined
     : x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map(j => [j, x[j]])) : x);
   // confronto indipendente dall'ordine dei campi: Firestore non lo conserva, e un giorno "uguale ma in
   // ordine diverso" sembrava modificato qui e veniva rimandato, coprendo le modifiche degli altri
@@ -323,9 +330,10 @@
   // Le voci rimaste da prima (app chiusa prima della conferma) non si rimandano alla cieca: si aspetta la prima
   // lettura dal server (onServer) e si rimandano solo se lì la voce è ancora quella su cui si era fatta la modifica.
   // Così una conferma persa non sovrascrive le modifiche fatte nel frattempo dagli altri.
-  // b = versione della voce sul server (il suo "at") quando la si è modificata, 0 = voce nuova o non nota.
-  // Si confrontano versioni del server tra loro, non l'ora del telefono: con l'orologio avanti o indietro
-  // il confronto sbagliava (modifiche perse o rimandate sopra quelle degli altri).
+  // Ogni scrittura porta un codice casuale "w", salvato nella voce: il server dice così con certezza quale
+  // scrittura ha per ultima. Nella coda: w = codice di questa scrittura, bw = codice della voce su cui si è fatta
+  // la modifica ("" = voce nuova, null = non noto), own = codici delle nostre scritture precedenti non confermate.
+  // (Con l'"at" del server la base salvata sul telefono poteva essere vecchia e la modifica veniva scartata.)
   // Ogni voce ricorda il codice del viaggio: con un codice diverso non si manda. Senza codice non si annota niente.
   const outbox = LS.get("outbox", {});
   let outboxSaving = false, toCheck = new Set();
@@ -340,53 +348,60 @@
       if ((ok === true || ok === "drop") && outbox[key] === o) { delete outbox[key]; saveOutbox(); }   // se nel frattempo è cambiata, resta l'ultima
     });
   }
-  // "at" di Firestore (Timestamp, o la sua copia salvata sul telefono) → millisecondi; 0 = assente
+  // "at" di Firestore (Timestamp, o la sua copia salvata sul telefono) → millisecondi; 0 = assente (solo voci vecchie)
   const atMs = x => x && x.seconds != null ? x.seconds * 1000 + Math.floor((x.nanoseconds || 0) / 1e6) : 0;
-  function queue(o, base) {
+  // codice della voce su cui si fa la modifica: "" = non c'è ancora, null = c'è ma senza codice (scritta da una versione vecchia)
+  const baseW = x => x ? (typeof x.w === "string" ? x.w : null) : "";
+  function queue(o, bw) {
     if (!code) return;
     const key = o.name + "/" + (o.id || o.item.id), prev = outbox[key];
     toCheck.delete(key);
-    // una modifica precedente non ancora confermata: la base resta quella, la versione sul server non è cambiata
-    outbox[key] = { ...o, c: code, t: Date.now(), b: prev && "b" in prev ? prev.b : atMs(base) }; saveOutbox(); sendQueued(key);
+    // una modifica precedente non ancora confermata: la base resta quella, e se la precedente arriva al server
+    // (il suo codice è in own) questa va rimandata, non considerata fatta
+    const own = prev ? [...(prev.own || []), prev.item?.w].filter(Boolean).slice(-20) : [];
+    outbox[key] = { ...o, c: code, t: Date.now(), bw: prev ? ("bw" in prev ? prev.bw : null) : bw, own }; saveOutbox(); sendQueued(key);
   }
-  // base: l'"at" della voce com'era prima della modifica
-  const queuePut = (name, item, base) => { const { at, ...rest } = item; queue({ op: "put", name, item: rest }, base); };
-  const queueDel = (name, id, base) => queue({ op: "del", name, id }, base);
+  const queuePut = (name, item, bw) => { const { at, ...rest } = item; queue({ op: "put", name, item: rest }, bw); };
+  const queueDel = (name, id, bw) => queue({ op: "del", name, id }, bw);
   // all'avvio della sincronizzazione: le voci rimaste aspettano la prima lettura dal server
   const checkOutbox = () => { toCheck = new Set(Object.keys(outbox)); };
-  // at: id → "at" della voce sul server (null = ancora in coda in Firestore); voce assente = non c'è sul server
-  function onServer(name, at) {
+  // srv: id → { w, at } della voce sul server (null = ancora in coda in Firestore); voce assente = non c'è sul server
+  function onServer(name, srv) {
     for (const key of toCheck) {
       const o = outbox[key];
       if (o && o.name !== name) continue;
       toCheck.delete(key);
       if (!o) continue;
-      const id = o.id || o.item.id, there = at.has(id), raw = at.get(id);
+      const id = o.id || o.item.id, there = srv.has(id), raw = srv.get(id);
       let done;
       // ancora nella coda di Firestore (database locale): non ci si fida, si rimanda (la stessa scrittura, rifarla non cambia niente)
       if (there && raw === null) done = false;
-      else if (!("b" in o)) {   // voce annotata dalla versione 124 o prima: confronto con l'ora, come allora
-        const srv = there ? atMs(raw) : undefined;
-        done = o.op === "put" ? srv !== undefined && srv >= o.t : srv === undefined || srv >= o.t;
+      else if ("bw" in o) {
+        if (o.op === "put" && there && raw.w === o.item.w) done = true;   // arrivata
+        else if (!there) done = o.op === "del" || o.bw !== "" && o.bw !== null;   // del: già tolta · put: tolta da altri dopo che c'era
+        // sul server c'è ancora la base, o una nostra scrittura precedente, o non si sa: si rimanda
+        else done = !(o.bw === null || raw.w === o.bw || o.own?.includes(raw.w));   // altrimenti cambiata da altri: vale la loro
       }
-      // put: arrivata o cambiata da altri (versione diversa dalla base), oppure tolta da altri dopo che c'era
-      // del: già tolta, oppure riscritta da altri dopo
-      else done = !there ? o.op === "del" || o.b > 0 : atMs(raw) !== o.b;
+      else if (!("b" in o)) {   // voce annotata dalla versione 125 o prima: confronto con l'ora, come allora
+        const t = there ? atMs(raw.at) : undefined;
+        done = o.op === "put" ? t !== undefined && t >= o.t : t === undefined || t >= o.t;
+      }
+      else done = !there ? o.op === "del" || o.b > 0 : atMs(raw.at) !== o.b;   // versione 126: confronto con l'"at" di allora
       if (done) { delete outbox[key]; saveOutbox(); } else sendQueued(key);
     }
   }
   function putItem(name, item) {
-    item = { ...item, id: item.id || uid(), by: me || "?" };
-    const arr = lists[name], k = arr.findIndex(x => x.id === item.id), base = arr[k]?.at;
+    item = { ...item, id: item.id || uid(), by: me || "?", w: uid() };
+    const arr = lists[name], k = arr.findIndex(x => x.id === item.id), bw = baseW(arr[k]);
     if (k < 0) markFresh(item.id);
     k >= 0 ? (arr[k] = item) : arr.push(item);
-    LS.set(name, arr); queuePut(name, item, base);
+    LS.set(name, arr); queuePut(name, item, bw);
     if (name === "luoghi") mergeCustom();
     return item;
   }
   function delItem(name, id) {
-    const base = lists[name].find(x => x.id === id)?.at;
-    lists[name] = lists[name].filter(x => x.id !== id); LS.set(name, lists[name]); queueDel(name, id, base);
+    const bw = baseW(lists[name].find(x => x.id === id));
+    lists[name] = lists[name].filter(x => x.id !== id); LS.set(name, lists[name]); queueDel(name, id, bw);
     if (name === "luoghi") mergeCustom();
   }
   // si sta scrivendo in un campo della pagina: l'aggiornamento aspetta, per non perdere il testo
@@ -405,7 +420,7 @@
     const mine = localChanges(), base = synced.plan;
     const remote = cleanPlan(data.plan);
     synced = { plan: clone(remote), booked: [...(Array.isArray(data.booked) ? data.booked : [])] };
-    remoteSeq++; markConfirmed({ plan: clone(synced.plan), booked: [...synced.booked] }, remoteSeq);   // senza scritture in sospeso: è lo stato del server
+    remoteSeq++; markConfirmed(synced, remoteSeq);   // senza scritture in sospeso: è lo stato del server
     const nextPlan = { ...remote };
     for (const d of Object.keys(mine.days)) nextPlan[d] = mergeDay(base[d], plan[d] || { l: "", n: "", i: [] }, remote[d]);
     const nextBooked = new Set([...(Array.isArray(data.booked) ? data.booked : []).filter(x => !mine.rem.includes(x)), ...mine.add]);
@@ -420,7 +435,8 @@
   function onList(name, items) {
     items = cleanList(name, items);
     if (name === "allegati") setTimeout(prefetchDocs, 1500);   // anche all'avvio: scarica quelli che mancano su questo telefono
-    if (listSig(items) === listSig(lists[name])) { lists[name] = items; return; }   // stessi dati: nessuna ricostruzione
+    // stessi dati: nessuna ricostruzione, ma si salva lo stesso (cambiano "at" e "w", che servono alla coda di riserva)
+    if (listSig(items) === listSig(lists[name])) { lists[name] = items; LS.set(name, items, true); return; }
     lists[name] = items; LS.set(name, items);
     if (name === "luoghi") mergeCustom();
     remoteChanged();
@@ -2088,20 +2104,23 @@
   // telefono quando la sincronizzazione è attiva e si rimandano a ogni avvio finché il server non le conferma.
   // Senza, un documento allegato prima che la sincronizzazione parta, o perso con il database locale,
   // arrivava agli altri senza pagine.
-  const docUp = LS.get("docUp", {}), docSending = new Set();
+  // docSending: id → sincronizzazione che lo sta mandando (dopo una ripartenza quella nuova lo rimanda)
+  const docUp = LS.get("docUp", {}), docSending = new Map();
   async function uploadDocs() {
     if (!sync || !("caches" in window)) return;
     const s = sync, c = await caches.open(DOCS).catch(() => null); if (!c) return;
+    if (s !== sync) return;
     for (const [id, n] of Object.entries(docUp)) {
-      if (docSending.has(id)) continue;
-      docSending.add(id);
+      if (docSending.get(id) === s) continue;
+      docSending.set(id, s);
       (async () => {
         const pages = [];
         for (let k = 0; k < n; k++) { const r = await c.match(docKey(id, k)); if (!r) return; pages.push(new Uint8Array(await r.arrayBuffer())); }   // copia sparita: non si può più mandare
+        if (!(id in docUp)) return;   // eliminato mentre si leggevano le pagine: non si riscrivono dopo la cancellazione
         await Promise.all(pages.map((b, k) => s.putPage(id, k, b)));
       })().then(() => { delete docUp[id]; LS.set("docUp", docUp); },
         err => { console.warn("Documento:", err); if (s === sync) toast("Documento non caricato: riprovo alla prossima apertura"); })
-        .finally(() => docSending.delete(id));
+        .finally(() => { if (docSending.get(id) === s) docSending.delete(id); });
     }
   }
   async function delDoc(a) {
@@ -2796,8 +2815,12 @@
       const next = cleanList(name, b.lists[name] || []), ids = new Set(next.map(x => x.id)), now = new Map(lists[name].map(x => [x.id, x]));
       if (name === "spese") {   // le spese che il backup non ha finiscono nel cestino, non spariscono
         for (const x of now.values()) if (!ids.has(x.id)) next.push(x.del ? x : { ...x, del: { by: me || "?", t: Date.now(), backup: true } });
-      } else for (const id of now.keys()) if (!ids.has(id)) queueDel(name, id, now.get(id).at);
-      for (const x of next) if (sig(now.get(x.id)) !== sig(x)) queuePut(name, x, now.get(x.id)?.at);
+      } else for (const id of now.keys()) if (!ids.has(id)) queueDel(name, id, baseW(now.get(id)));
+      // voci cambiate: nuovo codice di scrittura · voci uguali: resta quella di qui (con "w" e "at" del server, non quelli del backup)
+      next.forEach((x, j) => {
+        const old = now.get(x.id);
+        if (sig(old) !== sig(x)) { next[j] = { ...x, w: uid() }; queuePut(name, next[j], baseW(old)); } else next[j] = old;
+      });
       lists[name] = next; LS.set(name, next);
     }
     mergeCustom();
