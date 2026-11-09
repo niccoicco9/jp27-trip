@@ -3,13 +3,13 @@
 
   // ——— storage (protetto: in privato o con dati bloccati può fallire) ———
   let dataVer = 0;   // cresce a ogni modifica salvata: le pagine tenute in memoria più vecchie si ricostruiscono
-  const UI_KEYS = new Set(["selDay", "lview", "mapMode", "notifyQ", "skipCode", "lastPage", "lastBackup", "preRestore", "outbox"]);   // solo preferenze di navigazione: non cambiano le pagine
+  const UI_KEYS = new Set(["selDay", "lview", "mapMode", "notifyQ", "skipCode", "lastPage", "lastBackup", "preRestore", "outbox", "syncBase", "docUp"]);   // solo preferenze di navigazione: non cambiano le pagine
   const LS = {
     get(k, d) { try { const v = localStorage.getItem("jp27:" + k); return v ? JSON.parse(v) : d; } catch { return d; } },
     set(k, v) { if (!UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 124;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 125;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -244,8 +244,15 @@
     }
   }
   mergeCustom();
-  // ultimo stato confermato dal server: si inviano solo le differenze rispetto a questo
-  let synced = { plan: clone(plan), booked: [...booked] };
+  // ultimo stato inviato al server: si inviano solo le differenze rispetto a questo
+  // confirmed: ultimo stato che il server ha davvero confermato, salvato sul telefono. Alla partenza della
+  // sincronizzazione si riparte da lì: le modifiche al programma che non sono arrivate (database locale rotto,
+  // ripartenza "solo in memoria", "Riscarica i dati") risultano ancora da inviare e si rimandano.
+  let confirmed = LS.get("syncBase", null);
+  if (!confirmed?.plan || typeof confirmed.plan !== "object" || !Array.isArray(confirmed.booked)) confirmed = { plan: clone(plan), booked: [...booked] };
+  let synced = { plan: clone(confirmed.plan), booked: [...confirmed.booked] };
+  let remoteSeq = 0;   // cresce a ogni stato letto dal server: una conferma arrivata dopo non lo sostituisce con uno più vecchio
+  const markConfirmed = (s, seq) => { if (seq !== remoteSeq) return; confirmed = s; LS.set("syncBase", s); };
   // impronta dei dati indipendente dall'ordine delle chiavi e dall'orario del server ("at"):
   // serve a riconoscere gli aggiornamenti di Firestore che non cambiano niente (conferme delle proprie modifiche, passaggio online)
   const sig = v => JSON.stringify(v ?? null, (k, x) => k === "at" ? undefined
@@ -301,8 +308,9 @@
     const ch = localChanges();
     if (!Object.keys(ch.days).length && !ch.add.length && !ch.rem.length) return;
     const days = Object.fromEntries(Object.keys(ch.days).map(d => [d, dayOps(synced.plan[d], plan[d])]));
-    sync.patch({ ...ch, days, by: me || "?" });
-    synced = { plan: clone(plan), booked: [...booked] };
+    const sent = { plan: clone(plan), booked: [...booked] }, seq = remoteSeq;
+    sync.patch({ ...ch, days, by: me || "?" }).then(ok => { if (ok) markConfirmed(sent, seq); });
+    synced = sent;
   }
   function savePlan() {
     LS.set("plan", plan); LS.set("booked", [...booked]);
@@ -371,12 +379,16 @@
     if (!typingNow() && !sheetOpen()) rerender(); else pendingRemote = true;
   }
   function onRemote(data, first) {
-    if (!data) { if (first) { sync.pushMain({ plan, booked: [...booked], by: me || "?" }); synced = { plan: clone(plan), booked: [...booked] }; } return; }
+    if (!data) {
+      if (first) { const sent = { plan: clone(plan), booked: [...booked] }, seq = remoteSeq; sync.pushMain({ ...sent, by: me || "?" }).then(ok => { if (ok) markConfirmed(sent, seq); }); synced = sent; }
+      return;
+    }
     // tiene le modifiche locali non ancora inviate, prende tutto il resto dal server: un giorno cambiato da
     // entrambe le parti si unisce tappa per tappa, così non si perde né la modifica di qui né quella degli altri
     const mine = localChanges(), base = synced.plan;
     const remote = cleanPlan(data.plan);
     synced = { plan: clone(remote), booked: [...(Array.isArray(data.booked) ? data.booked : [])] };
+    remoteSeq++; markConfirmed({ plan: clone(synced.plan), booked: [...synced.booked] }, remoteSeq);   // senza scritture in sospeso: è lo stato del server
     const nextPlan = { ...remote };
     for (const d of Object.keys(mine.days)) nextPlan[d] = mergeDay(base[d], plan[d] || { l: "", n: "", i: [] }, remote[d]);
     const nextBooked = new Set([...(Array.isArray(data.booked) ? data.booked : []).filter(x => !mine.rem.includes(x)), ...mine.add]);
@@ -436,7 +448,9 @@
       setTimeout(() => askWho(true), 600); render();
       return;
     }
-    import("./sync.js").then(m => { sync = m.start(window.FIREBASE, code, { main: onRemote, list: onList, server: onServer, status: setSync, recreate: () => sync.pushMain({ plan, booked: [...booked], by: me || "?" }) }, { memory: syncMemory }); checkOutbox(); dataVer++; if (location.hash.startsWith("#giorni") && !sheetOpen()) keepScroll(render); }).catch(err => { syncStarting = false; setSync("error", err); });
+    // si riparte dall'ultimo stato confermato: quello che era stato inviato senza conferma si rimanda
+    synced = { plan: clone(confirmed.plan), booked: [...confirmed.booked] };
+    import("./sync.js").then(m => { sync = m.start(window.FIREBASE, code, { main: onRemote, list: onList, server: onServer, status: setSync, recreate: () => sync.pushMain({ plan, booked: [...booked], by: me || "?" }) }, { memory: syncMemory }); checkOutbox(); uploadDocs(); dataVer++; if (location.hash.startsWith("#giorni") && !sheetOpen()) keepScroll(render); }).catch(err => { syncStarting = false; setSync("error", err); });
   }
 
   // ricerca tollerante: ignora accenti (ō → o), trattini, apostrofi e maiuscole; ogni parola deve comparire
@@ -2049,12 +2063,33 @@
     const a = putItem("allegati", { pren: pid, nome: file.name.replace(/\.[^.]+$/, "").slice(0, 60) || "Documento", pagine: pages.length, t: Date.now() });
     const c = await caches.open(DOCS);
     for (const [k, b] of pages.entries()) await c.put(docKey(a.id, k), new Response(b, { headers: { "Content-Type": "image/jpeg" } }));
-    for (const [k, b] of pages.entries()) sync.putPage(a.id, k, new Uint8Array(await b.arrayBuffer())).catch(err => { console.warn("Documento:", err); toast("Documento non caricato: riprova"); });
+    docUp[a.id] = pages.length; LS.set("docUp", docUp); uploadDocs();
     keepData();
     return a;
   }
+  // Pagine dei documenti non ancora confermate dal server (id → numero di pagine): si mandano dalla copia sul
+  // telefono quando la sincronizzazione è attiva e si rimandano a ogni avvio finché il server non le conferma.
+  // Senza, un documento allegato prima che la sincronizzazione parta, o perso con il database locale,
+  // arrivava agli altri senza pagine.
+  const docUp = LS.get("docUp", {}), docSending = new Set();
+  async function uploadDocs() {
+    if (!sync || !("caches" in window)) return;
+    const s = sync, c = await caches.open(DOCS).catch(() => null); if (!c) return;
+    for (const [id, n] of Object.entries(docUp)) {
+      if (docSending.has(id)) continue;
+      docSending.add(id);
+      (async () => {
+        const pages = [];
+        for (let k = 0; k < n; k++) { const r = await c.match(docKey(id, k)); if (!r) return; pages.push(new Uint8Array(await r.arrayBuffer())); }   // copia sparita: non si può più mandare
+        await Promise.all(pages.map((b, k) => s.putPage(id, k, b)));
+      })().then(() => { delete docUp[id]; LS.set("docUp", docUp); },
+        err => { console.warn("Documento:", err); if (s === sync) toast("Documento non caricato: riprovo alla prossima apertura"); })
+        .finally(() => docSending.delete(id));
+    }
+  }
   async function delDoc(a) {
     delItem("allegati", a.id);
+    if (a.id in docUp) { delete docUp[a.id]; LS.set("docUp", docUp); }
     const c = await caches.open(DOCS).catch(() => null);
     for (let k = 0; k < a.pagine; k++) { sync?.delPage(a.id, k); c?.delete(docKey(a.id, k)); const u = docURLs.get(a.id + "/" + k); if (u) { URL.revokeObjectURL(u); docURLs.delete(a.id + "/" + k); } }
   }

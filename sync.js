@@ -59,9 +59,10 @@ export function start(config, code, h, { memory = false } = {}) {
     if (rem.length) later.push(new FieldPath("booked"), arrayRemove(...rem));
     const done = [updateDoc(main, ...args)];
     if (later.length) done.push(updateDoc(main, ...later));
-    return Promise.all(done).catch(err => {
+    // true = confermata dal server (l'app sposta lì la base delle differenze), false = no
+    return Promise.all(done).then(() => true, err => {
       if (err.code === "not-found") return h.recreate();   // documento non ancora creato: lo crea l'app
-      fail(err);
+      if (!stopped) writeFail(err); return false;
     });
   }
 
@@ -70,7 +71,10 @@ export function start(config, code, h, { memory = false } = {}) {
   // Riaprire subito la connessione fa arrivare le modifiche degli altri in un attimo: si scaricano
   // solo le differenze e le modifiche locali in coda partono appena è riaperta.
   let stopped = false;   // dopo stop/reset le scritture rimaste a metà falliscono: non è un errore della nuova connessione
-  const outcome = e => { if (stopped) return false; fail(e); return e?.code === "invalid-argument" ? "drop" : false; };
+  // scrittura rifiutata per i permessi: non vuol dire codice sbagliato (quello lo segnalano le letture, che con un
+  // codice sbagliato falliscono tutte). Passarla all'app farebbe chiedere di nuovo il codice a ogni tentativo.
+  const writeFail = e => { if (e?.code === "permission-denied") console.warn("Scrittura rifiutata:", e.message || e); else fail(e); };
+  const outcome = e => { if (stopped) return false; writeFail(e); return e?.code === "invalid-argument" ? "drop" : false; };
 
   let waking = null;
   function wake() {
@@ -84,7 +88,7 @@ export function start(config, code, h, { memory = false } = {}) {
     // ripara: butta la copia locale di Firestore (non le modifiche già inviate) e si riparte dal server
     stop: () => { stopped = true; unsubs.forEach(u => u()); return terminate(db).catch(() => {}); },
     reset: () => { stopped = true; return terminate(db).then(() => clearIndexedDbPersistence(db)); },
-    pushMain: data => setDoc(main, { ...data, at: serverTimestamp() }, { merge: true }).catch(fail),
+    pushMain: data => setDoc(main, { ...data, at: serverTimestamp() }, { merge: true }).then(() => true, e => { if (!stopped) writeFail(e); return false; }),
     // per la coda di riserva dell'app: true = confermata dal server, "drop" = rifiutata per sempre (voce non valida:
     // ritentarla non serve), false = da ritentare (rete, permessi, database locale)
     // Promise.resolve().then: i dati non validi Firestore li rifiuta subito (eccezione), così finiscono in outcome
