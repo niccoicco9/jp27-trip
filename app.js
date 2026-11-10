@@ -10,7 +10,7 @@
     set(k, v, quiet) { if (!quiet && !UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 128;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 129;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -897,12 +897,13 @@
     // alla partenza dall'Italia: si conta con la data italiana (con quella giapponese "Si parte!" uscirebbe alle 16 del giorno prima)
     const todayIT = fakeToday || new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome" }).format(new Date());
     const daysTo = Math.ceil((new Date((T.partenza || T.inizio) + "T00:00:00Z") - new Date(todayIT + "T00:00:00Z")) / 864e5);
-    const firstDay = id => dayOf(id)[0] || "9999";
+    const daysOf = p => p.giorno ? [p.giorno] : dayOf(p.id);   // DA_PRENOTARE (bus, treni) hanno il giorno scritto
+    const firstDay = p => daysOf(p)[0] || "9999";
     // prima quelli da prenotare prima (scadenza più vicina), in fondo quelli già fatti
-    const toBook = LUOGHI.filter(p => p.pren && !p.out).sort((a, b) => booked.has(a.id) - booked.has(b.id) || bookBy(a).localeCompare(bookBy(b)) || firstDay(a.id).localeCompare(firstDay(b.id)) || zoneOrder[a.z] - zoneOrder[b.z]);
+    const toBook = [...LUOGHI.filter(p => p.pren && !p.out), ...(window.DA_PRENOTARE || [])].sort((a, b) => booked.has(a.id) - booked.has(b.id) || bookBy(a).localeCompare(bookBy(b)) || firstDay(a).localeCompare(firstDay(b)) || zoneOrder[a.z] - zoneOrder[b.z]);
     const doneBook = toBook.filter(p => booked.has(p.id)).length;
     // in viaggio le scadenze sono passate: restano solo i biglietti dei prossimi giorni non ancora spuntati
-    const bookList = before ? toBook : toBook.filter(p => !booked.has(p.id) && dayOf(p.id).some(d => d >= today));
+    const bookList = before ? toBook : toBook.filter(p => !booked.has(p.id) && daysOf(p).some(d => d >= today));
     // il saluto segue l'ora di dove siete: in viaggio quella del Giappone
     const hh = !before && !after ? +nowJP().slice(0, 2) : new Date().getHours(), hi = "";
     const saluto = (hh >= 5 && hh < 13 ? "Buongiorno" : hh >= 13 && hh < 18 ? "Buon pomeriggio" : hh >= 18 && hh < 23 ? "Buonasera" : "Buonanotte") + (me ? ", " + esc(me) : "");
@@ -945,7 +946,7 @@
         <div class="between"><h3 style="margin:0">${icon("Ticket")} ${before ? "Da prenotare" : "Ancora da prenotare"}</h3>${before ? `<b class="small">${doneBook}/${toBook.length}</b>` : ""}</div>
         ${before ? `<div class="progress bar-head"><i style="width:${toBook.length ? doneBook / toBook.length * 100 : 0}%"></i></div>` : ""}
         <p class="muted small" style="margin:8px 0 4px">${before ? "In ordine di urgenza: in cima quello da prenotare prima." : "In programma da oggi in poi e non ancora spuntati."} Tocca il nome per sapere come.</p>
-        <div id="booklist">${bookList.map((p, k) => `<label class="check${booked.has(p.id) ? " done" : ""}"${k >= 6 ? " data-more hidden" : ""}><input type="checkbox" data-book="${p.id}" ${booked.has(p.id) ? "checked" : ""}><span class="grow"><span class="bkn" data-place="${p.id}">${esc(p.n)}</span><small class="sub">${(() => { const w = before && !booked.has(p.id) && bookWhen(p); return w ? `<em class="bkw ${w.cls}">${esc(w.txt)}</em> · ` : ""; })()}${esc(zona[p.z].nome)}${dayOf(p.id).length ? " · " + dayOf(p.id).map(short).join(", ") : ""}</small></span><a class="iconbtn" href="${bookUrl(p)}" target="_blank" rel="noopener" aria-label="Cerca i biglietti">${icon("ExternalLink")}</a></label>`).join("")}</div>
+        <div id="booklist">${bookList.map((p, k) => `<label class="check${booked.has(p.id) ? " done" : ""}"${k >= 6 ? " data-more hidden" : ""}><input type="checkbox" data-book="${p.id}" ${booked.has(p.id) ? "checked" : ""}><span class="grow"><span class="bkn"${byId[p.id] ? ` data-place="${p.id}"` : ""}>${esc(p.n)}</span><small class="sub">${(() => { const w = before && !booked.has(p.id) && bookWhen(p); return w ? `<em class="bkw ${w.cls}">${esc(w.txt)}</em> · ` : ""; })()}${esc(zona[p.z].nome)}${daysOf(p).length ? " · " + daysOf(p).map(short).join(", ") : ""}</small></span><a class="iconbtn" href="${bookUrl(p)}" target="_blank" rel="noopener" aria-label="Cerca i biglietti">${icon("ExternalLink")}</a></label>`).join("")}</div>
         ${bookList.length > 6 ? `<button class="btn small ghost" id="more" style="width:100%;margin-top:8px">Mostra tutti (${bookList.length})</button>` : ""}
       </div>`}
     `;
@@ -965,7 +966,7 @@
     if (!before && !after) bindTrip(today);
   }
 
-  const bookUrl = p => `https://www.google.com/search?q=${encodeURIComponent(p.n + " official tickets booking")}`;
+  const bookUrl = p => p.link || `https://www.google.com/search?q=${encodeURIComponent(p.n + " official tickets booking")}`;
   // quando prenotare (data.js › PRENOTA): "da" apre le vendite, "entro" è l'ultimo giorno sicuro. Data di oggi in Italia
   const PREN = window.PRENOTA || {};
   const bookBy = p => PREN[p.id]?.entro || "9999-12-31";
