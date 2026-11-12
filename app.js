@@ -10,7 +10,7 @@
     set(k, v, quiet) { if (!quiet && !UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 129;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 130;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -3339,13 +3339,19 @@
       // scheda che si sta chiudendo: la tastiera che scende la spostava in basso di colpo a metà animazione (scatto con le
       // schede corte, es. due risultati di ricerca). Si aggiorna appena è chiusa (closeSheet richiama fitViewport)
       if (sheet.classList.contains("closing")) return;
-      const r = document.documentElement.style, h = Math.round(vv.height), top = Math.round(vv.offsetTop);
+      const r = document.documentElement.style;
+      // senza un campo attivo la tastiera non c'è: si usa tutto lo schermo. iOS a volte lascia visualViewport "accorciato"
+      // dopo che la tastiera è scesa (o con lo zoom): la scheda restava alta a metà schermo, tagliata, con la pagina visibile sotto
+      if (!isTyping(document.activeElement)) { r.removeProperty("--vv-h"); r.removeProperty("--vv-top"); document.body.classList.remove("kb-up"); return; }
+      const h = Math.round(vv.height), top = Math.round(vv.offsetTop);
       r.setProperty("--vv-h", h + "px"); r.setProperty("--vv-top", top + "px");
       document.body.classList.toggle("kb-up", innerHeight - h > 120);   // tastiera aperta (non la sola barra di Safari)
       const a = document.activeElement;
       if (sheetOpen() && isTyping(a) && sheetCard.contains(a)) a.scrollIntoView({ block: "nearest" });
     };
     vv.addEventListener("resize", fit); vv.addEventListener("scroll", fit); fit(); fitViewport = fit;
+    // campo lasciato: non si aspetta il "resize" di iOS (a volte non arriva) per tornare a tutto schermo
+    document.addEventListener("focusout", () => setTimeout(fit, 120));
   }
 
   // tastiera giusta per ogni campo: "Cerca" nelle ricerche, maiuscola iniziale nei testi, "Fine" negli importi
