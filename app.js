@@ -10,7 +10,7 @@
     set(k, v, quiet) { if (!quiet && !UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 137;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 138;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2286,7 +2286,7 @@
         $$("[data-grp]", el).forEach(b => { const g = b.dataset.grp === "all" ? T.viaggiatori : COPPIE[+b.dataset.grp]; b.classList.toggle("on", g.length === cs.perChi.length && g.every(n => cs.perChi.includes(n))); });
         $$("[data-pagam]", el).forEach(b => b.classList.toggle("on", b.dataset.pagam === cs.pagam));
         $("#p-st", el).dataset.unsaved = JSON.stringify(cs);   // anche i pulsanti contano come modifiche da non perdere
-        const imp = impOf(), eur = cs.valuta === "JPY" ? imp / rate() : imp;
+        const imp = impOf(), eur = cs.valuta === "JPY" ? (sp0?.valuta === "JPY" && sp0.importo === imp && sp0.eur ? sp0.eur : imp / rate()) : imp;
         $("#p-chi", el).hidden = !imp;
         $("#p-conv", el).textContent = imp ? (cs.valuta === "JPY" ? `≈ ${eurF(eur)}` : `≈ ${fmtInt(imp * rate())} ¥`) + (cs.perChi.length > 1 ? ` · ${eurF(eur / cs.perChi.length)} a testa` : "") : "";
       };
@@ -2762,7 +2762,7 @@
       ${spFilter ? `<div class="row" style="margin-top:14px"><span class="grow small muted">Solo le spese <b>${esc(catOf(spFilter).n)}</b></span><button class="chip on" id="spclr">Mostra tutte ✕</button></div>` : ""}
       ${items.length ? items.map(s => {
         const c = catOf(s.cat), cl = c.n;
-        const head = s.data !== lastD ? `<h3>${s.data ? cap1(fmtDay(s.data, { weekday: "long", day: "numeric", month: "long" })) : "Senza data"}</h3>` : ""; lastD = s.data;
+        const head = (s.data || "") !== lastD ? `<h3>${s.data ? cap1(fmtDay(s.data, { weekday: "long", day: "numeric", month: "long" })) : "Senza data"}</h3>` : ""; lastD = s.data || "";
         return `${head}<div class="card spesa${s.id === freshId ? " fresh" : ""}" data-spesa="${s.id}"><div class="row">
           <span class="pic" style="background:${c.col}">${c.html}</span>
           <div class="grow"><b>${esc(s.desc || cl)}</b><div class="small muted">${s.cat === "rimborso" ? `${esc(s.pagatoDa)} → ${esc(splitLabel(s.perChi))}` : `pagato da ${esc(s.pagatoDa)} · per ${esc(splitLabel(s.perChi))}`}${s.storia?.some(x => x.a === "mod") ? ` · <span class="spmod">modificata</span>` : ""}</div></div>
@@ -2815,7 +2815,9 @@
       $$("[data-cat]", el).forEach(b => b.classList.toggle("on", b.dataset.cat === st.cat));
       $("#s-st", el).dataset.unsaved = JSON.stringify(st);   // anche i pulsanti contano come modifiche da non perdere chiudendo
       const imp = parseNum($("#s-imp", el).value, st.valuta === "JPY") || 0;
-      $("#s-conv", el).textContent = imp ? (st.valuta === "JPY" ? `≈ ${eurF(imp / rate())}` : `≈ ${fmtInt(imp * rate())} ¥`) + (st.perChi.length ? ` · ${eurF((st.valuta === "JPY" ? imp / rate() : imp) / st.perChi.length)} a testa` : "") : "";
+      // stesso importo in yen: vale l'euro salvato (cambio del giorno in cui è stata inserita), come nei conti
+      const eur = st.valuta === "JPY" ? (s.valuta === "JPY" && s.importo === imp && s.eur ? s.eur : imp / rate()) : imp;
+      $("#s-conv", el).textContent = imp ? (st.valuta === "JPY" ? `≈ ${eurF(eur)}` : `≈ ${fmtInt(imp * rate())} ¥`) + (st.perChi.length ? ` · ${eurF(eur / st.perChi.length)} a testa` : "") : "";
     };
     openSheet(`<div class="ttl"><span class="pic" style="background:${s.cat === "rimborso" ? "var(--ok)" : "#7b4fa0"}">${icon(s.cat === "rimborso" ? "HandCoins" : "Receipt")}</span><h2>${isNew ? (s.cat === "rimborso" ? "Rimborso" : "Nuova spesa") : "Modifica spesa"}</h2></div>
       ${s.pren && lists.prenotazioni.some(x => x.id === s.pren) ? `<p class="small muted" style="margin:-4px 0 10px">${icon("BedDouble")} È il costo della prenotazione <b>${esc(lists.prenotazioni.find(x => x.id === s.pren).titolo)}</b>: cambiarlo qui lo cambia anche lì.</p>` : ""}
