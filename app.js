@@ -10,7 +10,7 @@
     set(k, v, quiet) { if (!quiet && !UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 134;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 135;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2300,7 +2300,9 @@
         if (!imp) { trashPrenSpesa(pid); return; }
         const eur = cs.valuta === "JPY" ? (cur?.valuta === "JPY" && cur.importo === imp && cur.eur ? cur.eur : imp / rate()) : imp;
         const base = cur || { id: uid(), ts: Date.now(), da: me || "?", data: todayJP(), pren: pid };
-        const next = { ...base, valuta: cs.valuta, pagatoDa: cs.pagatoDa, perChi: [...cs.perChi], cat: PCAT[t] || "altro", desc: item.titolo, importo: imp, eur: Math.round(eur * 100) / 100 };
+        // descrizione e categoria cambiate da Spese restano; la descrizione segue il nome solo se il nome cambia
+        const desc = cur?.desc && item.titolo === p.titolo ? cur.desc : item.titolo;
+        const next = { ...base, valuta: cs.valuta, pagatoDa: cs.pagatoDa, perChi: [...cs.perChi], cat: cur?.cat || PCAT[t] || "altro", desc, importo: imp, eur: Math.round(eur * 100) / 100 };
         const c = cur ? spDiff(cur, next) : [];
         if (cur && !c.length) return;
         if (c.length) next.storia = conStoria(cur, "mod", c);
@@ -2703,7 +2705,13 @@
       ...(s.storia || []).map(x => `<li><b>${esc(x.by)}</b> ${verbo[x.a] || "l'ha cambiata"}${x.t ? " · " + quando(x.t) : ""}${x.c?.length ? x.c.map(c => `<br><span class="muted">${esc(c.k)}: ${esc(c.da)} → <b>${esc(c.a)}</b></span>`).join("") : ""}</li>`)];
     return `<details class="perperson"${s.storia?.some(x => x.a === "mod") ? " open" : ""}><summary>Storia della spesa</summary><ul class="spstoria small">${rows.join("")}</ul></details>`;
   }
-  function restoreSpesa(s) {
+  async function restoreSpesa(s) {
+    // costo di una prenotazione che intanto ne ha già un altro: uno solo per prenotazione, se no conta due volte
+    const other = s.pren && spesaOf(s.pren), pr = other && lists.prenotazioni.find(x => x.id === s.pren);
+    if (other && other.id !== s.id) {
+      if (!(await ask({ title: "Sostituire il costo attuale?", text: `${pr ? `"${pr.titolo}"` : "Questa prenotazione"} ha già un costo (${spImp(other)}). Ripristinando questo (${spImp(s)}), quello attuale finisce nel cestino.`, ok: "Sostituisci", icon: "RotateCcw" }))) return;
+      trashPrenSpesa(s.pren);
+    }
     const { del, ...rest } = s, back = putItem("spese", { ...rest, storia: conStoria(s, "rip") });
     if (hurtsOthers(s, back)) notifyOthers("spesa-rip", back);
     toast("Spesa ripristinata ✓"); rerender();
