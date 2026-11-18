@@ -10,7 +10,7 @@
     set(k, v, quiet) { if (!quiet && !UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 138;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 139;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2179,10 +2179,15 @@
   const PAGAM = { saldato: ["Saldato", "Saldato", "ok"], acconto: ["Acconto", "Solo acconto", "warn"], loco: ["Sul posto", "Da pagare sul posto", "ghost"] };   // [pulsante, etichetta, stile]
   const spesaOf = id => lists.spese.find(s => s.pren === id && !s.del);
   // la spesa collegata va nel cestino (prenotazione eliminata o costo tolto); torna indietro con l'"Annulla"
+  // tutti i costi collegati, anche se per sbaglio sono più d'uno (due telefoni offline nello stesso momento)
   function trashPrenSpesa(id) {
-    const cur = spesaOf(id); if (!cur) return null;
-    const gone = putItem("spese", { ...cur, da: cur.da || cur.by || "?", del: { by: me || "?", t: Date.now() }, storia: conStoria(cur, "del") });
-    return { old: cur, n: hurtsOthers(cur, gone) ? notifyOthers("spesa-del", gone, { wait: 5500 }) : null };
+    const all = lists.spese.filter(s => s.pren === id && !s.del); if (!all.length) return null;
+    const out = { old: [], n: [] };
+    for (const cur of all) {
+      const gone = putItem("spese", { ...cur, da: cur.da || cur.by || "?", del: { by: me || "?", t: Date.now() }, storia: conStoria(cur, "del") });
+      out.old.push(cur); if (hurtsOthers(cur, gone)) out.n.push(notifyOthers("spesa-del", gone, { wait: 5500 }));
+    }
+    return out;
   }
   const needCodeBox = what =>`<div class="card"><b>${icon("KeyRound")} Serve il codice del viaggio</b><p class="small muted">${what} sono condivise tra voi quattro e protette dal codice.</p><button class="btn primary small" id="needcode">Inserisci il codice</button></div>`;
 
@@ -2318,7 +2323,10 @@
         // si parte dalla spesa com'è adesso: dei campi del costo cambia solo quello toccato in questa scheda
         const valuta = tImp || !cur ? cs.valuta : cur.valuta, importo = tImp || !cur ? imp : cur.importo;
         const eur = !tImp && cur ? cur.eur : valuta === "JPY" ? (cur?.valuta === "JPY" && cur.importo === importo && cur.eur ? cur.eur : importo / rate()) : importo;
-        const base = cur || { id: uid(), ts: Date.now(), da: me || "?", data: todayJP(), pren: pid };
+        // costo nuovo: sempre lo stesso id per la stessa prenotazione, così due telefoni che lo aggiungono insieme
+        // (offline) scrivono la stessa spesa invece di due che contano doppio; un vecchio costo nel cestino si sovrascrive
+        const was = cur ? null : lists.spese.find(x => x.id === "c" + pid);
+        const base = cur || { id: "c" + pid, ts: Date.now(), da: me || "?", data: todayJP(), pren: pid, ...(was?.storia ? { storia: was.storia } : {}) };
         // descrizione e categoria cambiate da Spese restano; la descrizione segue il nome solo se il nome cambia
         const desc = cur?.desc && item.titolo === p.titolo ? cur.desc : item.titolo;
         const next = { ...base, valuta, pagatoDa: tPaid || !cur ? cs.pagatoDa : cur.pagatoDa, perChi: tPer || !cur ? [...cs.perChi] : [...cur.perChi], cat: cur?.cat || PCAT[t] || "altro", desc, importo, eur: Math.round(eur * 100) / 100 };
@@ -2344,7 +2352,7 @@
         btn.disabled = false; btn.innerHTML = label;
         if (docsChanged) { buzz(); toast(navigator.onLine ? "Documento allegato ✓" : "Documento allegato: si condivide appena torna la rete"); }
       });
-      $("#p-save", el).onclick = () => {
+      $("#p-save", el).onclick = async () => {
         const item = { ...p, id: pid, tipo: t, titolo: v("p-tit"), dal: v("p-dal"), ora: v("p-ora"), codice: v("p-cod"), link: v("p-link"), note: v("p-note") };
         if (t === "hotel") Object.assign(item, { al: v("p-al"), indirizzo: v("p-ind"), jp: v("p-jp") });
         if (t === "volo" || t === "treno") Object.assign(item, { da: v("p-da"), a: v("p-a") });
@@ -2355,6 +2363,13 @@
         if ($("#p-imp", el)?.value.trim() && !impOf()) return toast("Controlla il costo: solo cifre, es. 12.000 o 85,50");
         if (impOf() && !cs.perChi.length) return toast("Scegli tra chi dividere il costo");
         if ($("#p-imp", el)) { if (cs.pagam) item.pagam = cs.pagam; else delete item.pagam; }
+        // intanto un altro l'ha eliminata: si chiede prima di rimetterla (con il suo costo, se era nel cestino)
+        if (!isNew && !lists.prenotazioni.some(x => x.id === pid)) {
+          const lost = lists.spese.filter(x => x.pren === pid && x.del).sort((a, b) => b.del.t - a.del.t)[0];
+          if (!(await ask({ title: "Intanto è stata eliminata", text: `${lost ? lost.del.by : "Qualcun altro"} ha eliminato "${p.titolo || "questa prenotazione"}" mentre la modificavi. Vuoi rimetterla${lost ? " insieme al suo costo" : ""}?`, ok: "Rimetti", icon: "RotateCcw" }))) { saved = true; closeSheet(); rerender(); return; }
+          if (lost && !spesaOf(pid)) { const { del, ...rest } = lost; putItem("spese", { ...rest, storia: conStoria(lost, "rip") }); }
+          if (lists.prenotazioni.some(x => x.id === pid)) return toast("Nel frattempo è tornata: riaprila per modificarla");
+        }
         const stored = putItem("prenotazioni", item);
         saveCost(item);
         if (isNew) notifyOthers("pren", stored);
@@ -2369,7 +2384,7 @@
         delItem("prenotazioni", p.id); const gone = trashPrenSpesa(p.id); closeSheet(); rerender();
         toast(gone ? "Prenotazione eliminata (il costo è nel cestino delle Spese)" : "Prenotazione eliminata", () => {
           back = true; putItem("prenotazioni", old);
-          if (gone) { unNotify(gone.n); putItem("spese", gone.old); }
+          if (gone) { gone.n.forEach(unNotify); gone.old.forEach(x => putItem("spese", x)); }
           rerender();
         });
         setTimeout(() => { if (!back) docsOf(p.id).forEach(delDoc); }, 6000);   // i documenti se ne vanno solo se non si annulla
@@ -2745,6 +2760,9 @@
     const trashNew = trash.some(s => s.del.by !== me && Date.now() - s.del.t < 3 * 864e5);   // tolte dagli altri negli ultimi giorni: il cestino si apre da solo
     const items = speseVive().filter(s => !spFilter || catOf(s.cat).k === spFilter).sort((a, b) => (b.data || "").localeCompare(a.data || "") || (b.ts || 0) - (a.ts || 0));
     let lastD = null;
+    // prenotazioni con più di un costo (aggiunto da due telefoni offline con una versione vecchia): contano doppio
+    const byPren = {}; for (const s of speseVive()) if (s.pren) (byPren[s.pren] ||= []).push(s);
+    const dups = Object.entries(byPren).filter(([, l]) => l.length > 1).map(([id, l]) => `<b>${esc(lists.prenotazioni.find(x => x.id === id)?.titolo || l[0].desc || "Una prenotazione")}</b> ha ${l.length} costi (${l.map(spImp).join(" e ")})`);
     view.innerHTML = `${back}<h2>Spese</h2><button id="adds" hidden aria-hidden="true"></button><p class="lead">Chi ha pagato cosa, e alla fine chi deve quanto a chi.</p>
       <div class="hero solid" style="min-height:0"><span class="kanji" aria-hidden="true">会計</span><div class="hero-in" style="min-height:190px">
         <span class="kicker">Spesa totale del gruppo</span><div class="big-n" style="font-size:2.6rem" data-count="${total}" data-fmt="eur">${eurF(total)}</div>
@@ -2758,6 +2776,7 @@
           <p class="small muted" style="margin:6px 0 0">Conta chi ha anticipato dentro la coppia: tra voi due fate come preferite.</p>
         </details>
       </div>
+      ${dups.length ? `<div class="card" style="border-left:4px solid var(--shu)"><b>${icon("Receipt")} Costo inserito due volte?</b><p class="small" style="margin:6px 0 0">${dups.join("<br>")}: contano tutti nei conti. Se è lo stesso pagamento, elimina quello in più.</p></div>` : ""}
       ${catCard()}
       ${spFilter ? `<div class="row" style="margin-top:14px"><span class="grow small muted">Solo le spese <b>${esc(catOf(spFilter).n)}</b></span><button class="chip on" id="spclr">Mostra tutte ✕</button></div>` : ""}
       ${items.length ? items.map(s => {
