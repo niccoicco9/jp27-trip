@@ -10,7 +10,7 @@
     set(k, v, quiet) { if (!quiet && !UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 135;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 136;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -39,8 +39,8 @@
     return (Array.isArray(items) ? items : []).filter(x => x && typeof x === "object" && x.id).map(x => {
       if (name === "spese") {
         const importo = +x.importo, valuta = x.valuta === "EUR" ? "EUR" : "JPY";
-        if (!(importo > 0)) return null;
-        const eur = +x.eur > 0 ? +x.eur : valuta === "EUR" ? importo : Math.round(importo / rate0 * 100) / 100;
+        if (!(importo > 0 && importo < 1e9)) return null;   // anche niente Infinity da un telefono con una versione vecchia
+        const eur = +x.eur > 0 && Number.isFinite(+x.eur) ? +x.eur : valuta === "EUR" ? importo : Math.round(importo / rate0 * 100) / 100;
         const per = (Array.isArray(x.perChi) ? x.perChi : []).filter(n => T.viaggiatori.includes(n));
         const out = { ...x, importo, valuta, eur, perChi: per.length ? per : [...T.viaggiatori], pagatoDa: T.viaggiatori.includes(x.pagatoDa) ? x.pagatoDa : T.viaggiatori[0], desc: str(x.desc), cat: str(x.cat) || "altro" };
         // cestino (del) e storia delle modifiche: niente campi undefined, Firestore li rifiuta
@@ -177,7 +177,11 @@
   // yen: niente decimali, quindi "1,200" (come sugli scontrini giapponesi) è milleduecento
   function parseNum(t, yen) {
     t = String(t || "").trim().replace(/[\s¥€'’]/g, "");
-    if (!t) return NaN;
+    if (!/^[\d.,]*\d[\d.,]*$/.test(t)) return NaN;   // solo cifre, punto e virgola: niente "1e400", "1/2", "-5"
+    const v = parseRaw(t, yen);
+    return Number.isFinite(v) && v < 1e9 ? v : NaN;
+  }
+  function parseRaw(t, yen) {
     if (yen && /^\d{1,3}([.,]\d{3})+$/.test(t)) return +t.replace(/[.,]/g, "");
     if (t.includes(",") && t.includes(".")) t = t.lastIndexOf(",") > t.lastIndexOf(".") ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
     else if (t.includes(",")) t = t.replace(",", ".");
@@ -2333,6 +2337,7 @@
         if (t === "biglietto") item.luogo = v("p-luogo");
         if (!item.titolo) return toast("Scrivi almeno il nome");
         if (t === "hotel" && (!item.dal || !item.al || item.al <= item.dal)) return toast("Controlla check-in e check-out");
+        if ($("#p-imp", el)?.value.trim() && !impOf()) return toast("Controlla il costo: solo cifre, es. 12.000 o 85,50");
         if (impOf() && !cs.perChi.length) return toast("Scegli tra chi dividere il costo");
         if ($("#p-imp", el)) { if (cs.pagam) item.pagam = cs.pagam; else delete item.pagam; }
         const stored = putItem("prenotazioni", item);
