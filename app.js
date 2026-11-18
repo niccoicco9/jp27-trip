@@ -10,7 +10,7 @@
     set(k, v, quiet) { if (!quiet && !UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 145;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 146;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2203,12 +2203,21 @@
   // tutti i costi collegati, anche se per sbaglio sono più d'uno (due telefoni offline nello stesso momento)
   function trashPrenSpesa(id) {
     const all = lists.spese.filter(s => s.pren === id && !s.del); if (!all.length) return null;
-    const out = { old: [], n: [] };
+    const out = { gone: [], n: [] };
     for (const cur of all) {
       const gone = putItem("spese", { ...cur, da: cur.da || cur.by || "?", del: { by: me || "?", t: Date.now() }, storia: conStoria(cur, "del") });
-      out.old.push(cur); if (hurtsOthers(cur, gone)) out.n.push(notifyOthers("spesa-del", gone, { wait: 5500 }));
+      out.gone.push(gone); if (hurtsOthers(cur, gone)) out.n.push(notifyOthers("spesa-del", gone, { wait: 5500 }));
     }
     return out;
+  }
+  // "Annulla": si toglie solo l'eliminazione, partendo da com'è adesso (una modifica fatta intanto nel cestino resta)
+  function untrashPrenSpesa(out) {
+    out.n.forEach(unNotify);
+    for (const g of out.gone) {
+      const now = lists.spese.find(x => x.id === g.id), d = g.storia.at(-1);
+      if (now?.del?.t !== g.del.t) continue;   // intanto ripristinata (o eliminata di nuovo) da un altro
+      const { del, ...rest } = now; putItem("spese", { ...rest, storia: (now.storia || []).filter(x => !(x.a === "del" && x.t === d.t && x.by === d.by)) });
+    }
   }
   const needCodeBox = what =>`<div class="card"><b>${icon("KeyRound")} Serve il codice del viaggio</b><p class="small muted">${what} sono condivise tra voi quattro e protette dal codice.</p><button class="btn primary small" id="needcode">Inserisci il codice</button></div>`;
 
@@ -2326,15 +2335,17 @@
       // com'era il costo all'apertura della scheda: salvando si cambia solo quello che si è toccato qui
       const cs0 = { ...cs, perChi: [...cs.perChi] }, imp0 = impOf();
       // salva il costo nella spesa collegata (nuova, aggiornata, o nel cestino se il costo è stato tolto)
-      const saveCost = item => {
+      const saveCost = (item, titNow) => {
         if (!$("#p-imp", el)) return;
         const imp = impOf(), cur = spesaOf(pid);
         const tImp = imp !== imp0 || cs.valuta !== cs0.valuta, tPaid = cs.pagatoDa !== cs0.pagatoDa;
         const tPer = cs.perChi.length !== cs0.perChi.length || cs.perChi.some(n => !cs0.perChi.includes(n));
         // costo non toccato: resta com'è adesso, anche se intanto un altro l'ha cambiato o eliminato
         // (con la scheda aperta non si riporta indietro la sua modifica); la descrizione segue solo il nome
+        // la descrizione segue il nome solo se il nome cambia e la descrizione non è stata cambiata a mano in Spese
+        const follows = c => !c?.desc || c.desc === p.titolo || c.desc === titNow;   // titNow: il nome com'era prima di salvare (magari cambiato intanto da un altro)
         if (!tImp && !tPaid && !tPer) {
-          if (cur && item.titolo !== p.titolo && item.titolo !== cur.desc) {
+          if (cur && item.titolo !== p.titolo && item.titolo !== cur.desc && follows(cur)) {
             const next = { ...cur, desc: item.titolo }, c = spDiff(cur, next);
             putItem("spese", { ...next, storia: conStoria(cur, "mod", c) });
           }
@@ -2349,11 +2360,13 @@
         const was = cur ? null : lists.spese.find(x => x.id === "c" + pid);
         const base = cur || { id: "c" + pid, ts: Date.now(), da: me || "?", data: todayJP(), pren: pid, ...(was?.storia ? { storia: was.storia } : {}) };
         // descrizione e categoria cambiate da Spese restano; la descrizione segue il nome solo se il nome cambia
-        const desc = cur?.desc && item.titolo === p.titolo ? cur.desc : item.titolo;
+        const desc = cur?.desc && (item.titolo === p.titolo || !follows(cur)) ? cur.desc : item.titolo;
         const next = { ...base, valuta, pagatoDa: tPaid || !cur ? cs.pagatoDa : cur.pagatoDa, perChi: tPer || !cur ? [...cs.perChi] : [...cur.perChi], cat: cur?.cat || PCAT[t] || "altro", desc, importo, eur: Math.round(eur * 100) / 100 };
         const c = cur ? spDiff(cur, next) : [];
         if (cur && !c.length) return;
         if (c.length) next.storia = conStoria(cur, "mod", c);
+        // costo rimesso dopo averlo tolto: la storia non deve finire con "l'ha eliminata"
+        if (was?.del) { const r = { storia: conStoria(was, "rip") }, cw = spDiff(was, next); next.storia = cw.length ? conStoria(r, "mod", cw) : r.storia; }
         const sp = putItem("spese", next);
         if (!cur) notifyOthers("spesa", sp);
         else if (hurtsOthers(cur, sp)) notifyOthers("spesa-mod", sp, { c });
@@ -2391,8 +2404,9 @@
           if (lost && !spesaOf(pid)) { const { del, ...rest } = lost; putItem("spese", { ...rest, storia: conStoria(lost, "rip") }); }
           if (lists.prenotazioni.some(x => x.id === pid)) return toast("Nel frattempo è tornata: riaprila per modificarla");
         }
+        const titNow = lists.prenotazioni.find(x => x.id === pid)?.titolo;
         const stored = putItem("prenotazioni", item);
-        saveCost(item);
+        saveCost(item, titNow);
         if (isNew) notifyOthers("pren", stored);
         if (t === "hotel" && (item.jp !== p.jp || item.indirizzo !== p.indirizzo || item.titolo !== p.titolo || !p.lat)) geocodeHotel(stored);
         if (item.luogo && !booked.has(item.luogo)) { booked.add(item.luogo); savePlan(); }   // biglietto preso = "prenotato" spuntato
@@ -2405,7 +2419,7 @@
         delItem("prenotazioni", p.id); const gone = trashPrenSpesa(p.id); closeSheet(); rerender();
         toast(gone ? "Prenotazione eliminata (il costo è nel cestino delle Spese)" : "Prenotazione eliminata", () => {
           back = true; putItem("prenotazioni", old);
-          if (gone) { gone.n.forEach(unNotify); gone.old.forEach(x => putItem("spese", x)); }
+          if (gone) untrashPrenSpesa(gone);
           rerender();
         });
         setTimeout(() => { if (!back) docsOf(p.id).forEach(delDoc); }, 6000);   // i documenti se ne vanno solo se non si annulla
@@ -2875,7 +2889,7 @@
       $("#s-conv", el).textContent = imp ? (st.valuta === "JPY" ? `≈ ${eurF(eur)}` : `≈ ${fmtInt(imp * rate())} ¥`) + (st.perChi.length ? ` · ${eurF(eur / st.perChi.length)} a testa` : "") : "";
     };
     openSheet(`<div class="ttl"><span class="pic" style="background:${s.cat === "rimborso" ? "var(--ok)" : "#7b4fa0"}">${icon(s.cat === "rimborso" ? "HandCoins" : "Receipt")}</span><h2>${s.cat === "rimborso" ? (isNew ? "Rimborso" : "Modifica rimborso") : isNew ? "Nuova spesa" : "Modifica spesa"}</h2></div>
-      ${s.pren && lists.prenotazioni.some(x => x.id === s.pren) ? `<p class="small muted" style="margin:-4px 0 10px">${icon("BedDouble")} È il costo della prenotazione <b>${esc(lists.prenotazioni.find(x => x.id === s.pren).titolo)}</b>: cambiarlo qui lo cambia anche lì.</p>` : ""}
+      ${s.pren && lists.prenotazioni.some(x => x.id === s.pren) ? `<p class="small muted" style="margin:-4px 0 10px">${icon("BedDouble")} È il costo della prenotazione <b>${esc(lists.prenotazioni.find(x => x.id === s.pren).titolo)}</b>: cambiarlo qui lo cambia anche lì. <a href="#" id="s-pren" style="white-space:nowrap">Apri la prenotazione ›</a></p>` : ""}
       <label class="fl"><span>Descrizione</span><input id="s-desc" value="${esc(s.desc || "")}" placeholder="es. Cena izakaya" autocomplete="off"></label>
       <div class="grid2" style="grid-template-columns:1fr auto;align-items:end">
         <label class="fl"><span>Importo</span><input id="s-imp" inputmode="decimal" value="${s.importo == null ? "" : String(s.importo).replace(".", ",")}" placeholder="0" style="font-size:1.3rem;font-weight:800"></label>
@@ -2893,6 +2907,7 @@
       ${isNew ? "" : storiaHtml(s)}
     `, el => {
       drawCats(el); draw(el);
+      $("#s-pren", el)?.addEventListener("click", async e => { e.preventDefault(); const pr = lists.prenotazioni.find(x => x.id === s.pren); if (pr && await canLeave()) inSheet("push", () => editPren(pr)); });
       if (quick) $("#s-imp", el).focus();   // spesa veloce: si scrive subito l'importo
       if ($("#nc-ok", el)) $("#nc-ok", el).onclick = () => {
         const n = $("#nc-n", el).value.trim().slice(0, 24); if (!n) return toast("Scrivi il nome della categoria");
