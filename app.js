@@ -10,7 +10,7 @@
     set(k, v, quiet) { if (!quiet && !UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 133;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 134;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -726,6 +726,7 @@
   })();
 
   // finestra di conferma nello stile dell'app (sopra anche le schede aperte); restituisce true/false
+  const openAsks = new Set();   // conferme aperte: se la pagina cambia (es. "indietro" dal bordo) si chiudono come "Annulla"
   function ask({ title, text = "", ok = "Conferma", danger = false, icon: ic = danger ? "Trash2" : "Sparkles" }) {
     return new Promise(res => {
       const d = document.createElement("div"); d.className = "dlg";
@@ -734,7 +735,8 @@
         <div class="dlg-btns"><button class="btn" data-a="0">Annulla</button><button class="btn ${danger ? "danger" : "primary"}" data-a="1">${esc(ok)}</button></div></div>`;
       const layer = () => close(false, true);
       pushLayer(layer);
-      const close = (v, fromHistory) => { if (d.classList.contains("out")) return; if (!fromHistory) dropLayer(layer); d.classList.add("out"); setTimeout(() => d.remove(), 180); document.removeEventListener("keydown", key); res(v); };
+      const close = (v, fromHistory) => { if (d.classList.contains("out")) return; if (!fromHistory) dropLayer(layer); openAsks.delete(layer); d.classList.add("out"); setTimeout(() => d.remove(), 180); document.removeEventListener("keydown", key); res(v); };
+      openAsks.add(layer);
       const key = e => { if (e.key === "Escape") close(false); };
       d.addEventListener("click", e => { const b = e.target.closest("[data-a]"); if (b) close(b.dataset.a === "1"); else if (e.target.classList.contains("dlg-bg")) close(false); });
       document.addEventListener("keydown", key);
@@ -2653,7 +2655,9 @@
   }
   const rate = () => LS.get("rate", { r: 170 }).r || 170;
   const eurF = v => fmtEur(v) + " €";
-  const eurPM = v => { const r = Math.sign(v) * Math.round(Math.abs(v) * 100) / 100 || 0; return (r > 0 ? "+" : "") + eurF(r); };   // saldo: niente "+0,00" o "-0,00"; arrotonda allo stesso modo + e − (16,915 → +16,92 e −16,92)
+  // al centesimo, uguale per + e −: toFixed(6) toglie l'errore dei decimali (34,275 a volte è 34,27499…, a volte 34,27500…)
+  const cent = v => Math.sign(v) * Math.round(+(Math.abs(v) * 100).toFixed(6)) / 100 || 0;
+  const eurPM = v => { const r = Math.abs(v) < .0051 ? 0 : cent(v); return (r > 0 ? "+" : "") + eurF(r); };   // saldo: niente "+0,00" o "-0,00"; arrotonda allo stesso modo + e − (16,915 → +16,92 e −16,92); mezzo centesimo avanzato dopo un rimborso = in pari
   const avatar = (n, s = 26) => `<span class="avatar" style="width:${s}px;height:${s}px;font-size:${s * .42}px;background:${AVATAR[n] || "#888"}">${n[0]}</span>`;
   function balances() {
     const net = Object.fromEntries(T.viaggiatori.map(n => [n, 0]));
@@ -2716,13 +2720,13 @@
     view.innerHTML = `${back}<h2>Spese</h2><button id="adds" hidden aria-hidden="true"></button><p class="lead">Chi ha pagato cosa, e alla fine chi deve quanto a chi.</p>
       <div class="hero solid" style="min-height:0"><span class="kanji" aria-hidden="true">会計</span><div class="hero-in" style="min-height:190px">
         <span class="kicker">Spesa totale del gruppo</span><div class="big-n" style="font-size:2.6rem" data-count="${total}" data-fmt="eur">${eurF(total)}</div>
-        <p>${debt ? `<b>${coupleName(debt[0])}</b> devono <b>${eurF(Math.round(debt[2] * 100) / 100)}</b> a ${coupleName(debt[1])}` : "Siete in pari 🤝"}</p>
+        <p>${debt ? `<b>${coupleName(debt[0])}</b> devono <b>${eurF(cent(debt[2]))}</b> a ${coupleName(debt[1])}` : "Siete in pari 🤝"}</p>
       </div></div>
       <div class="card"><div class="between" style="margin-bottom:12px"><h3 style="margin:0">Saldo tra le coppie</h3>${debt ? `<button class="btn small" id="settle">${icon("HandCoins")} Segna rimborso</button>` : ""}</div>
         ${COPPIE.map((c, k) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--line)"><span class="avpair">${c.map(n => avatar(n, 28)).join("")}</span><span class="grow"><b>${coupleName(c)}</b></span><b style="font-size:1.05rem;color:${cn[k] > .5 ? "var(--ok)" : cn[k] < -.5 ? "var(--shu)" : "var(--muted)"}" data-count="${cn[k]}" data-fmt="eur±">${eurPM(cn[k])}</b></div>`).join("")}
         <p class="small muted" style="margin:8px 0 0">+ deve ricevere · − deve dare. Gli importi in yen sono convertiti al cambio del giorno in cui li inserite.</p>
         <details class="perperson"><summary>Dettaglio per persona</summary>
-          ${T.viaggiatori.map(n => `<div class="row" style="padding:8px 0;border-top:1px solid var(--line)">${avatar(n)}<span class="grow">${n}</span><span class="small" style="color:${net[n] > .5 ? "var(--ok)" : net[n] < -.5 ? "var(--shu)" : "var(--muted)"}">${net[n] > 0 ? "+" : ""}${eurF(net[n])}</span></div>`).join("")}
+          ${T.viaggiatori.map(n => `<div class="row" style="padding:8px 0;border-top:1px solid var(--line)">${avatar(n)}<span class="grow">${n}</span><span class="small" style="color:${net[n] > .5 ? "var(--ok)" : net[n] < -.5 ? "var(--shu)" : "var(--muted)"}">${eurPM(net[n])}</span></div>`).join("")}
           <p class="small muted" style="margin:6px 0 0">Conta chi ha anticipato dentro la coppia: tra voi due fate come preferite.</p>
         </details>
       </div>
@@ -2750,7 +2754,7 @@
     $$("[data-fcat]").forEach(b => b.onclick = () => { spFilter = spFilter === b.dataset.fcat ? null : b.dataset.fcat; buzz(); keepScroll(render); });
     $("#spclr")?.addEventListener("click", () => { spFilter = null; keepScroll(render); });
     $$("[data-spmine]").forEach(b => b.onclick = () => { spMine = b.dataset.spmine === "1"; keepScroll(render); });
-    $("#settle")?.addEventListener("click", () => editSpesa({ cat: "rimborso", desc: "Rimborso", valuta: "EUR", importo: Math.round(debt[2] * 100) / 100, pagatoDa: me && debt[0].includes(me) ? me : debt[0][0], perChi: debt[1] }));
+    $("#settle")?.addEventListener("click", () => editSpesa({ cat: "rimborso", desc: "Rimborso", valuta: "EUR", importo: cent(debt[2]), pagatoDa: me && debt[0].includes(me) ? me : debt[0][0], perChi: debt[1] }));
     $$("[data-spesa]").forEach(c => c.onclick = () => editSpesa(lists.spese.find(x => x.id === c.dataset.spesa)));
   }
 
@@ -3487,6 +3491,7 @@
   function navigate() {
     if (!isSub(location.hash)) subPushed = false;   // indietro di sistema da una sottopagina: non si è più "dentro"
     layers.length = 0;   // la pagina cambia: le schede aperte si chiudono
+    for (const c of [...openAsks]) c();
     closeSheet(true, true); hideBig(true);
     if (maybeImport()) return;
     // un tocco durante uno scorrimento di pagina: lo scorrimento finisce subito (altrimenti resterebbe sullo schermo
