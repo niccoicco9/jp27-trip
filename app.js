@@ -10,7 +10,23 @@
     set(k, v, quiet) { if (!quiet && !UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 146;   // aggiornare insieme a VERSION in sw.js
+  // cambio: quanti ¥ fa 1 €. Si tiene solo un numero sensato: una risposta strana del servizio
+  // (vuota, 0, testo, negativa) o un dato rovinato non deve dare spese da NaN o da 0 €
+  const okRate = v => typeof v === "number" && v >= 50 && v <= 500 ? v : 0;
+  const rate = () => okRate(LS.get("rate", null)?.r) || 170;
+  // aggiornato da internet al massimo ogni 12 ore (dall'ultima volta che si è chiesto, non dalla data del cambio,
+  // che nel fine settimana resta quella di venerdì); se non risponde o risponde male resta quello di prima
+  function refreshRate(done) {
+    const st = LS.get("rate", null);
+    if (okRate(st?.r) && Date.now() - (+st.at || 0) < 12 * 3600e3) return;
+    fetch("https://api.frankfurter.dev/v1/latest?base=EUR&symbols=JPY").then(r => r.json()).then(j => {
+      const r = okRate(j?.rates?.JPY); if (!r) return;
+      const d = /^\d{4}-\d{2}-\d{2}$/.test(j.date) ? j.date : null;
+      LS.set("rate", { r, d, at: Date.now() }); done?.(r, d);
+    }).catch(() => {});
+  }
+
+  const APP_VERSION = 147;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -35,7 +51,7 @@
     return out;
   }
   function cleanList(name, items) {
-    const rate0 = (LS.get("rate", { r: 170 }) || {}).r || 170;
+    const rate0 = rate();
     return (Array.isArray(items) ? items : []).filter(x => x && typeof x === "object" && x.id).map(x => {
       if (name === "spese") {
         const importo = +x.importo, valuta = x.valuta === "EUR" ? "EUR" : "JPY";
@@ -1993,14 +2009,14 @@
   }
 
   function renderYen(back) {
-    const st = LS.get("rate", { r: 170, d: null });
+    const st = LS.get("rate", null) || {}, r0 = okRate(st.r) || 170;
     view.innerHTML = `${back}<h2>Yen ↔ Euro</h2><p class="lead" id="rate"></p>
       <div class="card">
         <div class="conv"><div><label for="jpy">Yen</label><input inputmode="decimal" id="jpy" value="1.000" autocomplete="off"></div><span class="muted" style="padding-top:18px">=</span><div><label for="eur">Euro</label><input inputmode="decimal" id="eur" autocomplete="off"></div></div>
         <div class="qchips">${[100, 500, 1000, 3000, 5000, 10000, 30000].map(v => `<button class="chip" data-y="${v}">${fmtInt(v)} ¥</button>`).join("")}</div>
       </div>
-      <div class="card small"><b>A occhio:</b> 1.000 ¥ ≈ <span id="k">${(1000 / st.r).toFixed(2).replace(".", ",")}</span> €. Un pasto in un ristorantino costa 1.000–1.500 ¥, un caffè al konbini 150 ¥ e una corsa in metro 180–300 ¥.</div>`;
-    let rate = st.r;
+      <div class="card small"><b>A occhio:</b> 1.000 ¥ ≈ <span id="k">${(1000 / r0).toFixed(2).replace(".", ",")}</span> €. Un pasto in un ristorantino costa 1.000–1.500 ¥, un caffè al konbini 150 ¥ e una corsa in metro 180–300 ¥.</div>`;
+    let rate = r0;
     const jpy = $("#jpy"), eur = $("#eur");
     const showRate = d => { $("#rate").textContent = `1 € = ${rate.toFixed(2).replace(".", ",")} ¥ · ${d ? "aggiornato al " + new Date(d).toLocaleDateString("it-IT") : "tasso indicativo (offline)"}`; $("#k").textContent = (1000 / rate).toFixed(2).replace(".", ","); };
     // scritti come in Italia: 1.000 ¥ e 5,64 € (si legge anche 1000 e 5.64)
@@ -2014,12 +2030,8 @@
       inp.onblur = () => { if (prev && !jpy.value && !eur.value) [jpy.value, eur.value] = prev; prev = null; };
     });
     $$("[data-y]").forEach(b => b.onclick = () => { jpy.value = fmtInt(b.dataset.y); fromY(); });
-    fromY(); showRate(st.d);
-    if (!st.d || Date.now() - new Date(st.d) > 12 * 3600e3) {
-      fetch("https://api.frankfurter.dev/v1/latest?base=EUR&symbols=JPY").then(r => r.json()).then(j => {
-        rate = j.rates.JPY; LS.set("rate", { r: rate, d: j.date }); if ($("#jpy")) { fromY(); showRate(j.date); }
-      }).catch(() => {});
-    }
+    fromY(); showRate(okRate(st.r) ? st.d : null);
+    refreshRate((r, d) => { rate = r; if ($("#jpy") === jpy) { fromY(); showRate(d); } });
   }
 
   function renderBudget(back) {
@@ -2728,7 +2740,6 @@
         <div class="catrows">${rows.map(([k, v]) => { const c = catOf(k); return `<button class="catrow${spFilter === k ? " on" : ""}" data-fcat="${esc(k)}"><span class="sw" style="background:${c.col}">${c.html}</span><span class="nm">${esc(c.n)}</span><span><b>${eurF(v)}</b><span class="pc">${Math.round(v / sum * 100)}%</span></span></button>`; }).join("")}</div></div>
         <p class="small muted" style="margin:8px 0 0">Tocca una categoria per vedere solo quelle spese. I rimborsi non contano.</p>` : `<p class="small muted" style="margin:10px 0 0">Nessuna spesa a tuo carico per ora.</p>`}</div>`;
   }
-  const rate = () => LS.get("rate", { r: 170 }).r || 170;
   const eurF = v => fmtEur(v) + " €";
   // al centesimo, uguale per + e −: toFixed(6) toglie l'errore dei decimali (34,275 a volte è 34,27499…, a volte 34,27500…)
   const cent = v => Math.sign(v) * Math.round(+(Math.abs(v) * 100).toFixed(6)) / 100 || 0;
@@ -3706,12 +3717,9 @@
   addEventListener("hashchange", syncNav); addEventListener("popstate", syncNav);
 
   applyTheme();
-  // cambio ¥/€ aggiornato all'avvio (serve anche alle spese), al massimo ogni 12 ore
-  (() => {
-    const st = LS.get("rate", null);
-    if (st?.d && Date.now() - new Date(st.d) < 12 * 3600e3) return;
-    fetch("https://api.frankfurter.dev/v1/latest?base=EUR&symbols=JPY").then(r => r.json()).then(j => { if (j?.rates?.JPY) LS.set("rate", { r: j.rates.JPY, d: j.date }); }).catch(() => {});
-  })();
+  // cambio ¥/€ aggiornato all'avvio e quando si torna nell'app (serve anche alle spese), al massimo ogni 12 ore
+  refreshRate();
+  addEventListener("visibilitychange", () => { if (!document.hidden) refreshRate(); });
   // dimensione del testo come in Impostazioni › Schermo e luminosità › Dimensioni testo di iPhone
   function textScale() {
     if (!CSS.supports?.("font", "-apple-system-body") || !navigator.maxTouchPoints) return;   // solo iPhone/iPad (sul Mac la misura è diversa)
