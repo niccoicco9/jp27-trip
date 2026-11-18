@@ -10,7 +10,7 @@
     set(k, v, quiet) { if (!quiet && !UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 139;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 140;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -41,7 +41,7 @@
         const importo = +x.importo, valuta = x.valuta === "EUR" ? "EUR" : "JPY";
         if (!(importo > 0 && importo < 1e9)) return null;   // anche niente Infinity da un telefono con una versione vecchia
         const eur = +x.eur > 0 && Number.isFinite(+x.eur) ? +x.eur : valuta === "EUR" ? importo : Math.round(importo / rate0 * 100) / 100;
-        const per = (Array.isArray(x.perChi) ? x.perChi : []).filter(n => T.viaggiatori.includes(n));
+        const per = T.viaggiatori.filter(n => Array.isArray(x.perChi) && x.perChi.includes(n));   // una volta sola a testa, nell'ordine del viaggio
         const out = { ...x, importo, valuta, eur, perChi: per.length ? per : [...T.viaggiatori], pagatoDa: T.viaggiatori.includes(x.pagatoDa) ? x.pagatoDa : T.viaggiatori[0], desc: str(x.desc), cat: str(x.cat) || "altro" };
         // cestino (del) e storia delle modifiche: niente campi undefined, Firestore li rifiuta
         if (x.del && typeof x.del === "object") out.del = { ...x.del, by: str(x.del.by) || "?", t: +x.del.t || 0 }; else delete out.del;
@@ -175,17 +175,34 @@
   const kmBetween = (a, b) => { const r = x => x * Math.PI / 180; return 2 * 6371 * Math.asin(Math.sqrt(Math.sin(r(b.lat - a.lat) / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lng - a.lng) / 2) ** 2)); };
   // importi scritti all'italiana: "1.500" = millecinquecento, "1.500,50" e "12,5" con la virgola decimale
   // yen: niente decimali, quindi "1,200" (come sugli scontrini giapponesi) è milleduecento
-  function parseNum(t, yen) {
-    t = String(t || "").trim().replace(/[\s¥€'’]/g, "");
-    if (!/^[\d.,]*\d[\d.,]*$/.test(t)) return NaN;   // solo cifre, punto e virgola: niente "1e400", "1/2", "-5"
+  // anche cifre e ￥ giapponesi a larghezza piena, e "円"
+  const numTxt = t => String(t || "").normalize("NFKC").replace(/[\s¥€'’円]/g, "");
+  function numRaw(t, yen) {
+    t = numTxt(t);
+    // solo forme sensate: 1200 · 12,5 · 1.200,50 · 1,200.50 (niente "1e400", "1/2", "-5", "12,5,3", "1.2.3")
+    if (!/\d/.test(t) || !(/^\d*([.,]\d*)?$/.test(t) || /^[1-9]\d{0,2}(\.\d{3})+(,\d*)?$/.test(t) || /^[1-9]\d{0,2}(,\d{3})+(\.\d*)?$/.test(t))) return NaN;
     const v = parseRaw(t, yen);
     return Number.isFinite(v) && v < 1e9 ? v : NaN;
   }
+  // importo: gli yen sono interi, gli euro hanno al massimo 2 decimali (se no è quasi sempre un errore di valuta o di battitura)
+  // ("1,000" in euro: mille o uno? meglio chiederlo che sbagliare). Col simbolo dell'altra valuta: si chiede
+  const wrongCur = (t, yen) => yen ? /€/.test(t) : /[¥￥円]/.test(t);
+  function parseNum(t, yen) {
+    const v = numRaw(t, yen); if (wrongCur(t, yen)) return NaN;
+    if (yen) return Number.isInteger(v) ? v : NaN;
+    const x = numTxt(t); return /[.,]\d{3,}$/.test(x) && !/^[1-9]\d{0,2}(\.\d{3})+$/.test(x) ? NaN : v;
+  }
+  // cosa dire quando l'importo non va
+  function numHint(t, yen) {
+    const v = numRaw(t, yen);
+    return !String(t || "").trim() || v === 0 ? "Scrivi l'importo" : !(v > 0) ? "Importo non valido: solo cifre, es. 12.000 o 85,50"
+      : wrongCur(t, yen) ? (yen ? "È in euro? Tocca €" : "È in yen? Tocca ¥") : yen ? "Gli yen non hanno decimali: se l'importo è in euro, tocca €" : "Al massimo 2 decimali (mille si scrive 1.000)";
+  }
   function parseRaw(t, yen) {
-    if (yen && /^\d{1,3}([.,]\d{3})+$/.test(t)) return +t.replace(/[.,]/g, "");
+    if (yen && /^[1-9]\d{0,2}((\.\d{3})+|(,\d{3})+)$/.test(t)) return +t.replace(/[.,]/g, "");
     if (t.includes(",") && t.includes(".")) t = t.lastIndexOf(",") > t.lastIndexOf(".") ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
     else if (t.includes(",")) t = t.replace(",", ".");
-    else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
+    else if (/^[1-9]\d{0,2}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
     return parseFloat(t);
   }
   // il luogo è chiuso quel giorno? ("lun", "mar e mer"…)
@@ -2360,7 +2377,7 @@
         if (t === "biglietto") item.luogo = v("p-luogo");
         if (!item.titolo) return toast("Scrivi almeno il nome");
         if (t === "hotel" && (!item.dal || !item.al || item.al <= item.dal)) return toast("Controlla check-in e check-out");
-        if ($("#p-imp", el)?.value.trim() && !impOf()) return toast("Controlla il costo: solo cifre, es. 12.000 o 85,50");
+        { const ct = $("#p-imp", el)?.value || ""; if (ct.trim() && !(parseNum(ct, cs.valuta === "JPY") >= 0)) { const h = numHint(ct, cs.valuta === "JPY"); return toast("Costo: " + h[0].toLowerCase() + h.slice(1)); } }   // "0" o vuoto = niente costo
         if (impOf() && !cs.perChi.length) return toast("Scegli tra chi dividere il costo");
         if ($("#p-imp", el)) { if (cs.pagam) item.pagam = cs.pagam; else delete item.pagam; }
         // intanto un altro l'ha eliminata: si chiede prima di rimetterla (con il suo costo, se era nel cestino)
@@ -2872,7 +2889,7 @@
       $$("[data-grp]", el).forEach(b => b.onclick = () => { st.perChi = [...(b.dataset.grp === "all" ? T.viaggiatori : COPPIE[+b.dataset.grp])]; draw(el); });
       $("#s-save", el).onclick = () => {
         const importo = parseNum($("#s-imp", el).value, st.valuta === "JPY");
-        if (!(importo > 0)) return toast("Scrivi l'importo");
+        if (!(importo > 0)) return toast(numHint($("#s-imp", el).value, st.valuta === "JPY"));
         if (!st.perChi.length) return toast("Scegli tra chi dividere");
         const eur = st.valuta === "JPY" ? (s.valuta === "JPY" && s.importo === importo && s.eur ? s.eur : importo / rate()) : importo;
         // si parte dalla spesa com'è adesso, non da quando si è aperta la scheda: se intanto un altro l'ha
