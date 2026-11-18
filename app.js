@@ -10,7 +10,7 @@
     set(k, v, quiet) { if (!quiet && !UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 130;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 131;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2168,7 +2168,17 @@
   const addrQ = p => p.jp || p.indirizzo || p.titolo;
   const gmTo = s => `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(s)}&travelmode=transit`;
   const showTaxi = p => showBig(p.jp || p.indirizzo || p.titolo, `${esc(p.titolo)}<br><span class="jp" style="font-size:1.2rem;color:var(--ink)">ここに行ってください</span><br><small>"Mi porti qui, per favore"</small>`);
-  const needCodeBox = what => `<div class="card"><b>${icon("KeyRound")} Serve il codice del viaggio</b><p class="small muted">${what} sono condivise tra voi quattro e protette dal codice.</p><button class="btn primary small" id="needcode">Inserisci il codice</button></div>`;
+  // costo di una prenotazione: vive in una spesa collegata (pren: id), così entra da sola nel "chi deve a chi"
+  const PCAT = { hotel: "alloggio", volo: "trasporti", treno: "trasporti", biglietto: "attivita", altro: "altro" };
+  const PAGAM = { saldato: ["Saldato", "Tutto saldato"], acconto: ["Acconto", "Pagato solo l'acconto"], loco: ["Sul posto", "Da pagare sul posto"] };   // [pulsante, scheda]
+  const spesaOf = id => lists.spese.find(s => s.pren === id && !s.del);
+  // la spesa collegata va nel cestino (prenotazione eliminata o costo tolto); torna indietro con l'"Annulla"
+  function trashPrenSpesa(id) {
+    const cur = spesaOf(id); if (!cur) return null;
+    const gone = putItem("spese", { ...cur, da: cur.da || cur.by || "?", del: { by: me || "?", t: Date.now() }, storia: conStoria(cur, "del") });
+    return { old: cur, n: hurtsOthers(cur, gone) ? notifyOthers("spesa-del", gone, { wait: 5500 }) : null };
+  }
+  const needCodeBox = what =>`<div class="card"><b>${icon("KeyRound")} Serve il codice del viaggio</b><p class="small muted">${what} sono condivise tra voi quattro e protette dal codice.</p><button class="btn primary small" id="needcode">Inserisci il codice</button></div>`;
 
   function pcard(p) {
     const [ic, col, tn] = PTYPE[p.tipo] || PTYPE.altro;
@@ -2177,10 +2187,13 @@
       : `${p.dal ? fmtDay(p.dal, { weekday: "short", day: "numeric", month: "short" }) : "data da definire"}${p.ora ? " · " + esc(p.ora) : ""}`
         + (p.tipo === "volo" && (p.al || p.oraA) ? ` → arrivo ${p.al && p.al !== p.dal ? fmtDay(p.al, { weekday: "short", day: "numeric", month: "short" }) + " " : ""}${p.oraA ? esc(p.oraA) : ""}` : "");
     const route = p.da || p.a ? `<div class="small">${esc(p.da || "?")} → ${esc(p.a || "?")}</div>` : "";
+    const sp = spesaOf(p.id), per = sp?.perChi?.length ? sp.perChi : T.viaggiatori;
+    const cost = sp || PAGAM[p.pagam] ? `<div class="small" style="margin-top:8px">${icon("HandCoins")} ${sp ? `<b>${spImp(sp)}</b> · pagato da ${esc(sp.pagatoDa)} · ${per.length > 1 ? `${eurF(sp.eur / per.length)} a testa (${esc(splitLabel(per))})` : `per ${esc(per[0])}`}` : ""}${sp && PAGAM[p.pagam] ? " · " : ""}${PAGAM[p.pagam] ? `<span style="color:${p.pagam === "saldato" ? "var(--ok)" : "var(--shu)"}">${PAGAM[p.pagam]?.[1] || ""}</span>` : ""}</div>` : "";
     return `<div class="card pcard${p.id === freshId ? " fresh" : ""}" data-pren="${p.id}">
       <div class="row"><span class="pic" style="background:${col}">${icon(ic)}</span>
         <div class="grow"><b>${esc(p.titolo || tn)}</b><div class="muted small">${when}</div>${route}${p.indirizzo ? `<div class="small muted">${esc(p.indirizzo)}</div>` : ""}</div></div>
       ${p.codice ? `<div class="small" style="margin-top:8px">${icon("KeyRound")} Codice: <b class="copiabile">${esc(p.codice)}</b></div>` : ""}
+      ${cost}
       ${docsOf(p.id).length ? `<div class="docs">${docsOf(p.id).map(docBtn).join("")}</div>` : ""}
       ${p.note ? `<div class="small muted" style="margin-top:4px">${esc(p.note)}</div>` : ""}
       <div class="btns">
@@ -2216,6 +2229,8 @@
     const isNew = !p.id, t = p.tipo || "altro", pid = p.id || uid();   // l'id serve già per allegare documenti a una prenotazione nuova
     let saved = false, docsChanged = false;
     const [ic, col, tn] = PTYPE[t] || PTYPE.altro;
+    const sp0 = isNew ? null : spesaOf(pid);
+    const cs = { valuta: sp0?.valuta || "EUR", pagatoDa: sp0?.pagatoDa || me || T.viaggiatori[0], perChi: sp0?.perChi?.length ? [...sp0.perChi] : [...T.viaggiatori], pagam: p.pagam || "" };
     const dayOpts = sel => `<option value="">Scegli il giorno</option>` + BOOK_DAYS.map(d => `<option value="${d}" ${d === sel ? "selected" : ""}>${fmtDay(d, { weekday: "short", day: "numeric", month: "short" })}${d < T.inizio ? " · prima del viaggio" : d > T.fine ? " · dopo il viaggio" : ""}</option>`).join("");
     const f = (id, label, val, attrs = "", ph = "") => /type="time"/.test(attrs) ? `<label class="fl"><span>${label}</span>${timeIn(`id="${id}" value="${esc(val || "")}"`)}</label>`
       : `<label class="fl"><span>${label}</span><input id="${id}" value="${esc(val || "")}" ${attrs}${ph ? ` placeholder="${esc(ph)}"` : ""}></label>`;
@@ -2235,6 +2250,19 @@
       ${f("p-cod", "Codice di prenotazione", p.codice, 'autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false"', "es. ABC12345")}
       ${f("p-link", "Link (conferma, biglietto, app)", p.link, 'type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false"', "https://…")}
       <label class="fl"><span>Note</span><textarea id="p-note" rows="2" placeholder="${t === "hotel" ? "Colazione inclusa, deposito bagagli…" : "Cosa portare, dove ci si trova…"}">${esc(p.note || "")}</textarea></label>
+      ${code ? `<div class="grid2" style="grid-template-columns:1fr auto;align-items:end">
+        <label class="fl"><span>Costo già pagato</span><input id="p-imp" inputmode="decimal" value="${sp0 ? String(sp0.importo).replace(".", ",") : ""}" placeholder="Vuoto se non avete ancora pagato"></label>
+        <div class="seg" style="margin-bottom:12px"><button type="button" data-val="JPY">¥</button><button type="button" data-val="EUR">€</button></div>
+      </div>
+      <p class="small muted" id="p-conv" style="margin:-4px 0 10px"></p><i id="p-st" hidden></i>
+      <div id="p-chi">
+        <div class="fl"><span>Ha pagato</span><div class="whos">${T.viaggiatori.map(n => `<button type="button" data-paid="${n}">${avatar(n, 30)}${n}</button>`).join("")}</div></div>
+        <div class="fl"><span>Diviso tra</span>
+          <div class="seg wide"><button type="button" data-grp="all">Tutti e 4</button><button type="button" data-grp="0">${COPPIE[0].map(n => n[0]).join(" & ")}</button><button type="button" data-grp="1">${COPPIE[1].map(n => n[0]).join(" & ")}</button></div>
+          <div class="whos multi">${T.viaggiatori.map(n => `<button type="button" data-per="${n}">${avatar(n, 30)}${n}</button>`).join("")}</div></div>
+        <p class="small muted" style="margin:-4px 0 10px">Finisce anche in Spese: lì vedete chi deve quanto e segnate i rimborsi.</p>
+      </div>
+      <div class="fl"><span>Pagamento ${t === "hotel" ? "all'hotel" : ""}</span><div class="seg wide">${Object.entries(PAGAM).map(([k, [n]]) => `<button type="button" data-pagam="${k}">${n}</button>`).join("")}</div></div>` : ""}
       ${code ? `<div class="fl"><span>Documenti</span><div class="doclist" id="p-docs"></div>
         <button type="button" class="btn" id="p-adddoc">${icon("Paperclip")} ${t === "volo" ? "Allega la carta d'imbarco" : t === "hotel" ? "Allega il voucher" : t === "biglietto" ? "Allega il biglietto" : "Allega foto o PDF"}</button>
         <input type="file" id="p-file" accept="image/*,application/pdf" multiple hidden>
@@ -2242,7 +2270,42 @@
       <div class="btns">${isNew ? `<button class="btn" data-close>Annulla</button>` : `<button class="btn" id="p-del" style="color:var(--shu)">${icon("Trash2")} Elimina</button>`}<button class="btn primary" id="p-save">Salva</button></div>
     `, el => {
       const v = id => $("#" + id, el)?.value.trim() || "";
-      const drawDocs = () => { const box = $("#p-docs", el); if (box) box.innerHTML = docsOf(pid).map(a => `<div class="docrow"${isNew ? ` data-unsaved="${a.id}"` : ""}>${docBtn(a)}<button type="button" class="iconbtn danger" data-deldoc="${a.id}" aria-label="Elimina il documento">${icon("Trash2")}</button></div>`).join(""); };
+      const impOf = () => $("#p-imp", el) ? parseNum($("#p-imp", el).value, cs.valuta === "JPY") || 0 : 0;
+      const drawCost = () => {
+        if (!$("#p-imp", el)) return;
+        $$("[data-val]", el).forEach(b => b.classList.toggle("on", b.dataset.val === cs.valuta));
+        $$("[data-paid]", el).forEach(b => b.classList.toggle("sel", b.dataset.paid === cs.pagatoDa));
+        $$("[data-per]", el).forEach(b => b.classList.toggle("sel", cs.perChi.includes(b.dataset.per)));
+        $$("[data-grp]", el).forEach(b => { const g = b.dataset.grp === "all" ? T.viaggiatori : COPPIE[+b.dataset.grp]; b.classList.toggle("on", g.length === cs.perChi.length && g.every(n => cs.perChi.includes(n))); });
+        $$("[data-pagam]", el).forEach(b => b.classList.toggle("on", b.dataset.pagam === cs.pagam));
+        $("#p-st", el).dataset.unsaved = JSON.stringify(cs);   // anche i pulsanti contano come modifiche da non perdere
+        const imp = impOf(), eur = cs.valuta === "JPY" ? imp / rate() : imp;
+        $("#p-chi", el).hidden = !imp;
+        $("#p-conv", el).textContent = imp ? (cs.valuta === "JPY" ? `≈ ${eurF(eur)}` : `≈ ${fmtInt(imp * rate())} ¥`) + (cs.perChi.length > 1 ? ` · ${eurF(eur / cs.perChi.length)} a testa` : "") : "";
+      };
+      drawCost();
+      $("#p-imp", el)?.addEventListener("input", drawCost);
+      $$("[data-val]", el).forEach(b => b.onclick = () => { cs.valuta = b.dataset.val; drawCost(); });
+      $$("[data-paid]", el).forEach(b => b.onclick = () => { cs.pagatoDa = b.dataset.paid; drawCost(); });
+      $$("[data-per]", el).forEach(b => b.onclick = () => { const n = b.dataset.per; cs.perChi = cs.perChi.includes(n) ? cs.perChi.filter(x => x !== n) : [...cs.perChi, n]; drawCost(); });
+      $$("[data-grp]", el).forEach(b => b.onclick = () => { cs.perChi = [...(b.dataset.grp === "all" ? T.viaggiatori : COPPIE[+b.dataset.grp])]; drawCost(); });
+      $$("[data-pagam]", el).forEach(b => b.onclick = () => { cs.pagam = cs.pagam === b.dataset.pagam ? "" : b.dataset.pagam; drawCost(); });
+      // salva il costo nella spesa collegata (nuova, aggiornata, o nel cestino se il costo è stato tolto)
+      const saveCost = item => {
+        if (!$("#p-imp", el)) return;
+        const imp = impOf(), cur = spesaOf(pid);
+        if (!imp) { trashPrenSpesa(pid); return; }
+        const eur = cs.valuta === "JPY" ? (cur?.valuta === "JPY" && cur.importo === imp && cur.eur ? cur.eur : imp / rate()) : imp;
+        const base = cur || { id: uid(), ts: Date.now(), da: me || "?", data: todayJP(), pren: pid };
+        const next = { ...base, valuta: cs.valuta, pagatoDa: cs.pagatoDa, perChi: [...cs.perChi], cat: PCAT[t] || "altro", desc: item.titolo, importo: imp, eur: Math.round(eur * 100) / 100 };
+        const c = cur ? spDiff(cur, next) : [];
+        if (cur && !c.length) return;
+        if (c.length) next.storia = conStoria(cur, "mod", c);
+        const sp = putItem("spese", next);
+        if (!cur) notifyOthers("spesa", sp);
+        else if (hurtsOthers(cur, sp)) notifyOthers("spesa-mod", sp, { c });
+      };
+      const drawDocs =() => { const box = $("#p-docs", el); if (box) box.innerHTML = docsOf(pid).map(a => `<div class="docrow"${isNew ? ` data-unsaved="${a.id}"` : ""}>${docBtn(a)}<button type="button" class="iconbtn danger" data-deldoc="${a.id}" aria-label="Elimina il documento">${icon("Trash2")}</button></div>`).join(""); };
       drawDocs();
       $("#p-docs", el)?.addEventListener("click", e => {
         const b = e.target.closest("[data-deldoc]"); if (!b) return;
@@ -2265,7 +2328,10 @@
         if (t === "biglietto") item.luogo = v("p-luogo");
         if (!item.titolo) return toast("Scrivi almeno il nome");
         if (t === "hotel" && (!item.dal || !item.al || item.al <= item.dal)) return toast("Controlla check-in e check-out");
+        if (impOf() && !cs.perChi.length) return toast("Scegli tra chi dividere il costo");
+        if ($("#p-imp", el)) { if (cs.pagam) item.pagam = cs.pagam; else delete item.pagam; }
         const stored = putItem("prenotazioni", item);
+        saveCost(item);
         if (isNew) notifyOthers("pren", stored);
         if (t === "hotel" && (item.jp !== p.jp || item.indirizzo !== p.indirizzo || item.titolo !== p.titolo || !p.lat)) geocodeHotel(stored);
         if (item.luogo && !booked.has(item.luogo)) { booked.add(item.luogo); savePlan(); }   // biglietto preso = "prenotato" spuntato
@@ -2274,8 +2340,12 @@
       };
       $("#p-del", el)?.addEventListener("click", () => {
         const old = { ...p }; let back = false; saved = true;
-        delItem("prenotazioni", p.id); closeSheet(); rerender();
-        toast("Prenotazione eliminata", () => { back = true; putItem("prenotazioni", old); rerender(); });
+        delItem("prenotazioni", p.id); const gone = trashPrenSpesa(p.id); closeSheet(); rerender();
+        toast(gone ? "Prenotazione eliminata (il costo è nel cestino delle Spese)" : "Prenotazione eliminata", () => {
+          back = true; putItem("prenotazioni", old);
+          if (gone) { unNotify(gone.n); putItem("spese", gone.old); }
+          rerender();
+        });
         setTimeout(() => { if (!back) docsOf(p.id).forEach(delDoc); }, 6000);   // i documenti se ne vanno solo se non si annulla
       });
     }, () => {
@@ -2714,6 +2784,7 @@
       $("#s-conv", el).textContent = imp ? (st.valuta === "JPY" ? `≈ ${eurF(imp / rate())}` : `≈ ${fmtInt(imp * rate())} ¥`) + (st.perChi.length ? ` · ${eurF((st.valuta === "JPY" ? imp / rate() : imp) / st.perChi.length)} a testa` : "") : "";
     };
     openSheet(`<div class="ttl"><span class="pic" style="background:${s.cat === "rimborso" ? "var(--ok)" : "#7b4fa0"}">${icon(s.cat === "rimborso" ? "HandCoins" : "Receipt")}</span><h2>${isNew ? (s.cat === "rimborso" ? "Rimborso" : "Nuova spesa") : "Modifica spesa"}</h2></div>
+      ${s.pren && lists.prenotazioni.some(x => x.id === s.pren) ? `<p class="small muted" style="margin:-4px 0 10px">${icon("BedDouble")} È il costo della prenotazione <b>${esc(lists.prenotazioni.find(x => x.id === s.pren).titolo)}</b>: cambiarlo qui lo cambia anche lì.</p>` : ""}
       <label class="fl"><span>Descrizione</span><input id="s-desc" value="${esc(s.desc || "")}" placeholder="es. Cena izakaya" autocomplete="off"></label>
       <div class="grid2" style="grid-template-columns:1fr auto;align-items:end">
         <label class="fl"><span>Importo</span><input id="s-imp" inputmode="decimal" value="${s.importo == null ? "" : String(s.importo).replace(".", ",")}" placeholder="0" style="font-size:1.3rem;font-weight:800"></label>
