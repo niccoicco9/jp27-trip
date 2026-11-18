@@ -10,7 +10,7 @@
     set(k, v, quiet) { if (!quiet && !UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 142;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 143;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2696,6 +2696,9 @@
     return c ? { k, n: c.n, col: c.col, html: `<i class="emo">${esc(c.e)}</i>`, mine: true } : { ...catOf("altro"), k: "altro" };
   }
   let spFilter = null, spMine = false;   // grafico: categoria scelta e "la mia parte"
+  // aperto/chiuso a mano resta così quando la pagina si ridisegna (arriva una spesa da un altro, un ripristino…);
+  // il cestino chiuso si riapre da solo solo se intanto un altro elimina qualcosa di nuovo
+  const spOpen = { pers: false, trash: null, trashT: 0 };
   // grafico a ciambella: totale per categoria (del gruppo o solo la mia parte); tocca una riga per filtrare
   function catCard() {
     const sp = speseVive().filter(s => s.cat !== "rimborso");
@@ -2766,7 +2769,10 @@
     const other = s.pren && spesaOf(s.pren), pr = other && lists.prenotazioni.find(x => x.id === s.pren);
     if (other && other.id !== s.id) {
       if (!(await ask({ title: "Sostituire il costo attuale?", text: `${pr ? `"${pr.titolo}"` : "Questa prenotazione"} ha già un costo (${spImp(other)}). Ripristinando questo (${spImp(s)}), quello attuale finisce nel cestino.`, ok: "Sostituisci", icon: "RotateCcw" }))) return;
-      trashPrenSpesa(s.pren);
+      // mentre si decideva un altro l'ha già ripristinata: non si rimette di nuovo (e non si butta il costo giusto)
+      const now = lists.spese.find(x => x.id === s.id);
+      if (!now?.del) { rerender(); return toast(now ? `L'ha già ripristinata ${now.storia?.findLast(x => x.a === "rip")?.by || "qualcun altro"}` : "Intanto è stata tolta"); }
+      s = now; trashPrenSpesa(s.pren);
     }
     const { del, ...rest } = s, back = putItem("spese", { ...rest, storia: conStoria(s, "rip") });
     if (hurtsOthers(s, back)) notifyOthers("spesa-rip", back);
@@ -2778,7 +2784,8 @@
     const { net, total, cn } = balances();   // cn: saldo di ogni coppia
     const debt = Math.abs(cn[0]) < .5 ? null : cn[0] > 0 ? [COPPIE[1], COPPIE[0], cn[0]] : [COPPIE[0], COPPIE[1], -cn[0]];
     const trash = lists.spese.filter(s => s.del).sort((a, b) => b.del.t - a.del.t);
-    const trashNew = trash.some(s => s.del.by !== me && Date.now() - s.del.t < 3 * 864e5);   // tolte dagli altri negli ultimi giorni: il cestino si apre da solo
+    const othersT = Math.max(0, ...trash.filter(s => s.del.by !== me && Date.now() - s.del.t < 3 * 864e5).map(s => s.del.t));   // tolte dagli altri negli ultimi giorni: il cestino si apre da solo
+    const trashOpen = spOpen.trash === null || othersT > spOpen.trashT ? othersT > 0 : spOpen.trash;
     const items = speseVive().filter(s => !spFilter || catOf(s.cat).k === spFilter).sort((a, b) => (b.data || "").localeCompare(a.data || "") || (b.ts || 0) - (a.ts || 0));
     let lastD = null;
     // prenotazioni con più di un costo (aggiunto da due telefoni offline con una versione vecchia): contano doppio
@@ -2792,7 +2799,7 @@
       <div class="card"><div class="between" style="margin-bottom:12px"><h3 style="margin:0">Saldo tra le coppie</h3>${debt ? `<button class="btn small" id="settle">${icon("HandCoins")} Segna rimborso</button>` : ""}</div>
         ${COPPIE.map((c, k) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--line)"><span class="avpair">${c.map(n => avatar(n, 28)).join("")}</span><span class="grow"><b>${coupleName(c)}</b></span><b style="font-size:1.05rem;color:${cn[k] > .5 ? "var(--ok)" : cn[k] < -.5 ? "var(--shu)" : "var(--muted)"}" data-count="${cn[k]}" data-fmt="eur±">${eurPM(cn[k])}</b></div>`).join("")}
         <p class="small muted" style="margin:8px 0 0">+ deve ricevere · − deve dare. Gli importi in yen sono convertiti al cambio del giorno in cui li inserite.</p>
-        <details class="perperson"><summary>Dettaglio per persona</summary>
+        <details class="perperson" id="sp-pers"${spOpen.pers ? " open" : ""}><summary>Dettaglio per persona</summary>
           ${T.viaggiatori.map(n => `<div class="row" style="padding:8px 0;border-top:1px solid var(--line)">${avatar(n)}<span class="grow">${n}</span><span class="small" style="color:${net[n] > .5 ? "var(--ok)" : net[n] < -.5 ? "var(--shu)" : "var(--muted)"}">${eurPM(net[n])}</span></div>`).join("")}
           <p class="small muted" style="margin:6px 0 0">Conta chi ha anticipato dentro la coppia: tra voi due fate come preferite.</p>
         </details>
@@ -2809,7 +2816,7 @@
           <div style="text-align:right"><b>${s.valuta === "JPY" ? fmtInt(s.importo) + " ¥" : eurF(s.importo)}</b>${s.valuta === "JPY" ? `<div class="small muted">${eurF(s.eur)}</div>` : ""}</div>
         </div></div>`;
       }).join("") : `<p class="empty">Nessuna spesa ancora. La prima cena a Shinjuku? 🍜</p>`}
-      ${trash.length ? `<details class="perperson cestino"${trashNew ? " open" : ""}><summary>${icon("Trash2")} Eliminate (${trash.length})</summary>
+      ${trash.length ? `<details class="perperson cestino" id="sp-trash"${trashOpen ? " open" : ""}><summary>${icon("Trash2")} Eliminate (${trash.length})</summary>
         <p class="small muted" style="margin:0 0 10px">Non contano nei conti. Se una è stata tolta per sbaglio, ripristinala: torna per tutti e quattro.</p>
         ${trash.map(s => { const c = catOf(s.cat); return `<div class="card spdel"><div class="row">
           <span class="pic" style="background:${c.col}">${c.html}</span>
@@ -2817,6 +2824,8 @@
           <div style="text-align:right"><b>${spImp(s)}</b><div><button class="btn small" data-sprip="${s.id}" style="margin-top:6px">${icon("RotateCcw")} Ripristina</button></div></div>
         </div></div>`; }).join("")}
       </details>` : ""}`;
+    $("#sp-pers").ontoggle = e => { spOpen.pers = e.target.open; };
+    const tr = $("#sp-trash"); if (tr) { spOpen.trash = trashOpen; spOpen.trashT = othersT; tr.ontoggle = () => { spOpen.trash = tr.open; }; }
     $$("[data-sprip]").forEach(b => b.onclick = () => { const s = lists.spese.find(x => x.id === b.dataset.sprip); if (s) restoreSpesa(s); });
     $("#adds").onclick = () => editSpesa({});
     $$("[data-fcat]").forEach(b => b.onclick = () => { spFilter = spFilter === b.dataset.fcat ? null : b.dataset.fcat; buzz(); keepScroll(render); });
