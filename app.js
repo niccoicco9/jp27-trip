@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 148;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 149;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -452,6 +452,7 @@
       if (done) { delete outbox[key]; saveOutbox(); } else sendQueued(key);
     }
   }
+  const ADD_WAIT = 2e4, addGone = new Map();   // avvisi delle spese nuove (vedi notifyOthers)
   function putItem(name, item) {
     item = { ...item, id: item.id || uid(), by: me || "?", w: uid() };
     const arr = lists[name], k = arr.findIndex(x => x.id === item.id), base = arr[k];
@@ -459,6 +460,7 @@
     k >= 0 ? (arr[k] = item) : arr.push(item);
     LS.set(name, arr); queuePut(name, item, base);
     if (name === "luoghi") mergeCustom();
+    if (name === "spese") addNotifyFollows(item);
     return item;
   }
   function delItem(name, id) {
@@ -3152,10 +3154,25 @@
   let flushing = null, flushT = null, retryMs = 0;
   // spese eliminate/modificate/ripristinate ("spesa-del", "spesa-mod", "spesa-rip"): c = cosa è cambiato ·
   // wait: parte solo dopo qualche secondo, finché si può ancora annullare (resta in coda anche se si chiude l'app)
+  // senza descrizione si manda il nome della categoria, come nella lista
+  const notifItem = (it, c) => ({ id: it.id, desc: it.desc || (it.cat === "rimborso" ? "" : catOf(it.cat).n), importo: it.importo, valuta: it.valuta, eur: it.eur, pagatoDa: it.pagatoDa, perChi: it.perChi, cat: it.cat, da: it.da || "", ...(c?.length ? { c } : {}) });
+  // spesa nuova: l'avviso aspetta un po' (parte subito se l'app va in sottofondo). Intanto le modifiche lo aggiornano
+  // e se la spesa finisce nel cestino non parte niente: gli altri non sentono di una spesa che non c'è più
+  const queuedAdd = id => LS.get("notifyQ", []).some(x => x.kind === "spesa" && x.item?.id === id);
+  function addNotifyFollows(s) {
+    if (!T.notifyUrl || !code) return;
+    const q = LS.get("notifyQ", []), i = q.findIndex(x => x.kind === "spesa" && x.item?.id === s.id);
+    if (i >= 0 && s.del) { addGone.set(s.id, q[i]); q.splice(i, 1); }
+    else if (i >= 0) q[i] = { ...q[i], item: notifItem(s) };
+    else if (!s.del && addGone.has(s.id)) { q.push({ ...addGone.get(s.id), item: notifItem(s), due: Date.now() + ADD_WAIT }); addGone.delete(s.id); }   // "Annulla" o ripristino
+    else return;
+    LS.set("notifyQ", q); flushNotify();
+  }
   function notifyOthers(kind, it, { c, wait = 0 } = {}) {
     if (!T.notifyUrl || !code) return null;
-    const item = kind.startsWith("spesa") ? { id: it.id, desc: it.desc, importo: it.importo, valuta: it.valuta, eur: it.eur, pagatoDa: it.pagatoDa, perChi: it.perChi, cat: it.cat, da: it.da || "", ...(c?.length ? { c } : {}) }
-      : { id: it.id, tipo: it.tipo, titolo: it.titolo, dal: it.dal, ora: it.ora };
+    if (kind.startsWith("spesa-") && (queuedAdd(it.id) || addGone.has(it.id))) return null;   // gli altri non sanno ancora che c'è (vedi sopra)
+    const item = kind.startsWith("spesa") ? notifItem(it, c) : { id: it.id, tipo: it.tipo, titolo: it.titolo, dal: it.dal, ora: it.ora };
+    if (kind === "spesa") wait = ADD_WAIT;
     const n = uid();
     LS.set("notifyQ", [...LS.get("notifyQ", []), { n, kind, by: me || "Qualcuno", item, t: Date.now(), ...(wait ? { due: Date.now() + wait } : {}) }].slice(-30));
     flushNotify();
