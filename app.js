@@ -10,7 +10,7 @@
     set(k, v, quiet) { if (!quiet && !UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 144;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 145;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2745,7 +2745,8 @@
   const conStoria = (s, a, c) => [...(s.storia || []), { a, by: me || "?", t: Date.now(), ...(c ? { c } : {}) }].slice(-20);
   // cosa è cambiato, già scritto come si legge (Firestore non accetta liste dentro liste: una voce per campo)
   function spDiff(a, b) {
-    const f = { Importo: spImp, "Ha pagato": s => s.pagatoDa, "Diviso tra": s => splitLabel(s.perChi), Descrizione: s => s.desc || "—", Categoria: s => catOf(s.cat).n, Giorno: s => s.data ? short(s.data) : "—" };
+    const rb = b.cat === "rimborso";   // per un rimborso le voci si chiamano come nella scheda
+    const f = { Importo: spImp, [rb ? "Chi restituisce" : "Ha pagato"]: s => s.pagatoDa, [rb ? "A chi" : "Diviso tra"]: s => splitLabel(s.perChi), Descrizione: s => s.desc || "—", Categoria: s => catOf(s.cat).n, Giorno: s => s.data ? short(s.data) : "—" };
     return Object.entries(f).map(([k, fn]) => ({ k, da: fn(a), a: fn(b) })).filter(x => x.da !== x.a);
   }
   // quanto ci guadagna ognuno con una spesa (pagato − sua parte); eliminata = niente
@@ -2759,10 +2760,10 @@
   // il cambio fa perdere soldi a qualcuno che non è chi lo fa → gli altri ricevono l'avviso
   const hurtsOthers = (a, b) => { const x = spNet(a), y = spNet(b); return T.viaggiatori.some(n => n !== me && (y[n] || 0) < (x[n] || 0) - .005); };
   function storiaHtml(s) {
-    const verbo = { mod: "l'ha modificata", del: "l'ha eliminata", rip: "l'ha ripristinata" };
-    const rows = [`<li><b>${esc(s.da || s.by || "?")}</b> l'ha aggiunta${s.ts ? " · " + quando(s.ts) : ""}</li>`,
+    const o = s.cat === "rimborso" ? "o" : "a", verbo = { mod: "l'ha modificat" + o, del: "l'ha eliminat" + o, rip: "l'ha ripristinat" + o };
+    const rows = [`<li><b>${esc(s.da || s.by || "?")}</b> l'ha aggiunt${o}${s.ts ? " · " + quando(s.ts) : ""}</li>`,
       ...(s.storia || []).map(x => `<li><b>${esc(x.by)}</b> ${verbo[x.a] || "l'ha cambiata"}${x.t ? " · " + quando(x.t) : ""}${x.c?.length ? x.c.map(c => `<br><span class="muted">${esc(c.k)}: ${esc(c.da)} → <b>${esc(c.a)}</b></span>`).join("") : ""}</li>`)];
-    return `<details class="perperson"${s.storia?.some(x => x.a === "mod") ? " open" : ""}><summary>Storia della spesa</summary><ul class="spstoria small">${rows.join("")}</ul></details>`;
+    return `<details class="perperson"${s.storia?.some(x => x.a === "mod") ? " open" : ""}><summary>Storia ${o === "o" ? "del rimborso" : "della spesa"}</summary><ul class="spstoria small">${rows.join("")}</ul></details>`;
   }
   async function restoreSpesa(s) {
     // costo di una prenotazione che intanto ne ha già un altro: uno solo per prenotazione, se no conta due volte
@@ -2776,7 +2777,7 @@
     }
     const { del, ...rest } = s, back = putItem("spese", { ...rest, storia: conStoria(s, "rip") });
     if (hurtsOthers(s, back)) notifyOthers("spesa-rip", back);
-    toast("Spesa ripristinata ✓"); rerender();
+    toast(s.cat === "rimborso" ? "Rimborso ripristinato ✓" : "Spesa ripristinata ✓"); rerender();
   }
 
   function renderSpese(back) {
@@ -2814,7 +2815,7 @@
         const head = (s.data || "") !== lastD ? `<h3>${s.data ? cap1(fmtDay(s.data, { weekday: "long", day: "numeric", month: "long" })) : "Senza data"}</h3>` : ""; lastD = s.data || "";
         return `${head}<div class="card spesa${s.id === freshId ? " fresh" : ""}" data-spesa="${s.id}"><div class="row">
           <span class="pic" style="background:${c.col}">${c.html}</span>
-          <div class="grow"><b>${esc(s.desc || cl)}</b><div class="small muted">${s.cat === "rimborso" ? `${esc(s.pagatoDa)} → ${esc(splitLabel(s.perChi))}` : `pagato da ${esc(s.pagatoDa)} · per ${esc(splitLabel(s.perChi))}`}${s.storia?.some(x => x.a === "mod") ? ` · <span class="spmod">modificata</span>` : ""}</div></div>
+          <div class="grow"><b>${esc(s.desc || cl)}</b><div class="small muted">${s.cat === "rimborso" ? `${esc(s.pagatoDa)} → ${esc(splitLabel(s.perChi))}` : `pagato da ${esc(s.pagatoDa)} · per ${esc(splitLabel(s.perChi))}`}${s.storia?.some(x => x.a === "mod") ? ` · <span class="spmod">${s.cat === "rimborso" ? "modificato" : "modificata"}</span>` : ""}</div></div>
           <div style="text-align:right"><b>${s.valuta === "JPY" ? fmtInt(s.importo) + " ¥" : eurF(s.importo)}</b>${s.valuta === "JPY" ? `<div class="small muted">${eurF(s.eur)}</div>` : ""}</div>
         </div></div>`;
       }).join("") : `<p class="empty">Nessuna spesa ancora. La prima cena a Shinjuku? 🍜</p>`}
@@ -2822,7 +2823,7 @@
         <p class="small muted" style="margin:0 0 10px">Non contano nei conti. Se una è stata tolta per sbaglio, ripristinala: torna per tutti e quattro.</p>
         ${trash.map(s => { const c = catOf(s.cat); return `<div class="card spdel"><div class="row">
           <span class="pic" style="background:${c.col}">${c.html}</span>
-          <div class="grow"><b>${esc(s.desc || c.n)}</b><div class="small muted">pagata da ${esc(s.pagatoDa)}${s.data ? " · " + short(s.data) : ""}</div><div class="small spmod">eliminata da ${esc(s.del.by)}${s.del.t ? " · " + quando(s.del.t) : ""}${s.del.backup ? " (ripristino di un backup)" : ""}</div></div>
+          <div class="grow"><b>${esc(s.desc || c.n)}</b><div class="small muted">${s.cat === "rimborso" ? `${esc(s.pagatoDa)} → ${esc(splitLabel(s.perChi))}` : `pagata da ${esc(s.pagatoDa)}`}${s.data ? " · " + short(s.data) : ""}</div><div class="small spmod">${s.cat === "rimborso" ? "eliminato" : "eliminata"} da ${esc(s.del.by)}${s.del.t ? " · " + quando(s.del.t) : ""}${s.del.backup ? " (ripristino di un backup)" : ""}</div></div>
           <div style="text-align:right"><b>${spImp(s)}</b><div><button class="btn small" data-sprip="${s.id}" style="margin-top:6px">${icon("RotateCcw")} Ripristina</button></div></div>
         </div></div>`; }).join("")}
       </details>` : ""}`;
@@ -2873,7 +2874,7 @@
       const eur = st.valuta === "JPY" ? (s.valuta === "JPY" && s.importo === imp && s.eur ? s.eur : imp / rate()) : imp;
       $("#s-conv", el).textContent = imp ? (st.valuta === "JPY" ? `≈ ${eurF(eur)}` : `≈ ${fmtInt(imp * rate())} ¥`) + (st.perChi.length ? ` · ${eurF(eur / st.perChi.length)} a testa` : "") : "";
     };
-    openSheet(`<div class="ttl"><span class="pic" style="background:${s.cat === "rimborso" ? "var(--ok)" : "#7b4fa0"}">${icon(s.cat === "rimborso" ? "HandCoins" : "Receipt")}</span><h2>${isNew ? (s.cat === "rimborso" ? "Rimborso" : "Nuova spesa") : "Modifica spesa"}</h2></div>
+    openSheet(`<div class="ttl"><span class="pic" style="background:${s.cat === "rimborso" ? "var(--ok)" : "#7b4fa0"}">${icon(s.cat === "rimborso" ? "HandCoins" : "Receipt")}</span><h2>${s.cat === "rimborso" ? (isNew ? "Rimborso" : "Modifica rimborso") : isNew ? "Nuova spesa" : "Modifica spesa"}</h2></div>
       ${s.pren && lists.prenotazioni.some(x => x.id === s.pren) ? `<p class="small muted" style="margin:-4px 0 10px">${icon("BedDouble")} È il costo della prenotazione <b>${esc(lists.prenotazioni.find(x => x.id === s.pren).titolo)}</b>: cambiarlo qui lo cambia anche lì.</p>` : ""}
       <label class="fl"><span>Descrizione</span><input id="s-desc" value="${esc(s.desc || "")}" placeholder="es. Cena izakaya" autocomplete="off"></label>
       <div class="grid2" style="grid-template-columns:1fr auto;align-items:end">
@@ -2883,7 +2884,7 @@
       <p class="small muted" id="s-conv" style="margin:-4px 0 10px"></p><i id="s-st" hidden></i>
       <div class="fl"><span>${s.cat === "rimborso" ? "Chi restituisce" : "Ha pagato"}</span><div class="whos">${T.viaggiatori.map(n => `<button data-paid="${n}">${avatar(n, 30)}${n}</button>`).join("")}</div></div>
       <div class="fl"><span>${s.cat === "rimborso" ? "A chi" : "Diviso tra"}</span>
-        <div class="seg wide"><button data-grp="all">Tutti e 4</button><button data-grp="0">${COPPIE[0].map(n => n[0]).join(" & ")}</button><button data-grp="1">${COPPIE[1].map(n => n[0]).join(" & ")}</button></div>
+        <div class="seg wide">${s.cat === "rimborso" ? "" : `<button data-grp="all">Tutti e 4</button>`}<button data-grp="0">${COPPIE[0].map(n => n[0]).join(" & ")}</button><button data-grp="1">${COPPIE[1].map(n => n[0]).join(" & ")}</button></div>
         <div class="whos multi">${T.viaggiatori.map(n => `<button data-per="${n}">${avatar(n, 30)}${n}</button>`).join("")}</div></div>
       ${s.cat === "rimborso" ? "" : `<div class="fl"><span>Categoria</span><div class="chips" id="s-cats" style="margin:0;padding:0;flex-wrap:wrap"></div>
         <div class="newcat" id="s-newcat" hidden><input id="nc-e" placeholder="🍡" maxlength="16" autocomplete="off" aria-label="Emoji"><input id="nc-n" placeholder="Nome, es. Onsen" maxlength="24" autocomplete="off"><button class="btn small primary" id="nc-ok">Crea</button></div></div>`}
@@ -2911,7 +2912,8 @@
         if (!sheetOpen()) return;   // già salvata: la scheda si sta chiudendo
         const importo = parseNum($("#s-imp", el).value, st.valuta === "JPY");
         if (!(importo > 0)) return toast(numHint($("#s-imp", el).value, st.valuta === "JPY"));
-        if (!st.perChi.length) return toast("Scegli tra chi dividere");
+        if (!st.perChi.length) return toast(s.cat === "rimborso" ? "Scegli a chi va il rimborso" : "Scegli tra chi dividere");
+        if (s.cat === "rimborso" && st.perChi.includes(st.pagatoDa)) return toast(`Chi restituisce non può essere anche in "A chi": togli ${st.pagatoDa}`);
         const eur = st.valuta === "JPY" ? (s.valuta === "JPY" && s.importo === importo && s.eur ? s.eur : importo / rate()) : importo;
         // si parte dalla spesa com'è adesso, non da quando si è aperta la scheda: se intanto un altro l'ha
         // eliminata resta nel cestino, e la storia scritta dagli altri non si perde
@@ -2926,7 +2928,7 @@
         const saved = putItem("spese", next);
         if (isNew) notifyOthers("spesa", saved);
         else if (hurtsOthers(cur, saved)) notifyOthers("spesa-mod", saved, { c });
-        closeSheet(); toast(cur.del ? `Intanto ${cur.del.by} l'ha eliminata: la modifica è salvata nel cestino` : "Spesa salvata ✓"); rerender();
+        closeSheet(); toast(cur.del ? `Intanto ${cur.del.by} l'ha eliminata: la modifica è salvata nel cestino` : s.cat === "rimborso" ? "Rimborso salvato ✓" : "Spesa salvata ✓"); rerender();
       };
       $("#s-del", el)?.addEventListener("click", async () => {
         const c0 = lists.spese.find(x => x.id === s.id) || s;
@@ -2938,7 +2940,7 @@
         const n = hurtsOthers(old, gone) ? notifyOthers("spesa-del", gone, { wait: 5500 }) : null;
         closeSheet(); rerender();
         // "Annulla": si toglie solo l'eliminazione, partendo da com'è adesso (se intanto un altro l'ha modificata nel cestino, la modifica resta)
-        toast("Spesa nel cestino", () => {
+        toast(s.cat === "rimborso" ? "Rimborso nel cestino" : "Spesa nel cestino", () => {
           unNotify(n); const now = lists.spese.find(x => x.id === s.id), d = gone.storia.at(-1);
           if (now?.del?.t !== gone.del.t) return;   // intanto ripristinata (o eliminata di nuovo) da un altro
           const { del, ...rest } = now; putItem("spese", { ...rest, storia: (now.storia || []).filter(x => !(x.a === "del" && x.t === d.t && x.by === d.by)) }); rerender();
