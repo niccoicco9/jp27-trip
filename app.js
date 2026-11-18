@@ -10,7 +10,7 @@
     set(k, v, quiet) { if (!quiet && !UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 132;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 133;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2339,7 +2339,8 @@
         const clash = t === "hotel" && lists.prenotazioni.find(o => o.tipo === "hotel" && o.id !== pid && o.dal < item.al && item.dal < (o.al || o.dal));
         saved = true; closeSheet(); toast(clash ? `Salvato · attenzione, si sovrappone a ${clash.titolo}` : "Salvato ✓"); rerender();
       };
-      $("#p-del", el)?.addEventListener("click", () => {
+      $("#p-del", el)?.addEventListener("click", async () => {
+        if (!(await ask({ title: `Eliminare "${p.titolo || "prenotazione"}"?`, text: spesaOf(p.id) ? "Anche il suo costo finirà nel cestino delle Spese." : "Sparirà per tutti e quattro.", ok: "Elimina", danger: true }))) return;
         const old = { ...p }; let back = false; saved = true;
         delItem("prenotazioni", p.id); const gone = trashPrenSpesa(p.id); closeSheet(); rerender();
         toast(gone ? "Prenotazione eliminata (il costo è nel cestino delle Spese)" : "Prenotazione eliminata", () => {
@@ -2832,7 +2833,10 @@
         else if (hurtsOthers(cur, saved)) notifyOthers("spesa-mod", saved, { c });
         closeSheet(); toast(cur.del ? `Intanto ${cur.del.by} l'ha eliminata: la modifica è salvata nel cestino` : "Spesa salvata ✓"); rerender();
       };
-      $("#s-del", el)?.addEventListener("click", () => {
+      $("#s-del", el)?.addEventListener("click", async () => {
+        const c0 = lists.spese.find(x => x.id === s.id) || s;
+        const amt = c0.importo ? ` (${c0.valuta === "JPY" ? fmtInt(c0.importo) + " ¥" : eurF(c0.importo)})` : "";
+        if (!(await ask({ title: `Eliminare "${c0.desc || "spesa"}"${amt}?`, text: "Finirà nel cestino delle Spese: da lì si può ripristinare.", ok: "Elimina", danger: true }))) return;
         const cur = lists.spese.find(x => x.id === s.id) || s;   // com'è adesso (vedi Salva)
         if (cur.del) { closeSheet(); rerender(); return toast(`L'ha già eliminata ${cur.del.by}: è nel cestino`); }
         const old = { ...cur }, gone = putItem("spese", { ...cur, da: cur.da || cur.by || "?", del: { by: me || "?", t: Date.now() }, storia: conStoria(cur, "del") });
