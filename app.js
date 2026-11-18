@@ -10,7 +10,7 @@
     set(k, v, quiet) { if (!quiet && !UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 140;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 141;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -642,7 +642,10 @@
     if (!a || e.defaultPrevented || a.target || e.metaKey || e.ctrlKey) return;
     e.preventDefault(); go(a.getAttribute("href"));
   });
-  let sheetT = null, sheetVer = 0, sheetSnap = "", fitViewport = null;
+  let sheetT = null, sheetVer = 0, sheetSnap = "", fitViewport = null, tapShield = 0;
+  // doppio tocco veloce (es. su Salva): il secondo tocco arriva mentre la scheda scende e passerebbe alla pagina sotto
+  // (barra in basso, un'altra spesa…). Per un attimo dopo la chiusura i tocchi fuori dalla scheda non fanno niente
+  document.addEventListener("click", e => { if (Date.now() < tapShield && !sheetCard.contains(e.target)) { e.preventDefault(); e.stopPropagation(); } }, true);
   const sheetOpen = () => !sheet.hidden && !sheet.classList.contains("closing");
   // dentro una scheda già aperta: "push" (avanti, es. Modifica) o "pop" (indietro, es. Annulla/Salva) fanno scorrere il contenuto
   let sheetNav = "";
@@ -677,6 +680,7 @@
     if (!sheetOpen()) return;
     if (!fromHistory) dropLayer(sheetLayer);
     SC.classList.remove("locked");
+    if (navigator.userActivation?.isActive ?? true) tapShield = Date.now() + 350;   // solo se l'ha chiusa un tocco, non un aggiornamento da remoto
     // tastiera aperta (es. dopo una ricerca): si chiude insieme alla scheda, non dopo
     const kbUp = document.body.classList.contains("kb-up");
     if (sheetCard.contains(document.activeElement)) document.activeElement.blur();
@@ -2869,7 +2873,7 @@
         <div class="whos multi">${T.viaggiatori.map(n => `<button data-per="${n}">${avatar(n, 30)}${n}</button>`).join("")}</div></div>
       ${s.cat === "rimborso" ? "" : `<div class="fl"><span>Categoria</span><div class="chips" id="s-cats" style="margin:0;padding:0;flex-wrap:wrap"></div>
         <div class="newcat" id="s-newcat" hidden><input id="nc-e" placeholder="🍡" maxlength="4" autocomplete="off" aria-label="Emoji"><input id="nc-n" placeholder="Nome, es. Onsen" maxlength="24" autocomplete="off"><button class="btn small primary" id="nc-ok">Crea</button></div></div>`}
-      <label class="fl"><span>Giorno</span><input type="date" id="s-data" value="${s.data || (today >= T.inizio && today <= T.fine ? today : today)}"></label>
+      <label class="fl"><span>Giorno</span><input type="date" id="s-data" value="${s.data || (isNew ? today : "")}"></label>
       <div class="btns">${isNew ? `<button class="btn" data-close>Annulla</button>` : `<button class="btn" id="s-del" style="color:var(--shu)">${icon("Trash2")} Elimina</button>`}<button class="btn primary" id="s-save">Salva</button></div>
       ${isNew ? "" : storiaHtml(s)}
     `, el => {
@@ -2888,6 +2892,7 @@
       $$("[data-per]", el).forEach(b => b.onclick = () => { const n = b.dataset.per; st.perChi = st.perChi.includes(n) ? st.perChi.filter(x => x !== n) : [...st.perChi, n]; draw(el); });
       $$("[data-grp]", el).forEach(b => b.onclick = () => { st.perChi = [...(b.dataset.grp === "all" ? T.viaggiatori : COPPIE[+b.dataset.grp])]; draw(el); });
       $("#s-save", el).onclick = () => {
+        if (!sheetOpen()) return;   // già salvata: la scheda si sta chiudendo
         const importo = parseNum($("#s-imp", el).value, st.valuta === "JPY");
         if (!(importo > 0)) return toast(numHint($("#s-imp", el).value, st.valuta === "JPY"));
         if (!st.perChi.length) return toast("Scegli tra chi dividere");
@@ -3350,7 +3355,7 @@
     watchTitle();
     // Spese: pulsante "+ Spesa" in basso a destra, a portata di pollice (anche su iPhone grandi)
     let fab = $("#fab");
-    if (key === "#utility/spese") {
+    if (key === "#utility/spese" && code) {   // senza codice la pagina chiede il codice: il + non farebbe niente
       if (!fab) { fab = document.createElement("button"); fab.id = "fab"; fab.className = "fab"; fab.innerHTML = `${icon("Plus")}<span>Spesa</span>`; fab.setAttribute("aria-label", "Aggiungi una spesa"); fab.onclick = () => { buzz(); $("#adds")?.click(); }; document.body.appendChild(fab); }
       fab.hidden = false; document.body.classList.add("has-fab");
     } else { if (fab) fab.hidden = true; document.body.classList.remove("has-fab"); }
