@@ -10,7 +10,7 @@
     set(k, v, quiet) { if (!quiet && !UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 141;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 142;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2829,6 +2829,7 @@
   function editSpesa(s, quick) {
     const isNew = !s.id, today = todayJP();
     let st = { valuta: s.valuta || "JPY", pagatoDa: s.pagatoDa || me || T.viaggiatori[0], perChi: s.perChi?.length ? [...s.perChi] : [...T.viaggiatori], cat: s.cat || "cibo" };
+    const st0 = { ...st, desc: s.desc || "", data: s.data || (isNew ? today : "") };   // com'era all'apertura: si salvano solo i campi cambiati qui
     // chip delle categorie: fisse + create da voi + "Nuova"; tieni premuto su una vostra per eliminarla
     const drawCats = el => {
       const box = $("#s-cats", el); if (!box) return;
@@ -2889,7 +2890,7 @@
       $("#s-imp", el).oninput = () => draw(el);
       $$("[data-val]", el).forEach(b => b.onclick = () => { st.valuta = b.dataset.val; draw(el); });
       $$("[data-paid]", el).forEach(b => b.onclick = () => { st.pagatoDa = b.dataset.paid; draw(el); });
-      $$("[data-per]", el).forEach(b => b.onclick = () => { const n = b.dataset.per; st.perChi = st.perChi.includes(n) ? st.perChi.filter(x => x !== n) : [...st.perChi, n]; draw(el); });
+      $$("[data-per]", el).forEach(b => b.onclick = () => { const n = b.dataset.per; st.perChi = T.viaggiatori.filter(x => x === n ? !st.perChi.includes(n) : st.perChi.includes(x)); draw(el); });   // sempre nell'ordine del viaggio: togliere e rimettere qualcuno non è una modifica
       $$("[data-grp]", el).forEach(b => b.onclick = () => { st.perChi = [...(b.dataset.grp === "all" ? T.viaggiatori : COPPIE[+b.dataset.grp])]; draw(el); });
       $("#s-save", el).onclick = () => {
         if (!sheetOpen()) return;   // già salvata: la scheda si sta chiudendo
@@ -2900,7 +2901,11 @@
         // si parte dalla spesa com'è adesso, non da quando si è aperta la scheda: se intanto un altro l'ha
         // eliminata resta nel cestino, e la storia scritta dagli altri non si perde
         const cur = isNew ? s : lists.spese.find(x => x.id === s.id) || s;
-        const next = { ...cur, ...st, desc: $("#s-desc", el).value.trim(), importo, eur: Math.round(eur * 100) / 100, data: $("#s-data", el).value, ts: cur.ts || Date.now(), da: cur.da || (isNew ? me : cur.by) || me || "?" };
+        const next = { ...cur, ts: cur.ts || Date.now(), da: cur.da || (isNew ? me : cur.by) || me || "?" };
+        // solo i campi cambiati in questa scheda: quelli cambiati intanto dagli altri restano come li hanno lasciati
+        const mine = { desc: $("#s-desc", el).value.trim(), data: $("#s-data", el).value, pagatoDa: st.pagatoDa, perChi: st.perChi, cat: st.cat };
+        for (const k in mine) if (isNew || JSON.stringify(mine[k]) !== JSON.stringify(st0[k])) next[k] = mine[k];
+        if (isNew || importo !== s.importo || st.valuta !== st0.valuta) Object.assign(next, { importo, valuta: st.valuta, eur: Math.round(eur * 100) / 100 });
         const c = isNew ? [] : spDiff(cur, next);
         if (c.length) next.storia = conStoria(cur, "mod", c);
         const saved = putItem("spese", next);
@@ -2911,13 +2916,18 @@
       $("#s-del", el)?.addEventListener("click", async () => {
         const c0 = lists.spese.find(x => x.id === s.id) || s;
         const amt = c0.importo ? ` (${c0.valuta === "JPY" ? fmtInt(c0.importo) + " ¥" : eurF(c0.importo)})` : "";
-        if (!(await ask({ title: `Eliminare "${c0.desc || "spesa"}"${amt}?`, text: "Finirà nel cestino delle Spese: da lì si può ripristinare.", ok: "Elimina", danger: true }))) return;
+        if (!(await ask({ title: `Eliminare "${c0.desc || catOf(c0.cat).n}"${amt}?`, text: "Finirà nel cestino delle Spese: da lì si può ripristinare.", ok: "Elimina", danger: true }))) return;
         const cur = lists.spese.find(x => x.id === s.id) || s;   // com'è adesso (vedi Salva)
         if (cur.del) { closeSheet(); rerender(); return toast(`L'ha già eliminata ${cur.del.by}: è nel cestino`); }
         const old = { ...cur }, gone = putItem("spese", { ...cur, da: cur.da || cur.by || "?", del: { by: me || "?", t: Date.now() }, storia: conStoria(cur, "del") });
         const n = hurtsOthers(old, gone) ? notifyOthers("spesa-del", gone, { wait: 5500 }) : null;
         closeSheet(); rerender();
-        toast("Spesa nel cestino", () => { unNotify(n); putItem("spese", old); rerender(); });
+        // "Annulla": si toglie solo l'eliminazione, partendo da com'è adesso (se intanto un altro l'ha modificata nel cestino, la modifica resta)
+        toast("Spesa nel cestino", () => {
+          unNotify(n); const now = lists.spese.find(x => x.id === s.id), d = gone.storia.at(-1);
+          if (now?.del?.t !== gone.del.t) return;   // intanto ripristinata (o eliminata di nuovo) da un altro
+          const { del, ...rest } = now; putItem("spese", { ...rest, storia: (now.storia || []).filter(x => !(x.a === "del" && x.t === d.t && x.by === d.by)) }); rerender();
+        });
       });
     });
   }
