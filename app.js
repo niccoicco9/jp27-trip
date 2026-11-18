@@ -10,7 +10,7 @@
     set(k, v, quiet) { if (!quiet && !UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 131;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 132;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2170,7 +2170,7 @@
   const showTaxi = p => showBig(p.jp || p.indirizzo || p.titolo, `${esc(p.titolo)}<br><span class="jp" style="font-size:1.2rem;color:var(--ink)">ここに行ってください</span><br><small>"Mi porti qui, per favore"</small>`);
   // costo di una prenotazione: vive in una spesa collegata (pren: id), così entra da sola nel "chi deve a chi"
   const PCAT = { hotel: "alloggio", volo: "trasporti", treno: "trasporti", biglietto: "attivita", altro: "altro" };
-  const PAGAM = { saldato: ["Saldato", "Tutto saldato"], acconto: ["Acconto", "Pagato solo l'acconto"], loco: ["Sul posto", "Da pagare sul posto"] };   // [pulsante, scheda]
+  const PAGAM = { saldato: ["Saldato", "Saldato", "ok"], acconto: ["Acconto", "Solo acconto", "warn"], loco: ["Sul posto", "Da pagare sul posto", "ghost"] };   // [pulsante, etichetta, stile]
   const spesaOf = id => lists.spese.find(s => s.pren === id && !s.del);
   // la spesa collegata va nel cestino (prenotazione eliminata o costo tolto); torna indietro con l'"Annulla"
   function trashPrenSpesa(id) {
@@ -2187,11 +2187,12 @@
       : `${p.dal ? fmtDay(p.dal, { weekday: "short", day: "numeric", month: "short" }) : "data da definire"}${p.ora ? " · " + esc(p.ora) : ""}`
         + (p.tipo === "volo" && (p.al || p.oraA) ? ` → arrivo ${p.al && p.al !== p.dal ? fmtDay(p.al, { weekday: "short", day: "numeric", month: "short" }) + " " : ""}${p.oraA ? esc(p.oraA) : ""}` : "");
     const route = p.da || p.a ? `<div class="small">${esc(p.da || "?")} → ${esc(p.a || "?")}</div>` : "";
-    const sp = spesaOf(p.id), per = sp?.perChi?.length ? sp.perChi : T.viaggiatori;
-    const cost = sp || PAGAM[p.pagam] ? `<div class="small" style="margin-top:8px">${icon("HandCoins")} ${sp ? `<b>${spImp(sp)}</b> · pagato da ${esc(sp.pagatoDa)} · ${per.length > 1 ? `${eurF(sp.eur / per.length)} a testa (${esc(splitLabel(per))})` : `per ${esc(per[0])}`}` : ""}${sp && PAGAM[p.pagam] ? " · " : ""}${PAGAM[p.pagam] ? `<span style="color:${p.pagam === "saldato" ? "var(--ok)" : "var(--shu)"}">${PAGAM[p.pagam]?.[1] || ""}</span>` : ""}</div>` : "";
+    const sp = spesaOf(p.id), per = sp?.perChi?.length ? sp.perChi : T.viaggiatori, pg = PAGAM[p.pagam];
+    const stato = pg ? `<span class="pill ${pg[2]} pstato">${pg[1]}</span>` : "";
+    const cost = sp ? `<div class="pcost"><b>${spImp(sp)}</b><span class="small muted">${esc(sp.pagatoDa)} ha pagato${per.length > 1 ? ` · <b>${eurF(sp.eur / per.length)}</b> a testa${per.length < T.viaggiatori.length ? ` (${esc(splitLabel(per))})` : ""}` : ` per ${esc(per[0])}`}</span></div>` : "";
     return `<div class="card pcard${p.id === freshId ? " fresh" : ""}" data-pren="${p.id}">
       <div class="row"><span class="pic" style="background:${col}">${icon(ic)}</span>
-        <div class="grow"><b>${esc(p.titolo || tn)}</b><div class="muted small">${when}</div>${route}${p.indirizzo ? `<div class="small muted">${esc(p.indirizzo)}</div>` : ""}</div></div>
+        <div class="grow"><b>${esc(p.titolo || tn)}</b><div class="muted small">${when}</div>${stato}${route}${p.indirizzo ? `<div class="small muted">${esc(p.indirizzo)}</div>` : ""}</div></div>
       ${p.codice ? `<div class="small" style="margin-top:8px">${icon("KeyRound")} Codice: <b class="copiabile">${esc(p.codice)}</b></div>` : ""}
       ${cost}
       ${docsOf(p.id).length ? `<div class="docs">${docsOf(p.id).map(docBtn).join("")}</div>` : ""}
