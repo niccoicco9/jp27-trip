@@ -10,7 +10,7 @@
     set(k, v, quiet) { if (!quiet && !UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 143;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 144;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2711,7 +2711,7 @@
     const arcs = rows.map(([k, v]) => { const len = v / sum * C, a = `<circle r="${R}" cx="66" cy="66" stroke="${catOf(k).col}" stroke-dasharray="${Math.max(.5, len - (rows.length > 1 ? 2 : 0))} ${C}" stroke-dashoffset="${-off}" opacity="${spFilter && spFilter !== k ? .25 : 1}"/>`; off += len; return a; }).join("");
     return `<div class="card"><div class="between" style="gap:8px"><h3 style="margin:0">Per categoria</h3>${me ? `<div class="seg"><button data-spmine="0" class="${spMine ? "" : "on"}">Gruppo</button><button data-spmine="1" class="${spMine ? "on" : ""}">La mia parte</button></div>` : ""}</div>
       ${sum ? `<div class="catchart"><div class="donut"><svg viewBox="0 0 132 132" aria-hidden="true"><circle r="${R}" cx="66" cy="66" stroke="var(--card-2)"/>${arcs}</svg><div class="mid"><small class="muted">${spMine ? "la tua parte" : "totale"}</small><b>${eurF(sum)}</b></div></div>
-        <div class="catrows">${rows.map(([k, v]) => { const c = catOf(k); return `<button class="catrow${spFilter === k ? " on" : ""}" data-fcat="${k}"><span class="sw" style="background:${c.col}">${c.html}</span><span class="nm">${esc(c.n)}</span><span><b>${eurF(v)}</b><span class="pc">${Math.round(v / sum * 100)}%</span></span></button>`; }).join("")}</div></div>
+        <div class="catrows">${rows.map(([k, v]) => { const c = catOf(k); return `<button class="catrow${spFilter === k ? " on" : ""}" data-fcat="${esc(k)}"><span class="sw" style="background:${c.col}">${c.html}</span><span class="nm">${esc(c.n)}</span><span><b>${eurF(v)}</b><span class="pc">${Math.round(v / sum * 100)}%</span></span></button>`; }).join("")}</div></div>
         <p class="small muted" style="margin:8px 0 0">Tocca una categoria per vedere solo quelle spese. I rimborsi non contano.</p>` : `<p class="small muted" style="margin:10px 0 0">Nessuna spesa a tuo carico per ora.</p>`}</div>`;
   }
   const rate = () => LS.get("rate", { r: 170 }).r || 170;
@@ -2786,6 +2786,8 @@
     const trash = lists.spese.filter(s => s.del).sort((a, b) => b.del.t - a.del.t);
     const othersT = Math.max(0, ...trash.filter(s => s.del.by !== me && Date.now() - s.del.t < 3 * 864e5).map(s => s.del.t));   // tolte dagli altri negli ultimi giorni: il cestino si apre da solo
     const trashOpen = spOpen.trash === null || othersT > spOpen.trashT ? othersT > 0 : spOpen.trash;
+    // filtro su una categoria che intanto è sparita (eliminata da un altro, ultime spese nel cestino): si torna a tutte
+    if (spFilter && (catOf(spFilter).k !== spFilter || !speseVive().some(s => s.cat !== "rimborso" && catOf(s.cat).k === spFilter))) spFilter = null;
     const items = speseVive().filter(s => !spFilter || catOf(s.cat).k === spFilter).sort((a, b) => (b.data || "").localeCompare(a.data || "") || (b.ts || 0) - (a.ts || 0));
     let lastD = null;
     // prenotazioni con più di un costo (aggiunto da due telefoni offline con una versione vecchia): contano doppio
@@ -2837,24 +2839,26 @@
 
   function editSpesa(s, quick) {
     const isNew = !s.id, today = todayJP();
-    let st = { valuta: s.valuta || "JPY", pagatoDa: s.pagatoDa || me || T.viaggiatori[0], perChi: s.perChi?.length ? [...s.perChi] : [...T.viaggiatori], cat: s.cat || "cibo" };
+    let st = { valuta: s.valuta || "JPY", pagatoDa: s.pagatoDa || me || T.viaggiatori[0], perChi: s.perChi?.length ? [...s.perChi] : [...T.viaggiatori], cat: s.cat ? catOf(s.cat).k : "cibo" };   // categoria eliminata intanto da un altro: si accende Altro
     const st0 = { ...st, desc: s.desc || "", data: s.data || (isNew ? today : "") };   // com'era all'apertura: si salvano solo i campi cambiati qui
     // chip delle categorie: fisse + create da voi + "Nuova"; tieni premuto su una vostra per eliminarla
     const drawCats = el => {
       const box = $("#s-cats", el); if (!box) return;
-      box.innerHTML = Object.keys(SCAT).filter(k => k !== "rimborso").concat(lists.categorie.map(c => c.id)).map(k => { const c = catOf(k); return `<button class="chip" data-cat="${k}">${c.html} ${esc(c.n)}</button>`; }).join("")
+      box.innerHTML = Object.keys(SCAT).filter(k => k !== "rimborso").concat(lists.categorie.map(c => c.id)).map(k => { const c = catOf(k); return `<button class="chip" data-cat="${esc(k)}">${c.html} ${esc(c.n)}</button>`; }).join("")
         + `<button class="chip" id="nc-open">${icon("Plus")} Nuova</button>`;
       $$("[data-cat]", el).forEach(b => {
-        b.onclick = () => { st.cat = b.dataset.cat; draw(el); };
-        if (!SCAT[b.dataset.cat]) { let t; b.addEventListener("pointerdown", () => { t = setTimeout(() => delCat(b.dataset.cat, el), 600); }); ["pointerup", "pointerleave", "pointercancel"].forEach(ev => b.addEventListener(ev, () => clearTimeout(t))); }
+        b.onclick = () => { if (Date.now() - longT < 1500) return; st.cat = b.dataset.cat; draw(el); };   // il tocco che chiude una pressione lunga non sceglie la categoria
+        if (!SCAT[b.dataset.cat]) { let t; b.addEventListener("pointerdown", () => { t = setTimeout(() => { longT = Date.now(); delCat(b.dataset.cat, el); }, 600); }); ["pointerup", "pointerleave", "pointercancel"].forEach(ev => b.addEventListener(ev, () => clearTimeout(t))); }
       });
       $("#nc-open", el).onclick = () => { const n = $("#s-newcat", el); n.hidden = !n.hidden; if (!n.hidden) $("#nc-n", el).focus(); };
       draw(el);
     };
+    let longT = 0;
+    // le spese nel cestino non si contano né si toccano: se tornano, una categoria che non c'è più vale Altro
     const delCat = async (k, el) => {
-      buzz(); const c = catOf(k), used = lists.spese.filter(x => x.cat === k).length;
+      buzz(); const c = catOf(k), used = speseVive().filter(x => x.cat === k).length;
       if (!(await ask({ title: `Eliminare "${c.n}"?`, text: used ? `${used === 1 ? "1 spesa passa" : used + " spese passano"} in "Altro".` : "Nessuna spesa la usa.", ok: "Elimina", danger: true }))) return;
-      for (const x of lists.spese.filter(x => x.cat === k)) putItem("spese", { ...x, cat: "altro" });
+      for (const x of speseVive().filter(x => x.cat === k)) putItem("spese", { ...x, cat: "altro" });
       delItem("categorie", k); if (st.cat === k) st.cat = "altro"; drawCats(el); pendingRemote = true;   // la pagina sotto si aggiorna alla chiusura
     };
     const draw = el => {
@@ -2882,7 +2886,7 @@
         <div class="seg wide"><button data-grp="all">Tutti e 4</button><button data-grp="0">${COPPIE[0].map(n => n[0]).join(" & ")}</button><button data-grp="1">${COPPIE[1].map(n => n[0]).join(" & ")}</button></div>
         <div class="whos multi">${T.viaggiatori.map(n => `<button data-per="${n}">${avatar(n, 30)}${n}</button>`).join("")}</div></div>
       ${s.cat === "rimborso" ? "" : `<div class="fl"><span>Categoria</span><div class="chips" id="s-cats" style="margin:0;padding:0;flex-wrap:wrap"></div>
-        <div class="newcat" id="s-newcat" hidden><input id="nc-e" placeholder="🍡" maxlength="4" autocomplete="off" aria-label="Emoji"><input id="nc-n" placeholder="Nome, es. Onsen" maxlength="24" autocomplete="off"><button class="btn small primary" id="nc-ok">Crea</button></div></div>`}
+        <div class="newcat" id="s-newcat" hidden><input id="nc-e" placeholder="🍡" maxlength="16" autocomplete="off" aria-label="Emoji"><input id="nc-n" placeholder="Nome, es. Onsen" maxlength="24" autocomplete="off"><button class="btn small primary" id="nc-ok">Crea</button></div></div>`}
       <label class="fl"><span>Giorno</span><input type="date" id="s-data" value="${s.data || (isNew ? today : "")}"></label>
       <div class="btns">${isNew ? `<button class="btn" data-close>Annulla</button>` : `<button class="btn" id="s-del" style="color:var(--shu)">${icon("Trash2")} Elimina</button>`}<button class="btn primary" id="s-save">Salva</button></div>
       ${isNew ? "" : storiaHtml(s)}
@@ -2890,10 +2894,12 @@
       drawCats(el); draw(el);
       if (quick) $("#s-imp", el).focus();   // spesa veloce: si scrive subito l'importo
       if ($("#nc-ok", el)) $("#nc-ok", el).onclick = () => {
-        const n = $("#nc-n", el).value.trim(); if (!n) return toast("Scrivi il nome della categoria");
+        const n = $("#nc-n", el).value.trim().slice(0, 24); if (!n) return toast("Scrivi il nome della categoria");
         if ([...Object.values(SCAT).map(x => x[1]), ...lists.categorie.map(c => c.n)].some(x => x.toLowerCase() === n.toLowerCase())) return toast("Esiste già");
-        const e = [...$("#nc-e", el).value.trim()].slice(0, 2).join("") || "🏷️";
-        const c = putItem("categorie", { id: "k" + uid(), n, e, col: CCOL[lists.categorie.length % CCOL.length] });
+        // solo la prima emoji, intera anche se è composta (👨‍👩‍👧, 🇯🇵, 👍🏽)
+        const ev = $("#nc-e", el).value.trim(), e = (window.Intl?.Segmenter ? [...new Intl.Segmenter().segment(ev)].map(x => x.segment) : [...ev])[0] || "🏷️";
+        const used = lists.categorie.map(c => c.col), col = CCOL.find(x => !used.includes(x)) || CCOL[lists.categorie.length % CCOL.length];   // un colore non ancora usato
+        const c = putItem("categorie", { id: "k" + uid(), n, e, col });
         st.cat = c.id; $("#nc-n", el).value = $("#nc-e", el).value = ""; $("#s-newcat", el).hidden = true; drawCats(el); toast(`Categoria "${n}" creata ✓`);
       };
       $("#s-imp", el).oninput = () => draw(el);
