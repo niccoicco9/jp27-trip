@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 149;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 150;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -3042,7 +3042,7 @@
   async function currentSub() { try { return await (await navigator.serviceWorker.ready).pushManager.getSubscription(); } catch { return null; } }
   // ——— backup: file Excel da leggere + file .json per ripristinare tutto (modulo backup.js, caricato solo qui) ———
   const backupInfo = () => ({
-    days: DAYS, zone: Object.fromEntries(ZONE.map(z => [z.id, z.nome])), catLuoghi: Object.fromEntries(Object.entries(CAT).map(([k, c]) => [k, c[2]])),
+    days: DAYS, viaggiatori: T.viaggiatori, coppie: COPPIE, zone: Object.fromEntries(ZONE.map(z => [z.id, z.nome])), catLuoghi: Object.fromEntries(Object.entries(CAT).map(([k, c]) => [k, c[2]])),
     // luoghi di Wanderlog com'erano all'origine: le modifiche fatte da voi sono nel backup e le applica backup.js
     luoghi: Object.fromEntries(LUOGHI.slice(0, BASE_N).map(p => [p.id, { ...BASE_ORIG.get(p.id), z: p.z, c: p.c, lat: p.lat, lng: p.lng, chiuso: p.chiuso, note: p.note, out: BASE_OUT.has(p.id) }])),
   });
@@ -3054,7 +3054,17 @@
     for (const name of B.RESTORE_LISTS) {
       const next = cleanList(name, b.lists[name] || []), ids = new Set(next.map(x => x.id)), now = new Map(lists[name].map(x => [x.id, x]));
       if (name === "spese") {   // le spese che il backup non ha finiscono nel cestino, non spariscono
-        for (const x of now.values()) if (!ids.has(x.id)) next.push(x.del ? x : { ...x, del: { by: me || "?", t: Date.now(), backup: true } });
+        const t = Date.now(), del = { by: me || "?", t, backup: true };
+        for (const x of now.values()) if (!ids.has(x.id)) next.push(x.del ? x : { ...x, del });
+        // spese che il backup cambia: la storia resta quella di adesso, con una riga per il ripristino
+        // (cosa cambia, chi e quando), così gli altri vedono perché la loro modifica non c'è più
+        next.forEach((x, j) => {
+          const old = now.get(x.id); if (!old || sig(old) === sig(x)) return;
+          if (old.del && x.del) { next[j] = { ...x, del: old.del, storia: old.storia }; if (!old.storia) delete next[j].storia; return; }
+          if (x.del) { next[j] = { ...x, del, storia: old.storia }; if (!old.storia) delete next[j].storia; return; }   // la riga dell'eliminazione la mostra storiaDi
+          const c = spDiff(old, x), st = old.del ? [...storiaDi(old), { a: "rip", by: me || "?", t, bk: true, ...(c.length && { c }) }] : c.length ? [...storiaDi(old), { a: "mod", by: me || "?", t, bk: true, c }] : storiaDi(old);
+          next[j] = { ...x, storia: st.slice(-20) }; if (!st.length) delete next[j].storia;
+        });
       } else for (const id of now.keys()) if (!ids.has(id)) queueDel(name, id, now.get(id));
       // voci cambiate: nuovo codice di scrittura · voci uguali: resta quella di qui (con "w" e "at" del server, non quelli del backup)
       next.forEach((x, j) => {
@@ -3094,8 +3104,8 @@
       $("#bk-file", el).onchange = async e => {
         const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
         const { b, err } = B.readBackup(await f.text()); if (err) return toast(err);
-        const k = B.counts(b), when = new Date(b.creato).toLocaleString("it-IT", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
-        if (!await ask({ title: "Ripristinare questo backup?", text: `Backup del ${when}${b.da ? ` (di ${b.da})` : ""}: ${backupTxt(k)}. Programma, spese, prenotazioni e luoghi tornano com'erano allora, per tutti e quattro. Quello che c'è adesso resta salvato qui e si può riavere.`, ok: "Ripristina", danger: true, icon: "RotateCcw" })) return;
+        const k = B.counts(b), d = new Date(b.creato), when = isNaN(d) ? "senza data" : "del " + d.toLocaleString("it-IT", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        if (!await ask({ title: "Ripristinare questo backup?", text: `Backup ${when}${b.da ? ` (di ${b.da})` : ""}: ${backupTxt(k)}. Programma, spese, prenotazioni e luoghi tornano com'erano allora, per tutti e quattro. Quello che c'è adesso resta salvato qui e si può riavere.`, ok: "Ripristina", danger: true, icon: "RotateCcw" })) return;
         LS.set("preRestore", now()); applyBackup(B, b);
         closeSheet(); rerender(); buzz(); toast("Backup ripristinato ✓");
       };

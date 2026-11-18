@@ -26,10 +26,15 @@ export function readBackup(text) {
   if (b?.kind !== KIND || typeof b.plan !== "object" || !b.lists || typeof b.lists !== "object") return { err: "Il file non è un backup del viaggio" };
   if (b.v > V) return { err: "Backup fatto con una versione più nuova dell'app: aggiorna prima l'app" };
   for (const n of LISTS) if (!Array.isArray(b.lists[n] ?? [])) return { err: "Backup rovinato: manca " + n };
-  return { b };
+  // voci rovinate (vuote, senza codice, scritte a mano o da una versione vecchia) si scartano: le altre entrano
+  const ok = x => x && typeof x === "object" && !Array.isArray(x) && typeof x.id === "string" && /^[^/]{1,200}$/.test(x.id) && !/^__.*__$/.test(x.id) && x.id !== "." && x.id !== "..";
+  const lists = Object.fromEntries(LISTS.map(n => [n, (b.lists[n] || []).filter(ok)]));
+  const plan = b.plan && !Array.isArray(b.plan) ? b.plan : {};
+  return { b: { ...b, plan, lists, booked: Array.isArray(b.booked) ? b.booked.filter(x => typeof x === "string") : [] } };
 }
-export const counts = b => ({ giorni: Object.values(b.plan || {}).filter(d => d?.i?.length).length, tappe: Object.values(b.plan || {}).reduce((a, d) => a + (d?.i?.length || 0), 0),
-  spese: (b.lists.spese || []).filter(s => !s.del).length, prenotazioni: (b.lists.prenotazioni || []).length, luoghi: (b.lists.luoghi || []).filter(x => !x.edit && !x.hide).length });
+const tappeDi = d => Array.isArray(d?.i) ? d.i.length : 0;
+export const counts = b => ({ giorni: Object.values(b.plan || {}).filter(tappeDi).length, tappe: Object.values(b.plan || {}).reduce((a, d) => a + tappeDi(d), 0),
+  spese: (b.lists.spese || []).filter(s => !(s.del && typeof s.del === "object") && +s.importo > 0 && +s.importo < 1e9).length, prenotazioni: (b.lists.prenotazioni || []).length, luoghi: (b.lists.luoghi || []).filter(x => !x.edit && !x.hide).length });
 
 // ——— tabelle ———
 // info: { days: ["2027-02-21", …], luoghi: { id: luogo di Wanderlog com'era (n, jp, z, c, lat, lng, d, dur, eur, pren, chiuso, note, out) },
@@ -41,12 +46,12 @@ export function tables(b, info) {
   const L = b.lists.luoghi || [];
   for (const x of L) if (x.edit && names[x.edit] && x.n) names[x.edit] = { ...names[x.edit], n: x.n };
   for (const x of L) if (!x.edit && !x.hide && x.n) names[x.id] = { n: x.n, z: x.z };
-  const day = d => ({ date: d });
+  const day = d => /^\d{4}-\d{2}-\d{2}$/.test(d) ? { date: d } : typeof d === "string" ? d : "";   // data non valida: testo, mai un numero sbagliato
   const days = [...new Set([...(info.days || []), ...Object.keys(b.plan || {})])].filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
 
   const prog = [["Giorno", "Data", "Titolo del giorno", "Ora", "Tappa", "Zona", "Fatta", "Nota del giorno"]];
   days.forEach((d, k) => {
-    const g = b.plan[d] || {}, ids = g.i || [], n = (info.days || []).indexOf(d) + 1 || k + 1;
+    const g = b.plan[d] || {}, ids = Array.isArray(g.i) ? g.i : [], n = (info.days || []).indexOf(d) + 1 || k + 1;
     if (!ids.length) { if (g.l || g.n) prog.push([n, day(d), g.l || "", "", "", "", "", g.n || ""]); return; }
     // ordine del giorno; se una tappa ha l'orario resta comunque al suo posto (come nell'app)
     ids.forEach((id, j) => prog.push([n, day(d), j ? "" : g.l || "", g.t?.[id] || "", names[id]?.n || id, zona(names[id]?.z), g.f?.includes(id) ? "sì" : "", j ? "" : g.n || ""]));
@@ -56,7 +61,9 @@ export function tables(b, info) {
   const ora = t => t ? new Date(t).toLocaleString("it-IT", { timeZone: "Europe/Rome", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
   const spCols = s => [s.data ? day(s.data) : "", s.desc || "", SPESE[s.cat] || cat[s.cat] || s.cat || "", +s.importo || 0, s.valuta || "", { eur: +s.eur || 0 }, s.pagatoDa || "", (s.perChi || []).join(", "), s.da || s.by || ""];
   const spHead = ["Data", "Descrizione", "Categoria", "Importo", "Valuta", "Euro", "Pagato da", "Per chi", "Inserita da"];
-  const allSp = [...(b.lists.spese || [])].sort((a, c) => (a.data || "").localeCompare(c.data || "") || (a.ts || 0) - (c.ts || 0));
+  const arr = v => Array.isArray(v) ? v.filter(x => x && typeof x === "object") : [];   // campi rovinati (backup vecchi, dati scritti male): vuoti
+  const allSp = (b.lists.spese || []).map(s => ({ ...s, data: typeof s.data === "string" ? s.data : "", perChi: Array.isArray(s.perChi) ? s.perChi : [],
+    del: s.del && typeof s.del === "object" ? s.del : undefined, storia: arr(s.storia).map(x => ({ ...x, c: arr(x.c) })) })).sort((a, c) => (a.data || "").localeCompare(c.data || "") || (a.ts || 0) - (c.ts || 0));
   const spese = [[...spHead, "Modificata"]];
   for (const s of allSp.filter(s => !s.del)) { const m = (s.storia || []).filter(x => x.a === "mod"); spese.push([...spCols(s), m.length ? `sì, ${m.length === 1 ? "1 volta" : m.length + " volte"} (ultima: ${m[m.length - 1].by})` : ""]); }
   const cestino = [[...spHead, "Eliminata da", "Eliminata il (ora italiana)"]];
@@ -67,7 +74,7 @@ export function tables(b, info) {
     const nome = (s.desc || SPESE[s.cat] || cat[s.cat] || "Spesa") + (s.data ? ` (${s.data.split("-").reverse().join("/")})` : ""), imp = `${+s.importo || 0} ${s.valuta === "EUR" ? "€" : "¥"}`;
     const prima = k => (s.storia || []).flatMap(x => x.c || []).find(c => c.k === k)?.da;   // com'era quando è stata aggiunta
     if (s.ts) ev.push([s.ts, ora(s.ts), s.da || s.by || "", "aggiunta", nome, `${prima("Importo") || imp} · pagata da ${prima("Ha pagato") || s.pagatoDa || "?"}`]);
-    for (const x of s.storia || []) ev.push([x.t || 0, ora(x.t), x.by || "", AZ[x.a] || x.a || "", nome, (x.c || []).map(c => `${c.k}: ${c.da} → ${c.a}`).join(" · ") || (x.a === "mod" ? "" : imp)]);
+    for (const x of s.storia || []) ev.push([x.t || 0, ora(x.t), x.by || "", (AZ[x.a] || x.a || "") + (x.bk ? " (ripristino backup)" : ""), nome, (x.c || []).map(c => `${c.k}: ${c.da} → ${c.a}`).join(" · ") || (x.a === "mod" ? "" : imp)]);
   }
   const storia = [["Quando (ora italiana)", "Chi", "Cosa", "Spesa", "Dettaglio"], ...ev.sort((a, c) => c[0] - a[0]).map(r => r.slice(1))];
 
@@ -77,7 +84,7 @@ export function tables(b, info) {
 
   // tutti i luoghi dell'app: quelli di Wanderlog (con le modifiche fatte da voi) e quelli aggiunti da voi; in fondo scartati ed eliminati
   const inDays = {};
-  days.forEach(d => { for (const id of b.plan[d]?.i || []) (inDays[id] ||= []).push(d.slice(8) + "/" + d.slice(5, 7)); });
+  days.forEach(d => { for (const id of Array.isArray(b.plan[d]?.i) ? b.plan[d].i : []) (inDays[id] ||= []).push(d.slice(8) + "/" + d.slice(5, 7)); });
   const booked = new Set(b.booked || []), zoneOrd = Object.keys(info.zone || {});
   const all = Object.entries(info.luoghi || {}).map(([id, p]) => ({ ...p, id, stato: p.out ? "scartato su Wanderlog" : "Wanderlog" }));
   const byIdL = Object.fromEntries(all.map(p => [p.id, p]));
@@ -104,9 +111,39 @@ export function tables(b, info) {
 
   const c = counts(b), when = new Date(b.creato);
   const info0 = [["Backup del viaggio", ""], ["Creato il", when.toLocaleString("it-IT", { timeZone: "Europe/Rome" })], ["Da", b.da || ""], ["Versione app", b.app || ""],
-    ["Giorni con tappe", c.giorni], ["Tappe", c.tappe], ["Spese", c.spese], ["Spese eliminate (nel cestino)", (b.lists.spese || []).length - c.spese], ["Prenotazioni", c.prenotazioni], ["Luoghi (senza gli scartati)", all.filter(p => !p.out).length], ["di cui aggiunti da voi", c.luoghi], ["", ""],
+    ["Giorni con tappe", c.giorni], ["Tappe", c.tappe], ["Spese", c.spese], ["Spese eliminate (nel cestino)", allSp.filter(s => s.del).length], ["Prenotazioni", c.prenotazioni], ["Luoghi (senza gli scartati)", all.filter(p => !p.out).length], ["di cui aggiunti da voi", c.luoghi], ["", ""],
+    ...contiRows(allSp, info), ["", ""],
     ["Per ripristinare", "nell'app: Utility › Backup › Ripristina, scegliendo il file .json di questo backup"]];
   return [{ name: "Info", rows: info0 }, { name: "Programma", rows: prog }, { name: "Spese", rows: spese }, { name: "Spese eliminate", rows: cestino }, { name: "Storia spese", rows: storia }, { name: "Prenotazioni", rows: pren }, { name: "Luoghi", rows: luoghi }, { name: "Documenti", rows: docs }];
+}
+
+// conti come nella pagina Spese: totale del gruppo (senza rimborsi) e chi deve quanto a chi, senza le spese nel cestino.
+// info.viaggiatori e info.coppie (es. [["Niccolò", "Antonella"], ["Miriam", "Paolo"]]): senza, le persone si prendono dalle spese
+const cent = v => Math.sign(v) * Math.round(+(Math.abs(v) * 100).toFixed(6)) / 100 || 0;
+const pari = v => Math.abs(v) < .0051 ? 0 : cent(v);
+export function conti(spese, viaggiatori = []) {
+  const vive = spese.filter(s => !s.del && +s.importo > 0 && +s.eur > 0), net = Object.fromEntries(viaggiatori.map(n => [n, 0]));
+  let total = 0;
+  for (const s of vive) {
+    const per = Array.isArray(s.perChi) && s.perChi.length ? [...new Set(s.perChi)] : viaggiatori.length ? viaggiatori : [s.pagatoDa];
+    net[s.pagatoDa] = (net[s.pagatoDa] || 0) + +s.eur;
+    for (const n of per) net[n] = (net[n] || 0) - s.eur / per.length;
+    if (s.cat !== "rimborso") total += +s.eur;
+  }
+  return { total, net };
+}
+function contiRows(spese, info) {
+  const coppie = (info.coppie || []).filter(c => Array.isArray(c) && c.length), { total, net } = conti(spese, info.viaggiatori || coppie.flat());
+  const eur = v => ({ eur: pari(v) }), fmt = v => pari(v).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+  const rows = [["Conti (come nella pagina Spese)", ""], ["Spesa totale del gruppo", eur(total)]];
+  if (coppie.length === 2) {
+    const cn = coppie.map(c => c.reduce((a, n) => a + (net[n] || 0), 0)), nome = c => c.join(" & ");
+    rows.push(["Chi deve a chi", Math.abs(cn[0]) < .5 ? "Siete in pari" : cn[0] > 0 ? `${nome(coppie[1])} devono ${fmt(cn[0])} a ${nome(coppie[0])}` : `${nome(coppie[0])} devono ${fmt(-cn[0])} a ${nome(coppie[1])}`]);
+    coppie.forEach((c, k) => rows.push([`Saldo ${nome(c)}`, eur(cn[k])]));
+  }
+  for (const [n, v] of Object.entries(net)) rows.push([`Saldo ${n}`, eur(v)]);
+  rows.push(["", "+ deve ricevere · − deve dare. I rimborsi contano nei saldi, non nel totale: nella scheda Spese sono quelli con categoria Rimborso"]);
+  return rows;
 }
 
 // ——— file Excel (.xlsx): un archivio zip di file XML, scritto a mano ———
