@@ -99,7 +99,13 @@ export function start(config, code, h, { memory = false } = {}) {
     // per la coda di riserva dell'app: true = confermata dal server, "drop" = rifiutata per sempre (voce non valida:
     // ritentarla non serve), false = da ritentare (rete, permessi, database locale)
     // Promise.resolve().then: i dati non validi Firestore li rifiuta subito (eccezione), così finiscono in outcome
-    put: (name, { id, ...rest }) => Promise.resolve().then(() => setDoc(doc(main, name, id), { ...rest, at: serverTimestamp() })).then(() => true, outcome),
+    // campo per campo (mergeFields): i campi aggiunti intanto da altri e non noti qui (es. "del" di un'eliminazione)
+    // restano; rm = campi da togliere. Ogni campo scritto si sostituisce intero, anche se è un oggetto
+    put: (name, { id, ...rest }, rm = []) => Promise.resolve().then(() => {
+      const data = { ...rest, at: serverTimestamp() };
+      for (const k of rm) data[k] = deleteField();
+      return setDoc(doc(main, name, id), data, { mergeFields: Object.keys(data).map(k => new FieldPath(k)) });
+    }).then(() => true, outcome),
     del: (name, id) => Promise.resolve().then(() => deleteDoc(doc(main, name, id))).then(() => true, outcome),
     // documenti allegati: ogni pagina (un'immagine JPEG) è un documento a sé, letto solo quando serve
     putPage: (id, k, bytes) => setDoc(doc(main, "allegati_pagine", `${id}_${k}`), { b: Bytes.fromUint8Array(bytes), at: serverTimestamp() }),

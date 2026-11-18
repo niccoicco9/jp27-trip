@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 147;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 148;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -382,7 +382,7 @@
     if (!o || !sync) return;
     if ((o.c ?? code) !== code) { delete outbox[key]; saveOutbox(); return; }   // di un altro viaggio
     const s = sync;
-    (o.op === "put" ? s.put(o.name, o.item) : s.del(o.name, o.id)).then(ok => {
+    (o.op === "put" ? s.put(o.name, o.item, o.rm) : s.del(o.name, o.id)).then(ok => {
       if ((ok === true || ok === "drop") && outbox[key] === o) { delete outbox[key]; saveOutbox(); }   // se nel frattempo è cambiata, resta l'ultima
     });
   }
@@ -412,7 +412,14 @@
     const od = !!prev && (prev.op === "del" || !!prev.od);
     outbox[key] = { ...o, c: code, t: Date.now(), bw, ba, own, ...(od && { od }) }; saveOutbox(); sendQueued(key);
   }
-  const queuePut = (name, item, base) => { const { at, ...rest } = item; queue({ op: "put", name, item: rest }, base); };
+  // la voce si scrive campo per campo (non sostituita intera): i campi che qui non si conoscono restano come sul server.
+  // Es. una spesa eliminata da un altro mentre qui la si modificava offline resta nel cestino, con la modifica.
+  // rm = campi da togliere: c'erano nella voce su cui si è fatta la modifica (o in una precedente non confermata) e ora no
+  const queuePut = (name, item, base) => {
+    const { at, ...rest } = item, prev = outbox[name + "/" + item.id];
+    const rm = [...new Set([...Object.keys(base || {}), ...(prev?.op === "put" && prev.rm || [])])].filter(k => k !== "at" && k !== "id" && !(k in rest));
+    queue({ op: "put", name, item: rest, ...(rm.length && { rm }) }, base);
+  };
   const queueDel = (name, id, base) => queue({ op: "del", name, id }, base);
   // all'avvio della sincronizzazione: le voci rimaste aspettano la prima lettura dal server
   const checkOutbox = () => { toCheck = new Set(Object.keys(outbox)); };
@@ -2767,7 +2774,7 @@
   const speseVive = () => lists.spese.filter(s => !s.del);
   const spImp = s => s.valuta === "JPY" ? fmtInt(s.importo) + " ¥" : eurF(s.importo);
   const quando = t => new Date(t).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-  const conStoria = (s, a, c) => [...(s.storia || []), { a, by: me || "?", t: Date.now(), ...(c ? { c } : {}) }].slice(-20);
+  const conStoria = (s, a, c) => [...storiaDi(s), { a, by: me || "?", t: Date.now(), ...(c ? { c } : {}) }].slice(-20);
   // cosa è cambiato, già scritto come si legge (Firestore non accetta liste dentro liste: una voce per campo)
   function spDiff(a, b) {
     const rb = b.cat === "rimborso";   // per un rimborso le voci si chiamano come nella scheda
@@ -2784,10 +2791,18 @@
   }
   // il cambio fa perdere soldi a qualcuno che non è chi lo fa → gli altri ricevono l'avviso
   const hurtsOthers = (a, b) => { const x = spNet(a), y = spNet(b); return T.viaggiatori.some(n => n !== me && (y[n] || 0) < (x[n] || 0) - .005); };
+  // nel cestino senza la riga dell'eliminazione: l'ha tolta una modifica fatta offline da un altro (che scrive la sua storia)
+  // o un ripristino di backup. Si rimette, dal campo "del", al suo posto nel tempo
+  function storiaDi(s) {
+    const st = s.storia || [], d = s.del;
+    if (!d || st.some(x => x.a === "del" && x.by === d.by && Math.abs((x.t || 0) - d.t) < 6e4)) return st;
+    const i = st.findIndex(x => (x.t || 0) > d.t), row = { a: "del", by: d.by, t: d.t, ...(d.backup && { bk: true }) };
+    return i < 0 ? [...st, row] : [...st.slice(0, i), row, ...st.slice(i)];
+  }
   function storiaHtml(s) {
     const o = s.cat === "rimborso" ? "o" : "a", verbo = { mod: "l'ha modificat" + o, del: "l'ha eliminat" + o, rip: "l'ha ripristinat" + o };
     const rows = [`<li><b>${esc(s.da || s.by || "?")}</b> l'ha aggiunt${o}${s.ts ? " · " + quando(s.ts) : ""}</li>`,
-      ...(s.storia || []).map(x => `<li><b>${esc(x.by)}</b> ${verbo[x.a] || "l'ha cambiata"}${x.t ? " · " + quando(x.t) : ""}${x.c?.length ? x.c.map(c => `<br><span class="muted">${esc(c.k)}: ${esc(c.da)} → <b>${esc(c.a)}</b></span>`).join("") : ""}</li>`)];
+      ...storiaDi(s).map(x => `<li><b>${esc(x.by)}</b> ${verbo[x.a] || "l'ha cambiata"}${x.bk ? " (ripristino di un backup)" : ""}${x.t ? " · " + quando(x.t) : ""}${x.c?.length ? x.c.map(c => `<br><span class="muted">${esc(c.k)}: ${esc(c.da)} → <b>${esc(c.a)}</b></span>`).join("") : ""}</li>`)];
     return `<details class="perperson"${s.storia?.some(x => x.a === "mod") ? " open" : ""}><summary>Storia ${o === "o" ? "del rimborso" : "della spesa"}</summary><ul class="spstoria small">${rows.join("")}</ul></details>`;
   }
   async function restoreSpesa(s) {
