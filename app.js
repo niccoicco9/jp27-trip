@@ -10,7 +10,7 @@
     set(k, v, quiet) { if (!quiet && !UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
 
-  const APP_VERSION = 136;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 137;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2297,16 +2297,31 @@
       $$("[data-per]", el).forEach(b => b.onclick = () => { const n = b.dataset.per; cs.perChi = cs.perChi.includes(n) ? cs.perChi.filter(x => x !== n) : [...cs.perChi, n]; drawCost(); });
       $$("[data-grp]", el).forEach(b => b.onclick = () => { cs.perChi = [...(b.dataset.grp === "all" ? T.viaggiatori : COPPIE[+b.dataset.grp])]; drawCost(); });
       $$("[data-pagam]", el).forEach(b => b.onclick = () => { cs.pagam = cs.pagam === b.dataset.pagam ? "" : b.dataset.pagam; drawCost(); });
+      // com'era il costo all'apertura della scheda: salvando si cambia solo quello che si è toccato qui
+      const cs0 = { ...cs, perChi: [...cs.perChi] }, imp0 = impOf();
       // salva il costo nella spesa collegata (nuova, aggiornata, o nel cestino se il costo è stato tolto)
       const saveCost = item => {
         if (!$("#p-imp", el)) return;
         const imp = impOf(), cur = spesaOf(pid);
+        const tImp = imp !== imp0 || cs.valuta !== cs0.valuta, tPaid = cs.pagatoDa !== cs0.pagatoDa;
+        const tPer = cs.perChi.length !== cs0.perChi.length || cs.perChi.some(n => !cs0.perChi.includes(n));
+        // costo non toccato: resta com'è adesso, anche se intanto un altro l'ha cambiato o eliminato
+        // (con la scheda aperta non si riporta indietro la sua modifica); la descrizione segue solo il nome
+        if (!tImp && !tPaid && !tPer) {
+          if (cur && item.titolo !== p.titolo && item.titolo !== cur.desc) {
+            const next = { ...cur, desc: item.titolo }, c = spDiff(cur, next);
+            putItem("spese", { ...next, storia: conStoria(cur, "mod", c) });
+          }
+          return;
+        }
         if (!imp) { trashPrenSpesa(pid); return; }
-        const eur = cs.valuta === "JPY" ? (cur?.valuta === "JPY" && cur.importo === imp && cur.eur ? cur.eur : imp / rate()) : imp;
+        // si parte dalla spesa com'è adesso: dei campi del costo cambia solo quello toccato in questa scheda
+        const valuta = tImp || !cur ? cs.valuta : cur.valuta, importo = tImp || !cur ? imp : cur.importo;
+        const eur = !tImp && cur ? cur.eur : valuta === "JPY" ? (cur?.valuta === "JPY" && cur.importo === importo && cur.eur ? cur.eur : importo / rate()) : importo;
         const base = cur || { id: uid(), ts: Date.now(), da: me || "?", data: todayJP(), pren: pid };
         // descrizione e categoria cambiate da Spese restano; la descrizione segue il nome solo se il nome cambia
         const desc = cur?.desc && item.titolo === p.titolo ? cur.desc : item.titolo;
-        const next = { ...base, valuta: cs.valuta, pagatoDa: cs.pagatoDa, perChi: [...cs.perChi], cat: cur?.cat || PCAT[t] || "altro", desc, importo: imp, eur: Math.round(eur * 100) / 100 };
+        const next = { ...base, valuta, pagatoDa: tPaid || !cur ? cs.pagatoDa : cur.pagatoDa, perChi: tPer || !cur ? [...cs.perChi] : [...cur.perChi], cat: cur?.cat || PCAT[t] || "altro", desc, importo, eur: Math.round(eur * 100) / 100 };
         const c = cur ? spDiff(cur, next) : [];
         if (cur && !c.length) return;
         if (c.length) next.storia = conStoria(cur, "mod", c);
