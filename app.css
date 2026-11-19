@@ -574,6 +574,7 @@ table.budget td:last-child { text-align: right; font-variant-numeric: tabular-nu
 .nights { display: grid; grid-template-columns: repeat(15, 1fr); gap: 3px; margin-top: 10px; }
 .nights i { height: 10px; border-radius: 3px; background: var(--card-2); border: 1px solid var(--line); }
 .nights i.ok { background: #2e6fb0; border-color: transparent; }
+.nights i.dup { background: var(--warn-fg); }
 .addrow { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
 .mini {
   display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 8px; border-radius: 16px;

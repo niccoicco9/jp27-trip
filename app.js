@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 157;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 158;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -943,12 +943,16 @@
   // Hotel della notte + prenotazioni con orario, per Oggi e per ogni giorno
   function dayPren(d) {
     if (!code) return "";
-    const h = hotelFor(d), bs = bookingsOn(d), ci = lists.prenotazioni.filter(p => p.tipo === "hotel" && p.dal === d);
+    const hs = hotelsFor(d), h = hs[0], bs = bookingsOn(d), ci = lists.prenotazioni.filter(p => p.tipo === "hotel" && p.dal === d);
+    const docBtn = p => docsOf(p.id).length ? `<button class="btn small" data-doc="${docsOf(p.id)[0].id}" aria-label="Apri il documento">${icon("Paperclip")}</button>` : "";
+    // si lascia un hotel (anche se stanotte se ne prende un altro); un altro hotel sulla stessa notte si vede con l'avviso
+    const outHtml = checkoutsOn(d).map(p => `<div class="mini" data-pren="${p.id}">${icon("Luggage")}<span class="grow"><small>Check-out</small><b>${esc(p.titolo)}</b></span>${docBtn(p)}</div>`).join("");
+    const dupHtml = hs.slice(1).map(p => `<div class="mini" data-pren="${p.id}"><span style="color:var(--warn-fg)">${icon("BedDouble")}</span><span class="grow"><small>Stessa notte, si sovrappone</small><b>${esc(p.titolo)}</b></span>${docBtn(p)}</div>`).join("");
     const arr = lists.prenotazioni.filter(p => p.tipo === "volo" && p.al === d && p.dal !== d);   // atterraggi di oggi (partiti ieri)
     const bsHtml = bs.map(p => { const [ic, col] = PTYPE[p.tipo] || PTYPE.altro; return `<div class="mini" data-pren="${p.id}"><span style="color:${col}">${icon(ic)}</span><span class="grow"><small>${p.ora ? esc(p.ora) : "Prenotato"}${p.tipo === "volo" && p.oraA ? ` → arrivo ${p.al && p.al !== p.dal ? fmtDay(p.al, { weekday: "short", day: "numeric" }) + " " : ""}${esc(p.oraA)}` : ""}</small><b>${esc(p.titolo)}</b></span>${docsOf(p.id).length ? `<button class="btn small" data-doc="${docsOf(p.id)[0].id}" aria-label="Apri il documento">${icon("Paperclip")}</button>` : ""}${webLink(p.link) ? `<a class="btn small" href="${esc(webLink(p.link))}" target="_blank" rel="noopener">${icon("Link")}</a>` : ""}</div>`; }).join("");
     const noHotel = !h && d !== T.fine && !inFlight(d) ? `<a class="mini" href="#utility/prenotazioni">${icon("BedDouble")} <span class="grow">Nessun hotel per questa notte</span><b>Aggiungi</b></a>` : "";
-    return `${arr.map(p => `<div class="mini" data-pren="${p.id}"><span style="color:${PTYPE.volo[1]}">${icon("Plane")}</span><span class="grow"><small>Atterraggio${p.oraA ? " " + esc(p.oraA) : ""}${p.a ? " · " + esc(p.a) : ""}</small><b>${esc(p.titolo)}</b></span></div>`).join("")}${bsHtml}${noHotel}${h ? `<div class="mini hotel" data-pren="${h.id}">${icon("BedDouble")}<span class="grow"><small>${ci.includes(h) ? "Check-in" + (h.ora ? " " + esc(h.ora) : "") : "Notte"}</small><b>${esc(h.titolo)}</b></span>
-        ${docsOf(h.id).length ? `<button class="btn small" data-doc="${docsOf(h.id)[0].id}" aria-label="Apri il documento">${icon("Paperclip")}</button>` : ""}<a class="btn small primary" href="${gmTo(addrQ(h))}" target="_blank" rel="noopener" aria-label="Portami all'hotel">${icon("Navigation")}</a><button class="btn small" data-taxi="${h.id}" aria-label="Mostra al tassista">${icon("CarTaxiFront")}</button></div>` : ""}`;
+    return `${outHtml}${arr.map(p => `<div class="mini" data-pren="${p.id}"><span style="color:${PTYPE.volo[1]}">${icon("Plane")}</span><span class="grow"><small>Atterraggio${p.oraA ? " " + esc(p.oraA) : ""}${p.a ? " · " + esc(p.a) : ""}</small><b>${esc(p.titolo)}</b></span></div>`).join("")}${bsHtml}${noHotel}${h ? `<div class="mini hotel" data-pren="${h.id}">${icon("BedDouble")}<span class="grow"><small>${ci.includes(h) ? "Check-in" + (h.ora ? " " + esc(h.ora) : "") : "Notte"}</small><b>${esc(h.titolo)}</b></span>
+        ${docsOf(h.id).length ? `<button class="btn small" data-doc="${docsOf(h.id)[0].id}" aria-label="Apri il documento">${icon("Paperclip")}</button>` : ""}<a class="btn small primary" href="${gmTo(addrQ(h))}" target="_blank" rel="noopener" aria-label="Portami all'hotel">${icon("Navigation")}</a><button class="btn small" data-taxi="${h.id}" aria-label="Mostra al tassista">${icon("CarTaxiFront")}</button></div>` : ""}${dupHtml}`;
   }
   function oggiPren(today, before, after) {
     if (!code || after) return "";
@@ -2224,7 +2228,12 @@
   const landsOn = d => lists.prenotazioni.find(p => p.tipo === "volo" && p.al === d && p.dal !== d);   // si arriva oggi (partiti ieri)
   // per le prenotazioni (voli soprattutto) si possono scegliere anche 3 giorni prima e dopo il viaggio
   const BOOK_DAYS = (() => { const out = [], a = new Date(T.inizio + "T00:00:00Z"), b = new Date(T.fine + "T00:00:00Z"); a.setUTCDate(a.getUTCDate() - 3); b.setUTCDate(b.getUTCDate() + 3); for (const d = a; d <= b; d.setUTCDate(d.getUTCDate() + 1)) out.push(d.toISOString().slice(0, 10)); return out; })();   // l'ultimo giorno si parte
-  const hotelFor = d => lists.prenotazioni.find(p => p.tipo === "hotel" && p.dal <= d && d < (p.al || p.dal));
+  // hotel della notte: con due hotel sovrapposti vale quello in cui si è entrati per ultimo (check-in più recente),
+  // così Oggi, Giorni, meteo e i pallini mostrano lo stesso su tutti i telefoni, qualunque sia l'ordine della lista
+  const okHotel = p => p.tipo === "hotel" && p.dal && p.al > p.dal;
+  const hotelsFor = d => lists.prenotazioni.filter(p => okHotel(p) && p.dal <= d && d < p.al).sort((a, b) => b.dal.localeCompare(a.dal) || (a.id < b.id ? -1 : 1));
+  const hotelFor = d => hotelsFor(d)[0];
+  const checkoutsOn = d => lists.prenotazioni.filter(p => okHotel(p) && p.al === d);
   const bookingsOn = d => lists.prenotazioni.filter(p => p.dal === d && p.tipo !== "hotel").sort((a, b) => (a.ora || "99").localeCompare(b.ora || "99"));
   const nightsOf = p => p.dal && p.al > p.dal ? Math.round((new Date(p.al + "T00:00:00Z") - new Date(p.dal + "T00:00:00Z")) / 864e5) : 0;   // date invertite (versione vecchia): 0, come le notti coperte
   // link della prenotazione: solo pagine web ("www.booking.com/…" scritto senza https diventa https://…); niente javascript: o altro
@@ -2290,12 +2299,13 @@
   function renderPren(back) {
     if (!code) { view.innerHTML = `${back}<h2>Prenotazioni</h2><p class="lead">Hotel, voli, treni e biglietti, condivisi tra voi quattro.</p>${needCodeBox("Le prenotazioni")}`; bindPcards(); return; }
     const all = [...lists.prenotazioni].sort((a, b) => (a.dal || "9").localeCompare(b.dal || "9") || (a.ora || "").localeCompare(b.ora || ""));
-    const NIGHTS = nights(), covered = NIGHTS.filter(hotelFor).length;
+    const NIGHTS = nights(), covered = NIGHTS.filter(hotelFor).length, dupNights = DAYS.slice(0, -1).filter(d => hotelsFor(d).length > 1);
     view.innerHTML = `${back}<h2>Prenotazioni</h2><p class="lead">Hotel, voli, treni e biglietti, condivisi tra voi quattro.</p>
       <div class="card">
         <div class="between"><b>${icon("BedDouble")} Notti con hotel</b><b>${covered}/${NIGHTS.length}</b></div>
-        <div class="nights">${NIGHTS.map((d, i) => { const h = hotelFor(d); return `<i title="${short(d)}${h ? " · " + esc(h.titolo) : ""}" class="${h ? "ok" : ""}"></i>`; }).join("")}</div>
+        <div class="nights">${NIGHTS.map(d => { const hs = hotelsFor(d); return `<i title="${short(d)}${hs.length ? " · " + hs.map(h => esc(h.titolo)).join(" + ") : ""}" class="${hs.length > 1 ? "ok dup" : hs.length ? "ok" : ""}"></i>`; }).join("")}</div>
         ${covered < NIGHTS.length ? `<p class="small muted" style="margin:8px 0 0">Mancano: ${NIGHTS.filter(d => !hotelFor(d)).map(short).join(", ")}</p>` : `<p class="small" style="margin:8px 0 0;color:var(--ok)">Tutte le notti sono coperte ✓</p>`}
+        ${dupNights.length ? `<p class="small" style="margin:6px 0 0;color:var(--warn-fg)">Due hotel ${dupNights.length === 1 ? "la notte del" : "le notti del"} ${dupNights.map(short).join(", ")}: ${[...new Set(dupNights.flatMap(d => hotelsFor(d).map(h => h.titolo)))].map(esc).join(" e ")}</p>` : ""}
       </div>
       <div class="section-h"><h3>Aggiungi</h3></div>
       <div class="addgrid">${Object.entries(PTYPE).map(([k, [ic, col, tn]]) => `<button data-addp="${k}"><span class="pic" style="background:${col}">${icon(ic)}</span>${tn}</button>`).join("")}</div>
@@ -2457,7 +2467,7 @@
         if (t === "biglietto" && oldL && oldL !== item.luogo && booked.has(oldL) && !lists.prenotazioni.some(x => x.id !== pid && x.luogo === oldL)) { booked.delete(oldL); planCh = true; }
         if (item.luogo && !booked.has(item.luogo)) { booked.add(item.luogo); planCh = true; }
         if (planCh) savePlan();
-        const clash = t === "hotel" && lists.prenotazioni.find(o => o.tipo === "hotel" && o.id !== pid && o.dal < item.al && item.dal < (o.al || o.dal));
+        const clash = t === "hotel" && lists.prenotazioni.find(o => okHotel(o) && o.id !== pid && o.dal < item.al && item.dal < o.al);
         saved = true; closeSheet(); toast(clash ? `Salvato · attenzione, si sovrappone a ${clash.titolo}` : badArr ? "Salvato · l'arrivo era prima della partenza, l'ho tolto" : "Salvato ✓"); rerender();
       };
       $("#p-del", el)?.addEventListener("click", async () => {
