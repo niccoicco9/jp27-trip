@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 158;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 159;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2109,7 +2109,7 @@
     const u = URL.createObjectURL(b); docURLs.set(key, u); return u;
   }
   // in sottofondo scarica i documenti che mancano su questo telefono (così ci sono anche senza rete) e toglie quelli eliminati
-  let prefetching = false;
+  let prefetching = false; const docPrep = new Set();   // documenti che si stanno allegando adesso (pagine già salvate, voce non ancora)
   async function prefetchDocs() {
     if (prefetching || !sync || !navigator.onLine || !("caches" in window)) return; prefetching = true;
     try {
@@ -2118,7 +2118,7 @@
         keep.add(docKey(a.id, k));
         if (!(await c.match(docKey(a.id, k))) && await docBlob(a, k)) got++;
       }
-      for (const r of await c.keys()) if (!keep.has(r.url)) await c.delete(r);
+      for (const r of await c.keys()) if (!keep.has(r.url) && !docPrep.has(r.url.split("__doc/")[1]?.split("/")[0])) await c.delete(r);
       if (got) { keepData(); $$("[data-dth]:not(.ok)").forEach(fillThumb); }
     } catch {} finally { prefetching = false; }
   }
@@ -2141,6 +2141,8 @@
   document.addEventListener("click", e => { const d = e.target.closest("[data-doc]"); if (d) { e.preventDefault(); openDoc(d.dataset.doc); } });
 
   // foto → JPEG (al massimo ~900 KB, il limite di un documento Firestore è 1 MB)
+  // le foto partono da 2800 px sul lato lungo: uno screenshot dell'iPhone (fino a 2796) resta com'è, così i codici a barre
+  // sottili delle carte d'imbarco restano leggibili; le foto pesanti si rimpiccioliscono da sole finché stanno nel limite
   async function toJpeg(src, max = 2000) {
     let q = .85, blob = null;
     for (let i = 0; i < 7; i++) {
@@ -2153,15 +2155,36 @@
     }
     throw new Error("troppo grande");
   }
+  // immagine dal file: se createImageBitmap non legge un HEIC (alcuni browser) si prova con <img>;
+  // solo per gli HEIC, perché <img> mostra anche un'immagine rovinata a metà invece di dare errore
+  async function readImage(file) {
+    try { return await createImageBitmap(file); } catch (err) {
+      if (!/hei[cf]/i.test(file.type + " " + file.name.split(".").pop())) throw err;
+      const u = URL.createObjectURL(file);
+      try { const im = new Image(); im.src = u; await im.decode(); if (!im.naturalWidth) throw err; return im; }
+      catch { throw err; } finally { URL.revokeObjectURL(u); }
+    }
+  }
   // PDF → una immagine per pagina, con pdf.js caricato solo quando serve
+  const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js", PDFW = PDFJS.replace("pdf.min.js", "pdf.worker.min.js");
+  // il worker si legge (dalla copia salvata dal service worker, se c'è) e si avvia da un indirizzo locale:
+  // così funziona anche senza rete, senza dipendere da come il browser carica i worker di altri siti
+  let pdfWorker = null;
   async function loadPdf() {
-    if (!window.pdfjsLib) await new Promise((ok, ko) => { const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"; s.onload = ok; s.onerror = ko; document.head.appendChild(s); });
-    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    if (!window.pdfjsLib) await new Promise((ok, ko) => { const s = document.createElement("script"); s.src = PDFJS; s.onload = ok; s.onerror = ko; document.head.appendChild(s); });
+    if (!pdfWorker) pdfWorker = await fetch(PDFW).then(r => r.ok ? r.blob() : null).then(b => b && URL.createObjectURL(new Blob([b], { type: "text/javascript" }))).catch(() => null);
+    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker || PDFW;
     return pdfjsLib;
   }
+  // con la scheda di una prenotazione aperta e la rete, pdf.js si scarica in sottofondo (lo salva il service worker):
+  // così un PDF si può allegare anche più avanti senza rete
+  let pdfWarm = false;
+  function warmPdf() { if (pdfWarm || !navigator.onLine) return; pdfWarm = true; for (const u of [PDFJS, PDFW]) fetch(u).catch(() => { pdfWarm = false; }); }
+  const PDF_MAX = 20;
   async function pdfPages(file, step) {
     const lib = await loadPdf(), pdf = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
-    const n = Math.min(pdf.numPages, 20), out = [];
+    const n = Math.min(pdf.numPages, PDF_MAX), out = [];
+    out.total = pdf.numPages;
     for (let i = 1; i <= n; i++) {
       step(n > 1 ? `Pagina ${i} di ${n}…` : "Preparo il documento…");
       const pg = await pdf.getPage(i), w = pg.getViewport({ scale: 1 }).width, vp = pg.getViewport({ scale: Math.min(3, 1700 / w) });
@@ -2173,17 +2196,31 @@
     pdf.destroy?.();
     return out;
   }
-  async function addDoc(pid, file, step) {
+  // nome del documento: senza estensione, al massimo 60 caratteri (senza spezzare un'emoji), "Documento" se vuoto
+  const docName = s => Array.from(String(s || "").replace(/\.[^.]*$/, "").trim()).slice(0, 60).join("").trim() || "Documento";
+  // { a } = allegato, { err } = perché non si è potuto, { a, cut } = PDF con più di PDF_MAX pagine (tenute le prime);
+  // alive(): false se intanto la scheda di una prenotazione nuova è stata chiusa senza salvarla (non si allega più niente)
+  async function addDoc(pid, file, step, alive = () => true) {
     const pdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+    if (!pdf && file.type && !file.type.startsWith("image/")) return { err: "si possono allegare solo foto e PDF" };
     let pages;
-    try { step("Preparo il documento…"); pages = pdf ? await pdfPages(file, step) : [await toJpeg(await createImageBitmap(file))]; }
-    catch (err) { console.warn("Documento:", err); toast(!navigator.onLine && pdf && !window.pdfjsLib ? "Per leggere un PDF la prima volta serve la rete" : pdf ? "Non riesco a leggere questo PDF" : "Non riesco a leggere questa immagine"); return null; }
-    const a = putItem("allegati", { pren: pid, nome: file.name.replace(/\.[^.]+$/, "").slice(0, 60) || "Documento", pagine: pages.length, t: Date.now() });
-    const c = await caches.open(DOCS);
-    for (const [k, b] of pages.entries()) await c.put(docKey(a.id, k), new Response(b, { headers: { "Content-Type": "image/jpeg" } }));
+    try { step("Preparo il documento…"); pages = pdf ? await pdfPages(file, step) : [await toJpeg(await readImage(file), 2800)]; }
+    catch (err) {
+      console.warn("Documento:", err);
+      return { err: pdf && err?.name === "PasswordException" ? "il PDF è protetto da password (fanne uno screenshot)" : !navigator.onLine && pdf && !window.pdfjsLib ? "per leggere un PDF la prima volta serve la rete" : pdf ? "non riesco a leggere questo PDF" : "non riesco a leggere questa immagine" };
+    }
+    // prima le pagine sul telefono, poi la voce (tutto insieme, senza attese in mezzo): chiudendo la scheda a metà
+    // non resta una voce senza pagine né pagine mandate al server per una voce già tolta
+    const id = uid(), c = await caches.open(DOCS);
+    docPrep.add(id);   // la pulizia in sottofondo non deve togliere queste pagine prima che ci sia la voce
+    try {
+      for (const [k, b] of pages.entries()) await c.put(docKey(id, k), new Response(b, { headers: { "Content-Type": "image/jpeg" } }));
+      if (!alive()) { for (let k = 0; k < pages.length; k++) c.delete(docKey(id, k)); return {}; }
+    } finally { docPrep.delete(id); }
+    const a = putItem("allegati", { id, pren: pid, nome: docName(file.name), pagine: pages.length, t: Date.now() });
     docUp[a.id] = pages.length; LS.set("docUp", docUp); uploadDocs();
     keepData();
-    return a;
+    return { a, cut: pages.total > pages.length ? pages.total : 0 };
   }
   // Pagine dei documenti non ancora confermate dal server (id → numero di pagine): si mandano dalla copia sul
   // telefono quando la sincronizzazione è attiva e si rimandano a ogni avvio finché il server non le conferma.
@@ -2316,7 +2353,7 @@
 
   function editPren(p) {
     const isNew = !p.id, t = p.tipo || "altro", pid = p.id || uid();   // l'id serve già per allegare documenti a una prenotazione nuova
-    let saved = false, docsChanged = false;
+    let saved = false, docsChanged = false, closed = false;
     const [ic, col, tn] = PTYPE[t] || PTYPE.altro;
     const sp0 = isNew ? null : spesaOf(pid);
     const cs = { valuta: sp0?.valuta || "EUR", pagatoDa: sp0?.pagatoDa || me || T.viaggiatori[0], perChi: sp0?.perChi?.length ? [...sp0.perChi] : [...T.viaggiatori], pagam: p.pagam || "" };
@@ -2425,13 +2462,31 @@
         const a = lists.allegati.find(x => x.id === b.dataset.deldoc); if (!a) return;
         ask({ title: `Eliminare "${a.nome}"?`, text: "Sparirà dal telefono di tutti e quattro.", ok: "Elimina", danger: true }).then(ok => { if (!ok) return; delDoc(a); docsChanged = true; drawDocs(); buzz(); });
       });
+      if ($("#p-file", el)) warmPdf();
       $("#p-adddoc", el)?.addEventListener("click", () => $("#p-file", el).click());
       $("#p-file", el)?.addEventListener("change", async e => {
         const files = [...e.target.files]; e.target.value = ""; if (!files.length) return;
         const btn = $("#p-adddoc", el), label = btn.innerHTML; btn.disabled = true;
-        for (const f of files) { const a = await addDoc(pid, f, msg => { btn.textContent = msg; }); if (a) docsChanged = true; drawDocs(); }
-        btn.disabled = false; btn.innerHTML = label;
-        if (docsChanged) { buzz(); toast(navigator.onLine ? "Documento allegato ✓" : "Documento allegato: si condivide appena torna la rete"); }
+        // prenotazione nuova: mentre si prepara un documento, chiudere la scheda chiede prima (il documento andrebbe perso)
+        if (isNew) btn.dataset.unsaved = "busy";
+        // chiusa senza salvare mentre si preparava: quello che resta non si allega (sarebbe di una prenotazione che non esiste)
+        const alive = () => !isNew || saved || !closed;
+        let ok = 0; const errs = [], cuts = [];
+        for (const f of files) {
+          if (!alive()) break;
+          const r = await addDoc(pid, f, msg => { btn.textContent = msg; }, alive);
+          if (r.a) { ok++; docsChanged = true; if (r.cut) cuts.push(`${r.a.nome}: allegate le prime ${PDF_MAX} pagine di ${r.cut}`); }
+          else if (r.err) errs.push(files.length > 1 ? `${docName(f.name)}: ${r.err}` : r.err[0].toUpperCase() + r.err.slice(1));
+          if (!closed) drawDocs();
+        }
+        btn.disabled = false; btn.innerHTML = label; delete btn.dataset.unsaved;
+        if (!alive()) return;
+        if (closed && ok && !sheetOpen()) rerender();   // scheda chiusa (o salvata) intanto: la card mostra il documento appena allegato
+        // un messaggio solo alla fine, così un errore non viene coperto da "allegato" (e si dice quale file non è andato)
+        const done = ok ? (ok > 1 ? `${ok} documenti allegati` : "Documento allegato") + (navigator.onLine ? "" : `: si condivid${ok > 1 ? "ono" : "e"} appena torna la rete`) : "";
+        if (ok) buzz();
+        if (errs.length || cuts.length) toast([...errs, ...cuts, ...(done && errs.length ? [ok > 1 ? `gli altri ${ok} sono allegati` : "l'altro è allegato"] : [done])].filter(Boolean).join(" · "));
+        else if (ok) toast(done + (navigator.onLine ? " ✓" : ""));
       });
       $("#p-save", el).onclick = async () => {
         const item = { ...p, id: pid, tipo: t, titolo: v("p-tit"), dal: v("p-dal"), ora: v("p-ora"), codice: v("p-cod"), link: v("p-link"), note: v("p-note") };
@@ -2482,6 +2537,7 @@
         setTimeout(() => { if (!back) docsOf(p.id).forEach(delDoc); }, 6000);   // i documenti se ne vanno solo se non si annulla
       });
     }, () => {
+      closed = true;
       if (isNew && !saved) docsOf(pid).forEach(delDoc);   // prenotazione nuova non salvata: niente documenti orfani
       else if (docsChanged && !saved) rerender();
     });
