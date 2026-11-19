@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 160;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 161;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -89,7 +89,7 @@
   let checks = new Set(LS.get("checks", []));
   let me = LS.get("me", "");
   let lastEdit = LS.get("lastEdit", null);   // { by, at }
-  let sync = null, syncStatus = "off", pendingRemote = false, syncErr = "", serverAt = 0;
+  let sync = null, syncStatus = "off", pendingRemote = false, syncErr = "", serverAt = 0, onlineSince = 0;
 
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -512,6 +512,7 @@
   function onList(name, items) {
     items = cleanList(name, items);
     if (name === "allegati") setTimeout(prefetchDocs, 1500);   // anche all'avvio: scarica quelli che mancano su questo telefono
+    if (name === "allegati" || name === "prenotazioni") setTimeout(sweepDocs, 2000);
     // stessi dati: nessuna ricostruzione, ma si salva lo stesso (cambiano "at" e "w", che servono alla coda di riserva)
     if (listSig(items) === listSig(lists[name])) { lists[name] = items; LS.set(name, items, true); return; }
     lists[name] = items; LS.set(name, items);
@@ -522,6 +523,7 @@
   // codice appena rifiutato: torna nel campo (si corregge solo l'errore) finché l'app resta aperta, anche dopo il ricaricamento
   let badCode = "", oldCode = false; try { badCode = sessionStorage.getItem("jp27:badCode") || ""; } catch {}
   function setSync(s, err) {
+    if (s === "online" && syncStatus !== "online") { onlineSince = Date.now(); setTimeout(sweepDocs, 11e3); }
     syncStatus = s;
     if (s === "online") serverAt = Date.now();
     if (err) { console.warn("Sincronizzazione:", err.code || "", err.message || err); syncErr = `${err.code || ""} ${err.message || err}`.trim().slice(0, 160); }
@@ -2170,7 +2172,7 @@
       as.forEach(a => $$(`[data-dth="${a.id}"]:not(.ok)`).forEach(fillThumb));   // arrivato adesso: anche la miniatura
       buzz();
       openViewer(pages.map(p => p.u), null, {
-        title: k => pages[k].a.nome, share: k => docBlob(pages[k].a, pages[k].k),
+        title: k => pages[k].a.nome, share: k => docBlob(pages[k].a, pages[k].k).then(b => b || fetch(pages[k].u).then(r => r.blob())),   // eliminato intanto: la copia già aperta
         fileName: k => pages[k].a.nome + (pages[k].a.pagine > 1 ? " " + (pages[k].k + 1) : ""),
       });
     } finally { clearTimeout(wait); docOpening = false; }
@@ -2178,7 +2180,9 @@
   document.addEventListener("click", e => {
     const d = e.target.closest("[data-doc], [data-pdocs]"); if (!d) return;
     e.preventDefault();
-    openDocs(d.dataset.doc ? lists.allegati.filter(a => a.id === d.dataset.doc) : docsOf(d.dataset.pdocs));
+    const as = d.dataset.doc ? lists.allegati.filter(a => a.id === d.dataset.doc) : docsOf(d.dataset.pdocs);
+    if (!as.length) return toast("Documento eliminato intanto da un altro");   // scheda aperta da prima dell'eliminazione
+    openDocs(as);
   });
 
   // foto → JPEG (al massimo ~900 KB, il limite di un documento Firestore è 1 MB)
@@ -2293,6 +2297,24 @@
     c?.delete(docKey(a.id, "t")); const tu = thumbURLs.get(a.id); if (tu) { URL.revokeObjectURL(tu); thumbURLs.delete(a.id); }
     for (let k = 0; k < a.pagine; k++) { sync?.delPage(a.id, k); c?.delete(docKey(a.id, k)); const u = docURLs.get(a.id + "/" + k); if (u) { URL.revokeObjectURL(u); docURLs.delete(a.id + "/" + k); } }
   }
+  // Documenti rimasti senza prenotazione: app chiusa nei 6 secondi dell'"Annulla" dopo un'eliminazione, o chiusa con
+  // una prenotazione nuova mai salvata. Si tolgono quando sono orfani da almeno un minuto con la rete (così un "Annulla"
+  // o un "Rimetti" fatto intanto li ritrova). Ogni telefono toglie solo i propri documenti e quelli delle prenotazioni
+  // che ha eliminato lui (docGone): mai quelli di una prenotazione che un altro sta ancora creando nella sua scheda.
+  const ORPHAN_WAIT = 60e3, docOrphan = LS.get("docOrphan", {}), docGone = LS.get("docGone", {}), editingPren = new Set();
+  function sweepDocs() {
+    if (!sync || syncStatus !== "online" || Date.now() - onlineSince < 10e3) return;   // appena riconnessi le liste potrebbero essere ancora vecchie
+    const now = Date.now(), live = new Set(lists.prenotazioni.map(p => p.id)), seen = {};
+    for (const a of lists.allegati) {
+      if (live.has(a.pren) || editingPren.has(a.pren) || (a.by !== (me || "?") && !docGone[a.pren])) continue;
+      seen[a.id] = docOrphan[a.id] || now;
+      if (now - seen[a.id] >= ORPHAN_WAIT) { delDoc(a); delete seen[a.id]; }
+    }
+    for (const pid of Object.keys(docGone)) if (live.has(pid) || !lists.allegati.some(a => a.pren === pid)) delete docGone[pid];
+    for (const k of Object.keys(docOrphan)) delete docOrphan[k];
+    Object.assign(docOrphan, seen); LS.set("docOrphan", docOrphan); LS.set("docGone", docGone);
+  }
+  setInterval(sweepDocs, 30e3);
 
   // ——— PRENOTAZIONI (hotel, voli, treni, biglietti) ———
   const PTYPE = {
@@ -2396,6 +2418,7 @@
   function editPren(p) {
     const isNew = !p.id, t = p.tipo || "altro", pid = p.id || uid();   // l'id serve già per allegare documenti a una prenotazione nuova
     let saved = false, docsChanged = false, closed = false;
+    editingPren.add(pid); const hadDocs = docsOf(pid).length;   // con la scheda aperta i suoi documenti non contano come orfani
     const [ic, col, tn] = PTYPE[t] || PTYPE.altro;
     const sp0 = isNew ? null : spesaOf(pid);
     const cs = { valuta: sp0?.valuta || "EUR", pagatoDa: sp0?.pagatoDa || me || T.viaggiatori[0], perChi: sp0?.perChi?.length ? [...sp0.perChi] : [...T.viaggiatori], pagam: p.pagam || "" };
@@ -2545,7 +2568,7 @@
         // intanto un altro l'ha eliminata: si chiede prima di rimetterla (con il suo costo, se era nel cestino)
         if (!isNew && !lists.prenotazioni.some(x => x.id === pid)) {
           const lost = lists.spese.filter(x => x.pren === pid && x.del).sort((a, b) => b.del.t - a.del.t)[0];
-          if (!(await ask({ title: "Intanto è stata eliminata", text: `${lost ? lost.del.by : "Qualcun altro"} ha eliminato "${p.titolo || "questa prenotazione"}" mentre la modificavi. Vuoi rimetterla${lost ? " insieme al suo costo" : ""}?`, ok: "Rimetti", icon: "RotateCcw" }))) { saved = true; closeSheet(); rerender(); return; }
+          if (!(await ask({ title: "Intanto è stata eliminata", text: `${lost ? lost.del.by : "Qualcun altro"} ha eliminato "${p.titolo || "questa prenotazione"}" mentre la modificavi. Vuoi rimetterla${lost ? " insieme al suo costo" : ""}?${hadDocs && !docsOf(pid).length ? " I documenti allegati invece sono già stati eliminati." : ""}`, ok: "Rimetti", icon: "RotateCcw" }))) { saved = true; closeSheet(); rerender(); return; }
           if (lost && !spesaOf(pid)) { const { del, ...rest } = lost; putItem("spese", { ...rest, storia: conStoria(lost, "rip") }); }
           if (lists.prenotazioni.some(x => x.id === pid)) return toast("Nel frattempo è tornata: riaprila per modificarla");
         }
@@ -2570,16 +2593,18 @@
       $("#p-del", el)?.addEventListener("click", async () => {
         if (!(await ask({ title: `Eliminare "${p.titolo || "prenotazione"}"?`, text: spesaOf(p.id) ? "Anche il suo costo finirà nel cestino delle Spese." : "Sparirà per tutti e quattro.", ok: "Elimina", danger: true }))) return;
         const old = { ...p }; let back = false; saved = true;
+        docGone[p.id] = Date.now(); LS.set("docGone", docGone);   // se l'app si chiude prima dei 6 secondi li toglie sweepDocs
         delItem("prenotazioni", p.id); const gone = trashPrenSpesa(p.id); closeSheet(); rerender();
         toast(gone ? "Prenotazione eliminata (il costo è nel cestino delle Spese)" : "Prenotazione eliminata", () => {
-          back = true; putItem("prenotazioni", old);
+          back = true; putItem("prenotazioni", old); delete docGone[p.id]; LS.set("docGone", docGone);
           if (gone) untrashPrenSpesa(gone);
           rerender();
         });
-        setTimeout(() => { if (!back) docsOf(p.id).forEach(delDoc); }, 6000);   // i documenti se ne vanno solo se non si annulla
+        // i documenti se ne vanno solo se non si annulla e se intanto un altro non l'ha rimessa ("Rimetti")
+        setTimeout(() => { if (!back && !lists.prenotazioni.some(x => x.id === p.id)) docsOf(p.id).forEach(delDoc); }, 6000);
       });
     }, () => {
-      closed = true;
+      closed = true; editingPren.delete(pid);
       if (isNew && !saved) docsOf(pid).forEach(delDoc);   // prenotazione nuova non salvata: niente documenti orfani
       else if (docsChanged && !saved) rerender();
     });
