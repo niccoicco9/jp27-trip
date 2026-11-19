@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 171;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 172;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -42,6 +42,21 @@
   const oneEmo = v => (window.Intl?.Segmenter ? [...new Intl.Segmenter().segment(str(v).trim())].map(x => x.segment) : [...str(v).trim()])[0] || "🏷️";   // la prima emoji intera (🇯🇵, 👍🏽)
   const okTime = v => { const m = /^(\d{1,2})(?:[:.](\d{2}))?$/.exec(typeof v === "string" ? v.trim() : ""); return m && +m[1] < 24 && +(m[2] || 0) < 60 ? m[1].padStart(2, "0") + ":" + (m[2] || "00") : ""; };
   const isoDay = d => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && new Date(d + "T00:00:00Z").getUTCDate() === +d.slice(8);   // anche niente 2027-02-31
+  // Sul server le tappe di un giorno sono due campi: "i" dice quali ci sono (si aggiungono e tolgono una per una, così
+  // le modifiche di due telefoni si sommano) e "o" l'ultimo ordine scelto (riscritto intero quando qualcuno riordina).
+  // Se "i" si riscrivesse intera per riordinare, chi arriva per ultimo rimetterebbe le tappe tolte intanto da un altro e
+  // cancellerebbe quelle aggiunte. Qui si uniscono: le tappe nell'ordine di "o", quelle che "o" non ha (aggiunte dopo
+  // l'ultimo riordino) prima della tappa che le segue in "i", se no in fondo; quelle di "o" non più in "i" non ci sono
+  function inOrder(ids, o) {
+    if (!Array.isArray(o)) return ids;
+    const out = [...new Set(o)].filter(x => ids.includes(x));
+    ids.forEach((x, k) => {
+      if (out.includes(x)) return;
+      const next = ids.slice(k + 1).find(y => out.includes(y));
+      out.splice(next ? out.indexOf(next) : out.length, 0, x);
+    });
+    return out;
+  }
   function cleanPlan(p) {
     const out = {};
     for (const [d, v] of Object.entries(p && typeof p === "object" ? p : {})) {
@@ -49,8 +64,9 @@
       const o = v && typeof v === "object" && !Array.isArray(v) ? v : {};
       // testi: un numero diventa testo, un oggetto niente (niente "[object Object]"); tappe: una volta sola, anche se arrivano come testo
       const txt = x => typeof x === "string" ? x : typeof x === "number" && Number.isFinite(x) ? String(x) : "";
-      const ids = [...new Set((Array.isArray(o.i) ? o.i : typeof o.i === "string" ? [o.i] : []).filter(x => typeof x === "string" && x))];
+      const ids = inOrder([...new Set((Array.isArray(o.i) ? o.i : typeof o.i === "string" ? [o.i] : []).filter(x => typeof x === "string" && x))], o.o);
       out[d] = { ...o, l: txt(o.l), n: txt(o.n), i: ids };
+      delete out[d].o;
       if (o.f !== undefined) out[d].f = [...new Set(Array.isArray(o.f) ? o.f.filter(x => typeof x === "string" && x) : [])];   // tappe fatte
       delete out[d].t;
       if (o.t && typeof o.t === "object") {   // orari: solo delle tappe del giorno, scritti come "09:30" ("9.30" e "9" si capiscono, "25:00" no)
@@ -342,17 +358,17 @@
   }
   // Un giorno cambiato non si invia intero (chi arriva per ultimo cancellerebbe le tappe aggiunte intanto dagli
   // altri, anche da offline): si inviano le singole operazioni, che Firestore applica sopra le modifiche degli altri.
-  // i: tappe aggiunte in fondo/tolte una per una (riscritte intere solo se cambia l'ordine) · f: spunte · t: orari per tappa
+  // i: tappe aggiunte/tolte una per una · o: l'ordine intero, solo se cambia (vedi inOrder) · f: spunte · t: orari per tappa
   function dayOps(a = {}, b = {}) {
     const op = { set: {}, add: {}, rem: {}, t: {} }, ai = a.i || [], bi = b.i || [];
     const kept = bi.filter(x => ai.includes(x)), added = bi.filter(x => !ai.includes(x)), gone = ai.filter(x => !bi.includes(x));
-    if (sig(kept) !== sig(ai.filter(x => bi.includes(x))) || sig(bi) !== sig([...kept, ...added])) op.set.i = bi;
-    else { if (added.length) op.add.i = added; if (gone.length) op.rem.i = gone; }
+    if (added.length) op.add.i = added; if (gone.length) op.rem.i = op.rem.o = gone;   // tolta anche dall'ordine: se torna, va dove la si rimette
+    if (sig(kept) !== sig(ai.filter(x => bi.includes(x))) || sig(bi) !== sig([...kept, ...added])) op.set.o = bi;
     const af = a.f || [], bf = b.f || [];
     if (bf.some(x => !af.includes(x))) op.add.f = bf.filter(x => !af.includes(x));
     if (af.some(x => !bf.includes(x))) op.rem.f = af.filter(x => !bf.includes(x));
     for (const k of new Set([...Object.keys(a.t || {}), ...Object.keys(b.t || {})])) if (a.t?.[k] !== b.t?.[k]) op.t[k] = b.t?.[k] ?? null;
-    for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) if (!["i", "f", "t"].includes(k) && !same(a[k], b[k])) op.set[k] = b[k] ?? "";
+    for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) if (!["i", "f", "t", "o"].includes(k) && !same(a[k], b[k])) op.set[k] = b[k] ?? "";
     return op;
   }
   // unisce un giorno cambiato qui (mine) e dagli altri (theirs) partendo dall'ultima versione comune (base):
@@ -565,6 +581,7 @@
       badCode = code; try { sessionStorage.setItem("jp27:badCode", code); } catch {}
       code = ""; LS.set("code", ""); setTimeout(() => askWho(true), 400);
     }
+    const ds = $("#dsync"); if (ds) ds.textContent = s === "online" ? "Sincronizzato" : "In attesa di rete";   // Giorni aperto: lo stato cambia senza ridisegnare
     const el = $("#syncdot");
     el.hidden = false; el.className = "sync-dot" + (s === "online" ? " on" : s === "offline" ? "" : " err");
     el.title = s === "online" ? "Dati condivisi: sincronizzati" : s === "offline" ? "Offline: le modifiche partiranno appena torna la rete" : "Errore di sincronizzazione: le modifiche restano su questo telefono. Chiudi e riapri l'app per riprovare";
@@ -1267,7 +1284,7 @@
       </div>
       <div class="card daysync">
         <div class="row"><span class="contact"><span class="ic">${icon(sync ? "Users" : "Smartphone")}</span></span><div class="grow small">${sync
-          ? `<b>Programma condiviso</b> tra voi quattro<div class="muted">${syncStatus === "online" ? "Sincronizzato" : "In attesa di rete"}${editedBy}</div>`
+          ? `<b>Programma condiviso</b> tra voi quattro<div class="muted"><span id="dsync">${syncStatus === "online" ? "Sincronizzato" : "In attesa di rete"}</span>${editedBy}</div>`
           : `<b>Programma salvato su questo telefono</b><div class="muted">Per mandarlo agli altri usa Condividi.</div>`}</div></div>
         ${sync ? "" : `<div class="btns"><button class="btn small" id="share">${icon("Share2")} Condividi</button></div>`}
       </div>
