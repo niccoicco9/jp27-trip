@@ -229,7 +229,8 @@ main.enter { animation: fade .18s ease-out; }
 /* ——— Cards & bits ——— */
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; box-shadow: var(--shadow-s); margin-bottom: 14px; }
 .row { display: flex; align-items: center; gap: 10px; }
-.grow { flex: 1; min-width: 0; }
+.grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }   /* una parola lunghissima senza spazi va a capo invece di allargare la pagina */
+.spesa .grow > b, .spdel .grow > b { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }   /* descrizione lunghissima: 3 righe in lista, intera nella scheda */
 .between { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .section-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 24px 0 12px; }
 .section-h h3 { margin: 0; }

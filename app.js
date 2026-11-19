@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 150;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 151;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -39,6 +39,8 @@
   // dati letti dal telefono o arrivati dagli altri: si ripuliscono sempre, così una voce incompleta
   // (versione vecchia dell'app, salvataggio interrotto) non può bloccare una pagina
   const str = v => typeof v === "string" ? v : v == null ? "" : String(v);
+  const oneEmo = v => (window.Intl?.Segmenter ? [...new Intl.Segmenter().segment(str(v).trim())].map(x => x.segment) : [...str(v).trim()])[0] || "🏷️";   // la prima emoji intera (🇯🇵, 👍🏽)
+  const isoDay = d => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && new Date(d + "T00:00:00Z").getUTCDate() === +d.slice(8);   // anche niente 2027-02-31
   function cleanPlan(p) {
     const out = {};
     for (const [d, v] of Object.entries(p && typeof p === "object" ? p : {})) {
@@ -58,7 +60,8 @@
         if (!(importo > 0 && importo < 1e9)) return null;   // anche niente Infinity da un telefono con una versione vecchia
         const eur = +x.eur > 0 && Number.isFinite(+x.eur) ? +x.eur : valuta === "EUR" ? importo : Math.round(importo / rate0 * 100) / 100;
         const per = T.viaggiatori.filter(n => Array.isArray(x.perChi) && x.perChi.includes(n));   // una volta sola a testa, nell'ordine del viaggio
-        const out = { ...x, importo, valuta, eur, perChi: per.length ? per : [...T.viaggiatori], pagatoDa: T.viaggiatori.includes(x.pagatoDa) ? x.pagatoDa : T.viaggiatori[0], desc: str(x.desc), cat: str(x.cat) || "altro" };
+        const out = { ...x, importo, valuta, eur, perChi: per.length ? per : [...T.viaggiatori], pagatoDa: T.viaggiatori.includes(x.pagatoDa) ? x.pagatoDa : T.viaggiatori[0], desc: str(x.desc), cat: str(x.cat) || "altro",
+          data: isoDay(x.data) ? x.data : "", ts: +x.ts || 0 };   // giorno scritto male (numero, "ieri") → Senza data: prima la pagina Spese restava bianca
         // cestino (del) e storia delle modifiche: niente campi undefined, Firestore li rifiuta
         if (x.del && typeof x.del === "object") out.del = { ...x.del, by: str(x.del.by) || "?", t: +x.del.t || 0 }; else delete out.del;
         if (Array.isArray(x.storia)) out.storia = x.storia.filter(o => o && typeof o === "object").map(o => ({ ...o, a: str(o.a), by: str(o.by) || "?", t: +o.t || 0, c: (Array.isArray(o.c) ? o.c : []).filter(c => c && typeof c === "object").map(c => ({ k: str(c.k), da: str(c.da), a: str(c.a) })) }));
@@ -66,7 +69,7 @@
         return out;
       }
       if (name === "allegati") { const n = Math.round(+x.pagine); return str(x.pren) && n >= 1 && n <= 30 ? { ...x, pagine: n, nome: str(x.nome).slice(0, 60) || "Documento", t: +x.t || 0 } : null; }
-      if (name === "categorie") return str(x.n) ? { ...x, n: str(x.n).slice(0, 24), e: str(x.e) || "🏷️", col: /^#[0-9a-f]{6}$/i.test(x.col) ? x.col : "#8a6d4b" } : null;
+      if (name === "categorie") return str(x.n) ? { ...x, n: str(x.n).slice(0, 24), e: oneEmo(x.e), col: /^#[0-9a-f]{6}$/i.test(x.col) ? x.col : "#8a6d4b" } : null;
       if (name === "prenotazioni") return { ...x, tipo: ["hotel", "volo", "treno", "biglietto", "altro"].includes(x.tipo) ? x.tipo : "altro", titolo: str(x.titolo), dal: /^\d{4}-\d{2}-\d{2}$/.test(x.dal) ? x.dal : "", al: /^\d{4}-\d{2}-\d{2}$/.test(x.al) ? x.al : "", lat: isFinite(x.lat) && x.lat !== null ? +x.lat : null, lng: isFinite(x.lng) && x.lng !== null ? +x.lng : null };
       return x;
     }).filter(Boolean);
@@ -2726,7 +2729,7 @@
   // categoria di una spesa: quelle fisse con icona, quelle create da voi con emoji; sconosciuta → Altro
   const CCOL = ["#db2777", "#65a30d", "#4f46e5", "#0891b2", "#ca8a04", "#e11d48", "#059669", "#c026d3", "#475569", "#0d9488"];   // diversi dai colori delle categorie fisse
   function catOf(k) {
-    if (SCAT[k]) { const [ic, n, col] = SCAT[k]; return { k, n, col, html: icon(ic) }; }
+    if (Object.hasOwn(SCAT, k)) { const [ic, n, col] = SCAT[k]; return { k, n, col, html: icon(ic) }; }   // hasOwn: una categoria "constructor" non è una fissa
     const c = lists.categorie.find(x => x.id === k);
     return c ? { k, n: c.n, col: c.col, html: `<i class="emo">${esc(c.e)}</i>`, mine: true } : { ...catOf("altro"), k: "altro" };
   }
@@ -2918,7 +2921,7 @@
     };
     openSheet(`<div class="ttl"><span class="pic" style="background:${s.cat === "rimborso" ? "var(--ok)" : "#7b4fa0"}">${icon(s.cat === "rimborso" ? "HandCoins" : "Receipt")}</span><h2>${s.cat === "rimborso" ? (isNew ? "Rimborso" : "Modifica rimborso") : isNew ? "Nuova spesa" : "Modifica spesa"}</h2></div>
       ${s.pren && lists.prenotazioni.some(x => x.id === s.pren) ? `<p class="small muted" style="margin:-4px 0 10px">${icon("BedDouble")} È il costo della prenotazione <b>${esc(lists.prenotazioni.find(x => x.id === s.pren).titolo)}</b>: cambiarlo qui lo cambia anche lì. <a href="#" id="s-pren" style="white-space:nowrap">Apri la prenotazione ›</a></p>` : ""}
-      <label class="fl"><span>Descrizione</span><input id="s-desc" value="${esc(s.desc || "")}" placeholder="es. Cena izakaya" autocomplete="off"></label>
+      <label class="fl"><span>Descrizione</span><input id="s-desc" value="${esc(s.desc || "")}" placeholder="es. Cena izakaya" autocomplete="off" maxlength="80"></label>
       <div class="grid2" style="grid-template-columns:1fr auto;align-items:end">
         <label class="fl"><span>Importo</span><input id="s-imp" inputmode="decimal" value="${s.importo == null ? "" : String(s.importo).replace(".", ",")}" placeholder="0" style="font-size:1.3rem;font-weight:800"></label>
         <div class="seg" style="margin-bottom:12px"><button data-val="JPY">¥</button><button data-val="EUR">€</button></div>
@@ -2941,7 +2944,7 @@
         const n = $("#nc-n", el).value.trim().slice(0, 24); if (!n) return toast("Scrivi il nome della categoria");
         if ([...Object.values(SCAT).map(x => x[1]), ...lists.categorie.map(c => c.n)].some(x => x.toLowerCase() === n.toLowerCase())) return toast("Esiste già");
         // solo la prima emoji, intera anche se è composta (👨‍👩‍👧, 🇯🇵, 👍🏽)
-        const ev = $("#nc-e", el).value.trim(), e = (window.Intl?.Segmenter ? [...new Intl.Segmenter().segment(ev)].map(x => x.segment) : [...ev])[0] || "🏷️";
+        const e = oneEmo($("#nc-e", el).value.trim());
         const used = lists.categorie.map(c => c.col), col = CCOL.find(x => !used.includes(x)) || CCOL[lists.categorie.length % CCOL.length];   // un colore non ancora usato
         const c = putItem("categorie", { id: "k" + uid(), n, e, col });
         st.cat = c.id; $("#nc-n", el).value = $("#nc-e", el).value = ""; $("#s-newcat", el).hidden = true; drawCats(el); toast(`Categoria "${n}" creata ✓`);
@@ -3039,6 +3042,9 @@
   const unb64u = s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), c => c.charCodeAt(0));
   async function whenSync() { for (let i = 0; i < 40 && !sync; i++) await new Promise(r => setTimeout(r, 250)); return sync; }
   async function savePush(sub, st) { const s = await whenSync(); s?.put("push", { id: st.sid, sub: JSON.stringify(sub), who: me || "", prefs: st.prefs }); }
+  // cambio di chi usa il telefono: anche l'iscrizione alle notifiche passa al nome nuovo (prima solo al riavvio dell'app,
+  // e intanto arrivavano a lui gli avvisi delle sue spese e non quelli per la persona di prima)
+  function setMe(n) { if (n === me) return; me = n; LS.set("me", me); const st = LS.get("push", null); if (st && T.notifyUrl && pushOK() && code) currentSub().then(sub => sub && savePush(sub, st)); }
   async function currentSub() { try { return await (await navigator.serviceWorker.ready).pushManager.getSubscription(); } catch { return null; } }
   // ——— backup: file Excel da leggere + file .json per ripristinare tutto (modulo backup.js, caricato solo qui) ———
   const backupInfo = () => ({
@@ -3284,14 +3290,14 @@
         <p class="muted small" style="margin-top:12px">Senza codice l'app funziona lo stesso, ma solo su questo telefono e senza spese e prenotazioni condivise.</p>` : ""}`, el => {
       $$("[data-who]", el).forEach(b => b.onclick = () => {
         pick = b.dataset.who; $$("[data-who]", el).forEach(x => x.classList.toggle("sel", x === b));
-        if (!needCode) { me = pick; LS.set("me", me); closeSheet(); toast(`Ciao ${me}! 👋`); render(); }
+        if (!needCode) { setMe(pick); closeSheet(); toast(`Ciao ${me}! 👋`); render(); }
       });
       $("#enter", el)?.addEventListener("click", () => {
         const c = $("#tcode", el).value.trim();   // il codice distingue maiuscole e minuscole
         if (!c) return toast("Scrivi il codice del viaggio");
         if (!pick) return toast("Scegli chi sei");
         badCode = ""; oldCode = false; try { sessionStorage.removeItem("jp27:badCode"); } catch {}
-        me = pick; LS.set("me", me);
+        setMe(pick);
         const changed = c !== code; code = c; LS.set("code", c);
         closeSheet();
         LS.set("skipCode", false);
@@ -3299,7 +3305,7 @@
       });
     }, () => {
       if (needCode && !code) {
-        if (pick && pick !== me) { me = pick; LS.set("me", me); render(); }   // il nome scelto resta anche con "Più tardi"
+        if (pick && pick !== me) { setMe(pick); render(); }   // il nome scelto resta anche con "Più tardi"
         LS.set("skipCode", true); toast("Puoi inserire il codice quando vuoi da Utility");
       }
     });
