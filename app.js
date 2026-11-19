@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 167;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 168;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -98,6 +98,9 @@
   let me = LS.get("me", "");
   let lastEdit = LS.get("lastEdit", null);   // { by, at }
   let sync = null, syncStatus = "off", pendingRemote = false, syncErr = "", serverAt = 0, onlineSince = 0;
+  let reordering = null;   // una tappa si sta spostando col dito (vedi startReorder): la pagina non si ridisegna sotto
+  // app in secondo piano, telefonata, notifica a metà spostamento: la tappa si lascia dov'è, non resta "appesa"
+  document.addEventListener("visibilitychange", () => { if (document.hidden) reordering?.end(); });
 
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -498,7 +501,7 @@
   const typingNow = () => { const a = document.activeElement; return !!a && a.isConnected && (a.tagName === "TEXTAREA" || a.tagName === "SELECT" || (a.tagName === "INPUT" && !/checkbox|radio|button|submit|range|switch/.test(a.type))); };
   function remoteChanged() {
     const a = document.activeElement;
-    if (!typingNow() && !sheetOpen()) rerender(); else pendingRemote = true;
+    if (!typingNow() && !sheetOpen() && !reordering) rerender(); else pendingRemote = true;
   }
   function onRemote(data, first) {
     if (!data) {
@@ -587,7 +590,7 @@
     }
     // si riparte dall'ultimo stato confermato: quello che era stato inviato senza conferma si rimanda
     synced = { plan: clone(confirmed.plan), booked: [...confirmed.booked] };
-    import("./sync.js").then(m => { sync = m.start(window.FIREBASE, code, { main: onRemote, list: onList, server: onServer, status: setSync, recreate: () => sync.pushMain({ plan, booked: [...booked], by: me || "?" }) }, { memory: syncMemory }); checkOutbox(); uploadDocs(); dataVer++; if (location.hash.startsWith("#giorni") && !sheetOpen()) keepScroll(render); }).catch(err => { syncStarting = false; setSync("error", err); });
+    import("./sync.js").then(m => { sync = m.start(window.FIREBASE, code, { main: onRemote, list: onList, server: onServer, status: setSync, recreate: () => sync.pushMain({ plan, booked: [...booked], by: me || "?" }) }, { memory: syncMemory }); checkOutbox(); uploadDocs(); dataVer++; if (location.hash.startsWith("#giorni") && !sheetOpen() && !reordering) keepScroll(render); }).catch(err => { syncStarting = false; setSync("error", err); });
   }
 
   // ricerca tollerante: ignora accenti (ō → o), trattini, apostrofi e maiuscole; ogni parola deve comparire
@@ -1278,8 +1281,13 @@
     });
     // riordino: la tappa segue il dito e le altre le fanno posto; vicino al bordo alto o basso la pagina scorre da sola,
     // così anche nei giorni lunghi l'ultima tappa arriva fino in cima. Restituisce move(y) / end()
+    // Mentre si sposta, le modifiche degli altri aspettano (pendingRemote): ridisegnando, la tappa sotto il dito sparirebbe.
+    // Alla fine si sposta la tappa per nome, non per posizione: se intanto il giorno è cambiato, finisce comunque
+    // dopo la tappa che le sta sopra sullo schermo (o prima di quella sotto)
     const startReorder = (li, y0) => {
+      reordering?.end();
       const items = [...li.parentElement.children], from = items.indexOf(li), s0 = SC.scrollTop;
+      const shown = getDay(d).i.filter(x => byId[x]), id = shown[from];
       const rects = items.map(x => { const r = x.getBoundingClientRect(); return { top: r.top + s0, h: r.height }; }), h = rects[from].h;
       let to = from, y = y0, raf = 0;
       li.classList.add("dragging"); buzz();
@@ -1296,16 +1304,26 @@
         const before = SC.scrollTop; if (v) SC.scrollTop += v;
         paint(); if (v && SC.scrollTop !== before) raf = requestAnimationFrame(tick);
       };
-      return {
+      const r = {
         move(ny) { y = ny; if (!raf) raf = requestAnimationFrame(tick); },
         end() {
+          if (reordering !== r) return; reordering = null;
           cancelAnimationFrame(raf);
           items.forEach(x => (x.style.transform = "")); li.classList.remove("dragging");
-          // from/to contano solo le tappe mostrate: quelle di luoghi che non ci sono più restano al loro posto
-          if (to !== from) { const dd = getDay(d), vis = dd.i.filter(x => byId[x]), [id] = vis.splice(from, 1); vis.splice(to, 0, id); let j = 0; dd.i = dd.i.map(x => byId[x] ? vis[j++] : x); savePlan(); buzz(); }
-          keepScroll(() => renderGiorni());
+          const dd = getDay(d);
+          if (to !== from && id && dd.i.includes(id)) {
+            const want = shown.filter(x => x !== id); want.splice(to, 0, id);
+            const above = want.slice(0, to).reverse(), below = want.slice(to + 1);
+            // le tappe di luoghi che non ci sono più restano dove sono
+            const rest = dd.i.filter(x => x !== id), a = above.find(x => rest.includes(x)), b = below.find(x => rest.includes(x));
+            rest.splice(a ? rest.indexOf(a) + 1 : b ? rest.indexOf(b) : to, 0, id);
+            if (rest.join() !== dd.i.join()) { dd.i = rest; savePlan(); buzz(); }
+          }
+          if (pendingRemote && !sheetOpen() && !typingNow()) { pendingRemote = false; rerender(); } else keepScroll(() => renderGiorni());
         },
       };
+      reordering = r;
+      return r;
     };
     // in Modifica: trascina il numero
     $$("[data-grip]").forEach(g => g.addEventListener("pointerdown", e => {
@@ -1320,7 +1338,10 @@
     let reorder = null;
     if (!editMode) $$(".tl li").forEach(li => {
       let t = null, x0 = 0, y0 = 0;
-      const block = e => { if (reorder) { e.preventDefault(); reorder.move(e.touches[0].clientY); } };   // niente scorrimento della pagina mentre si sposta
+      const block = e => {   // niente scorrimento della pagina mentre si sposta
+        if (reorder && reordering !== reorder) reorder = null;   // finito da fuori (app in secondo piano)
+        if (reorder) { e.preventDefault(); reorder.move(e.touches[0].clientY); } else document.removeEventListener("touchmove", block);
+      };
       const stop = e => {
         clearTimeout(t); t = null;
         if (!reorder) return;
