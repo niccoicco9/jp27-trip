@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 166;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 167;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -601,10 +601,13 @@
   const q = p => p.mine ? `${p.lat},${p.lng}` : p.jp.replace(/（.*?）/g, "").trim() || p.n;
   const gmSearch = p => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q(p))}`;
   const gmDir = p => `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(q(p))}&travelmode=transit`;
+  // Google Maps prende al massimo 11 punti (partenza, 9 intermedi, arrivo): oltre, il percorso si ferma all'11ª tappa
+  // invece di saltarne alcune in mezzo (vedi routeStops)
+  const ROUTE_MAX = 11;
   const gmRoute = ids => {
-    ids = ids.filter(id => byId[id]); const ps = ids.map(id => q(byId[id]));
+    ids = ids.filter(id => byId[id]).slice(0, ROUTE_MAX); const ps = ids.map(id => q(byId[id]));
     if (ps.length < 2) return ps.length ? gmSearch(byId[ids[0]]) : null;
-    const wp = ps.slice(1, -1).slice(0, 8).join("|");
+    const wp = ps.slice(1, -1).join("|");
     return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(ps[0])}&destination=${encodeURIComponent(ps.at(-1))}${wp ? "&waypoints=" + encodeURIComponent(wp) : ""}&travelmode=walking`;
   };
   function hop(a, b) {
@@ -1177,6 +1180,26 @@
 
   // ——— GIORNI ———
   let selDay = LS.get("selDay", null), editMode = false;
+  // toglie una tappa da un giorno insieme al suo orario e alla spunta "fatta"; restituisce quanto serve per rimetterla
+  function takeStop(d, id) {
+    const dd = getDay(d), k = dd.i.indexOf(id); if (k < 0) return null;
+    const s = { d, id, k, prev: dd.i[k - 1], next: dd.i[k + 1], tm: dd.t?.[id], done: !!dd.f?.includes(id) };
+    dd.i.splice(k, 1);
+    if (dd.t?.[id]) { delete dd.t[id]; if (!Object.keys(dd.t).length) delete dd.t; }
+    if (s.done) dd.f = dd.f.filter(x => x !== id);
+    return s;
+  }
+  // "Annulla": la rimette al suo posto anche se intanto il giorno è cambiato (dopo la tappa che la precedeva, o prima
+  // di quella che la seguiva), con orario e spunta; se intanto qualcuno l'ha già rimessa non si raddoppia
+  function putStop(s) {
+    const dd = getDay(s.d);
+    if (!dd.i.includes(s.id)) {
+      const a = dd.i.indexOf(s.prev), b = dd.i.indexOf(s.next);
+      dd.i.splice(a >= 0 ? a + 1 : b >= 0 ? b : Math.min(s.k, dd.i.length), 0, s.id);
+    }
+    if (s.tm && !dd.t?.[s.id]) (dd.t ||= {})[s.id] = s.tm;
+    if (s.done) { const f = new Set([...(dd.f || []), s.id]); dd.f = dd.i.filter(x => f.has(x)); }
+  }
   const ZSHORT = { tokyo: "Tokyo", vicino: "Dintorni", kyoto: "Kyoto", osaka: "Osaka", nara: "Nara", fuji: "Fuji", kanazawa: "Kanaz.", altre: "Altro" };
   function renderGiorni(sub) {
     const today = todayJP();
@@ -1185,6 +1208,8 @@
     LS.set("selDay", selDay);
     const d = selDay, i = dayIndex(d), day = getDay(d);
     const live = day.i.filter(id => byId[id]);   // tappe di luoghi che esistono ancora (uno eliminato non lascia buchi)
+    // percorso: le tappe ancora da fare (quelle già fatte non servono più), tutte se ne resta una sola
+    const togo = live.filter(id => !day.f?.includes(id)), route = togo.length > 1 ? togo : live;
     const first = live.map(id => byId[id]).find(p => photoUrl(p.id));
     const editedBy = lastEdit?.by && lastEdit.by !== "?" ? ` · ultima modifica di ${esc(lastEdit.by)}` : "";
 
@@ -1200,7 +1225,7 @@
       <div class="dayact">
         <button id="add">${icon("Plus")}<span>Aggiungi</span></button>
         ${live.length ? `<a href="#mappa" id="dmap">${icon("Map")}<span>Mappa</span></a>` : `<button disabled>${icon("Map")}<span>Mappa</span></button>`}
-        ${live.length > 1 ? `<a href="${gmRoute(day.i)}" target="_blank" rel="noopener">${icon("Route")}<span>Percorso</span></a>` : `<button disabled>${icon("Route")}<span>Percorso</span></button>`}
+        ${live.length > 1 ? `<a href="${gmRoute(route)}" id="droute" target="_blank" rel="noopener">${icon("Route")}<span>Percorso</span></a>` : `<button disabled>${icon("Route")}<span>Percorso</span></button>`}
         <button id="edit" class="${editMode ? "on" : ""}" ${live.length || editMode ? "" : "disabled"}>${icon(editMode ? "Check" : "Pencil")}<span>${editMode ? "Fatto" : "Modifica"}</span></button>
       </div>
       ${editMode && live.length ? `<p class="small muted" style="margin:0 0 6px">Trascina il numero per cambiare l'ordine · metti un orario alle tappe</p>`
@@ -1230,18 +1255,19 @@
     // il giorno toccato si accende subito, mentre il contenuto si prepara a scorrere
     $("#strip").addEventListener("click", e => { const c = e.target.closest(".dchip"); if (!c || c.classList.contains("on")) return; $("#strip .on")?.classList.remove("on"); c.classList.add("on"); buzz(); });
     bindPcards();
-    $("#dlabel")?.addEventListener("change", e => { day.l = e.target.value.trim(); savePlan(); });
-    
-    $("#dnote")?.addEventListener("change", e => { day.n = e.target.value.trim(); savePlan(); });
+    // nome e nota si salvano mentre si scrive: chiudendo l'app con la tastiera aperta iPhone non fa uscire dal campo
+    const textField = (sel, k) => $(sel)?.addEventListener("input", e => { const v = e.target.value.trim(); if (getDay(d)[k] !== v) { getDay(d)[k] = v; savePlan(); } });
+    textField("#dlabel", "l"); textField("#dnote", "n");
+    $("#droute")?.addEventListener("click", () => { if (route.length > ROUTE_MAX) toast(`Google Maps prende ${ROUTE_MAX} tappe alla volta: il percorso arriva fino a ${byId[route[ROUTE_MAX - 1]].n}`); });
     $("#add").onclick = () => openPicker(d);
     $("#add2")?.addEventListener("click", () => openPicker(d));
     $("#dmap")?.addEventListener("click", () => { mapFilter = { z: "all", d }; });
     $("#edit").onclick = () => { editMode = !editMode; keepScroll(() => renderGiorni()); };
     // togli una tappa (con "Annulla")
     const removeStop = k => {
-      const dd = getDay(d), id = dd.i[k], tm = dd.t?.[id]; if (!id) return;
-      dd.i.splice(k, 1); if (dd.t) delete dd.t[id]; savePlan(); keepScroll(() => renderGiorni());
-      toast(`${byId[id]?.n || "Tappa"}: tolta`, () => { const d2 = getDay(d); markFresh(id); d2.i.splice(Math.min(k, d2.i.length), 0, id); if (tm) (d2.t ||= {})[id] = tm; savePlan(); keepScroll(() => renderGiorni()); });
+      const s = takeStop(d, getDay(d).i[k]); if (!s) return;
+      savePlan(); keepScroll(() => renderGiorni());
+      toast(`${byId[s.id]?.n || "Tappa"}: tolta`, () => { markFresh(s.id); putStop(s); savePlan(); keepScroll(() => renderGiorni()); });
     };
     $$("[data-rm]").forEach(b => b.onclick = () => collapse(b.closest("li")).then(() => removeStop(+b.dataset.rm)));
     $$("[data-time]").forEach(inp => inp.onchange = () => {
@@ -1394,7 +1420,7 @@
         if (e.target.closest("[data-newl]")) return editLuogo({ n: $("#pk-q", el).value.trim() }, d);
         const it = e.target.closest("[data-pick]"); if (!it) return;
         const day = getDay(d); const id = it.dataset.pick; const k = day.i.indexOf(id);
-        if (k >= 0) { day.i.splice(k, 1); if (day.t?.[id]) { delete day.t[id]; if (!Object.keys(day.t).length) delete day.t; } } else { day.i.push(id); markFresh(id); buzz(); if (closedOn(byId[id], d)) toast(`Attenzione: ${byId[id].n} è chiuso di ${byId[id].chiuso}`); }
+        if (k >= 0) takeStop(d, id); else { day.i.push(id); markFresh(id); buzz(); if (closedOn(byId[id], d)) toast(`Attenzione: ${byId[id].n} è chiuso di ${byId[id].chiuso}`); }
         savePlan(); draw(el);
       };
     }, () => { if (dataVer !== v0 && location.hash.startsWith("#giorni")) keepScroll(render); });
@@ -2943,15 +2969,14 @@
   // elimina un luogo per tutti: i vostri spariscono, quelli di Wanderlog finiscono tra gli eliminati (ripristinabili).
   // Viene tolto anche dai giorni in cui era in programma; "Annulla" rimette tutto com'era
   function deletePlace(p) {
-    const id = p.id, wasBooked = booked.has(id), pos = dayOf(id).map(d => [d, plan[d].i.indexOf(id), plan[d].t?.[id]]);
+    const id = p.id, wasBooked = booked.has(id), pos = dayOf(id).map(d => takeStop(d, id)).filter(Boolean);
     const old = p.mine ? lists.luoghi.find(x => x.id === id) : null;
-    for (const [d] of pos) { const dd = plan[d]; dd.i = dd.i.filter(x => x !== id); if (dd.t?.[id]) { delete dd.t[id]; if (!Object.keys(dd.t).length) delete dd.t; } }
     booked.delete(id); savePlan();
     if (p.mine) delItem("luoghi", id); else putItem("luoghi", { id: "h" + id, hide: id });
     closeSheet(); rerender(); buzz();
     toast(pos.length ? `Luogo eliminato e tolto da ${pos.length === 1 ? "1 giorno" : pos.length + " giorni"}` : "Luogo eliminato", () => {
       if (old) putItem("luoghi", old); else delItem("luoghi", "h" + id);
-      for (const [d, k, tm] of pos) { const dd = getDay(d); dd.i.splice(k, 0, id); if (tm) (dd.t ||= {})[id] = tm; }
+      pos.forEach(putStop);
       if (wasBooked) booked.add(id);
       savePlan(); rerender();
     });
