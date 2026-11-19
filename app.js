@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 163;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 164;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2107,7 +2107,6 @@
   const DOCS = "jp27-docs";
   const docKey = (id, k) => new URL(`__doc/${id}/${k}`, location.href).href;
   const docsOf = pid => lists.allegati.filter(a => a.pren === pid).sort((a, b) => a.t - b.t);
-  const docURLs = new Map();   // "id/k" → indirizzo dell'immagine già letta
   async function docBlob(a, k) {
     const c = await caches.open(DOCS), hit = await c.match(docKey(a.id, k));
     if (hit) return hit.blob();
@@ -2117,10 +2116,11 @@
     await c.put(docKey(a.id, k), new Response(blob, { headers: { "Content-Type": "image/jpeg" } }));
     return blob;
   }
+  // indirizzo dell'immagine di una pagina: vale finché il visore è aperto e si libera alla chiusura. Prima restavano
+  // tutti: aprire e chiudere 50 documenti teneva in memoria ogni pagina vista (150 MB e più, Safari chiude l'app)
   async function docURL(a, k) {
-    const key = a.id + "/" + k; if (docURLs.has(key)) return docURLs.get(key);
-    const b = await docBlob(a, k).catch(() => null); if (!b) return null;
-    const u = URL.createObjectURL(b); docURLs.set(key, u); return u;
+    const b = await docBlob(a, k).catch(() => null);
+    return b && URL.createObjectURL(b);
   }
   // in sottofondo scarica i documenti che mancano su questo telefono (così ci sono anche senza rete) e toglie quelli eliminati
   // La voce arriva prima delle pagine (un PDF grande con rete lenta ci mette un po'): le pagine che non sono ancora
@@ -2183,10 +2183,10 @@
     docOpening = true; let waitShown = false;
     const wait = setTimeout(() => { waitShown = true; toast("Scarico il documento…"); }, 500);
     try {
-      const pages = [];
+      const pages = [], free = () => pages.forEach(p => URL.revokeObjectURL(p.u));
       for (const a of as) for (let k = 0; k < a.pagine; k++) {
         const u = await docURL(a, k);
-        if (!u) { clearTimeout(wait); toast(navigator.onLine ? `Documento non ancora caricato ${a.by && a.by !== "?" && a.by !== me ? "da " + a.by : "da chi l'ha aggiunto"}: arriva da solo appena apre l'app con la rete` : "Documento non ancora scaricato su questo telefono: serve la rete una volta"); return; }
+        if (!u) { free(); clearTimeout(wait); toast(navigator.onLine ? `Documento non ancora caricato ${a.by && a.by !== "?" && a.by !== me ? "da " + a.by : "da chi l'ha aggiunto"}: arriva da solo appena apre l'app con la rete` : "Documento non ancora scaricato su questo telefono: serve la rete una volta"); return; }
         pages.push({ a, k, u });
       }
       clearTimeout(wait); if (waitShown) $("#toast").hidden = true;
@@ -2195,6 +2195,7 @@
       openViewer(pages.map(p => p.u), null, {
         title: k => pages[k].a.nome, share: k => docBlob(pages[k].a, pages[k].k).then(b => b || fetch(pages[k].u).then(r => r.blob())),   // eliminato intanto: la copia già aperta
         fileName: k => pages[k].a.nome + (pages[k].a.pagine > 1 ? " " + (pages[k].k + 1) : ""),
+        onClose: free,
       });
     } finally { clearTimeout(wait); docOpening = false; }
   }
@@ -2253,7 +2254,8 @@
     out.total = pdf.numPages;
     for (let i = 1; i <= n; i++) {
       step(n > 1 ? `Pagina ${i} di ${n}…` : "Preparo il documento…");
-      const pg = await pdf.getPage(i), w = pg.getViewport({ scale: 1 }).width, vp = pg.getViewport({ scale: Math.min(3, 1700 / w) });
+      const pg = await pdf.getPage(i), w = pg.getViewport({ scale: 1 }).width, h = pg.getViewport({ scale: 1 }).height,
+        vp = pg.getViewport({ scale: Math.min(3, 1700 / w, Math.sqrt(8e6 / (w * h))) });   // al massimo ~8 milioni di pixel: una pagina lunghissima (ricevuta) non supera il limite dei canvas di Safari
       const cv = document.createElement("canvas"); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
       const x = cv.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, cv.width, cv.height);
       await pg.render({ canvasContext: x, viewport: vp }).promise;
@@ -2270,7 +2272,7 @@
     const pdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
     if (!pdf && file.type && !file.type.startsWith("image/")) return { err: "si possono allegare solo foto e PDF" };
     let pages;
-    try { step("Preparo il documento…"); pages = pdf ? await pdfPages(file, step) : [await toJpeg(await readImage(file), 2800)]; }
+    try { step("Preparo il documento…"); if (pdf) pages = await pdfPages(file, step); else { const im = await readImage(file); try { pages = [await toJpeg(im, 2800)]; } finally { im.close?.(); } } }
     catch (err) {
       console.warn("Documento:", err);
       return { err: pdf && err?.name === "PasswordException" ? "il PDF è protetto da password (fanne uno screenshot)" : !navigator.onLine && pdf && !window.pdfjsLib ? "per leggere un PDF la prima volta serve la rete" : pdf ? "non riesco a leggere questo PDF" : "non riesco a leggere questa immagine" };
@@ -2303,10 +2305,19 @@
       docSending.set(id, s);
       (async () => {
         const pages = [];
-        for (let k = 0; k < n; k++) { const r = await c.match(docKey(id, k)); if (!r) return; pages.push(new Uint8Array(await r.arrayBuffer())); }   // copia sparita: non si può più mandare
+        for (let k = 0; k < n; k++) {
+          const r = await c.match(docKey(id, k));
+          if (!r) return "lost";   // copia sparita prima dell'invio (iOS ha liberato spazio): non si può più mandare
+          pages.push(new Uint8Array(await r.arrayBuffer()));
+        }
         if (!(id in docUp)) return;   // eliminato mentre si leggevano le pagine: non si riscrivono dopo la cancellazione
         await Promise.all(pages.map((b, k) => s.putPage(id, k, b)));
-      })().then(() => { delete docUp[id]; LS.set("docUp", docUp); },
+      })().then(res => {
+        delete docUp[id]; LS.set("docUp", docUp);
+        // senza pagine gli altri vedrebbero per sempre "non ancora caricato": si toglie e si chiede di riallegarlo
+        const a = res === "lost" && lists.allegati.find(x => x.id === id);
+        if (a) { delDoc(a); toast(`«${a.nome}» non è più su questo telefono (iOS ha liberato spazio) e non era ancora condiviso: allegalo di nuovo`); }
+      },
         err => { console.warn("Documento:", err); if (s === sync) toast("Documento non caricato: riprovo alla prossima apertura"); })
         .finally(() => { if (docSending.get(id) === s) docSending.delete(id); });
     }
@@ -2316,7 +2327,7 @@
     if (a.id in docUp) { delete docUp[a.id]; LS.set("docUp", docUp); }
     const c = await caches.open(DOCS).catch(() => null);
     c?.delete(docKey(a.id, "t")); const tu = thumbURLs.get(a.id); if (tu) { URL.revokeObjectURL(tu); thumbURLs.delete(a.id); }
-    for (let k = 0; k < a.pagine; k++) { sync?.delPage(a.id, k); c?.delete(docKey(a.id, k)); const u = docURLs.get(a.id + "/" + k); if (u) { URL.revokeObjectURL(u); docURLs.delete(a.id + "/" + k); } }
+    for (let k = 0; k < a.pagine; k++) { sync?.delPage(a.id, k); c?.delete(docKey(a.id, k)); }
   }
   // Documenti rimasti senza prenotazione: app chiusa nei 6 secondi dell'"Annulla" dopo un'eliminazione, o chiusa con
   // una prenotazione nuova mai salvata. Si tolgono quando sono orfani da almeno un minuto con la rete (così un "Annulla"
@@ -4015,7 +4026,7 @@
       const c = $(".vcount", v); if (c) c.textContent = `${cur + 1} / ${srcs.length}`;
       const b = $(".vbar b", v); if (b) b.textContent = titleOf(cur);
     };
-    const close = () => { if (v.classList.contains("out")) return; v.classList.add("out"); document.removeEventListener("keydown", key); setTimeout(() => v.remove(), 200); };
+    const close = () => { if (v.classList.contains("out")) return; v.classList.add("out"); document.removeEventListener("keydown", key); setTimeout(() => { v.remove(); img.removeAttribute("src"); opts.onClose?.(); }, 200); };
     const key = e => { if (e.key === "Escape") close(); else if (many && e.key === "ArrowRight") page(1); else if (many && e.key === "ArrowLeft") page(-1); };
     const mid = t => ({ x: (t[0].clientX + t[1].clientX) / 2 - innerWidth / 2, y: (t[0].clientY + t[1].clientY) / 2 - innerHeight / 2 });
     const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
