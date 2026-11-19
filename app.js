@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 174;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 175;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -895,7 +895,7 @@
     if (p.dur) m.push(`<span class="pill ghost">${icon("Clock")} ${esc(p.dur)}</span>`);
     if (p.eur && !opts.compact) m.push(`<span class="pill ghost">~${Math.max(1, Math.round(p.eur))} €</span>`);
     if (p.pren) m.push(booked.has(p.id) ? `<span class="pill ok">${icon("Check")} prenotato</span>` : `<span class="pill warn">${icon("Ticket")} da prenotare</span>`);
-    if (p.chiuso) m.push(`<span class="pill ghost">chiuso ${esc(p.chiuso)}</span>`);
+    if (p.chiuso && !(opts.day && closedOn(p, opts.day))) m.push(`<span class="pill ghost">chiuso ${esc(p.chiuso)}</span>`);
     const ds = dayOf(p.id);
     if (ds.length && !opts.noDays) m.push(`<span class="pill">${icon("CalendarDays")} ${ds.map(short).join(", ")}</span>`);
     if (p.out) m.push(`<span class="pill ghost">${p.gone ? "eliminato" : "scartato"}</span>`);
@@ -1150,7 +1150,7 @@
     return `<div class="card tripc"><div class="between"><h3 style="margin:0">${p ? (n ? "Prossima tappa" : "Prima tappa") : "Tappe di oggi fatte 🎉"}</h3>${quick}</div>
       <div class="bar"><i style="width:${n / ids.length * 100}%"></i></div><div class="small muted">${n} di ${ids.length} tappe</div>
       ${p ? `<div class="row" data-place="${p.id}" style="margin-top:12px">${photo(p.id, 330, "ns-ph")}<div class="grow"><b>${esc(p.n)}</b>${p.jp ? `<div class="small muted jp">${esc(p.jp)}</div>` : ""}<div class="small muted">${t[p.id] ? `${icon("Clock")} ${esc(t[p.id])} · ` : ""}${prev ? `a ${fmtKm(kmBetween(prev, p))} dalla tappa prima` : ""}</div></div></div>
-      <div class="btns"><a class="btn primary" href="${gmDir(p)}" target="_blank" rel="noopener">${icon("Navigation")} Portami qui</a><button class="btn" data-fatto="${p.id}">Fatto 済</button></div>` : ""}
+      <div class="btns"><a class="btn primary" href="${gmDir(p)}" target="_blank" rel="noopener">${icon("Navigation")} Portami qui</a><button class="btn" data-fatto="${p.id}" aria-label="Fatto">Fatto 済</button></div>` : ""}
       <div class="stops">${ids.map(id => `<label class="check${done.has(id) ? " done" : ""}"><input type="checkbox" data-stop="${id}" ${done.has(id) ? "checked" : ""}><span><b>${esc(byId[id].n)}</b>${t[id] ? ` <small class="muted">${esc(t[id])}</small>` : ""}</span></label>`).join("")}</div></div>`;
   }
   const onOggi = () => (location.hash || "#oggi") === "#oggi";
@@ -1261,7 +1261,7 @@
     const editedBy = lastEdit?.by && lastEdit.by !== "?" ? ` · ultima modifica di ${esc(lastEdit.by)}` : "";
 
     view.innerHTML = `
-      <div class="daystrip" id="strip">${DAYS.map((x, k) => { const z = dayZone(x), prev = k ? dayZone(DAYS[k - 1]) : null, move = z && prev && z !== prev; return `<a class="dchip${x === d ? " on" : ""}${x === today ? " today" : ""}" href="#giorni/${x}" style="--c:${z ? zona[z].colore : "var(--muted)"}" aria-label="Giorno ${k + 1}${z ? ", " + zona[z].nome : landsOn(x) ? ", arrivo" : flightOn(x) ? ", partenza" : ""}${move ? ", trasferimento" : ""}"><small>${fmtDay(x, { weekday: "short" }).replace(".", "")}</small><b>${fmtDay(x, { day: "numeric" })}</b><em>${move ? icon("TrainFront") : ""}${z ? ZSHORT[z] : landsOn(x) ? "arrivo" : flightOn(x) ? "partenza" : "libero"}</em></a>`; }).join("")}</div>
+      <div class="daystrip" id="strip">${DAYS.map((x, k) => { const z = dayZone(x), prev = k ? dayZone(DAYS[k - 1]) : null, move = z && prev && z !== prev; return `<a class="dchip${x === d ? " on" : ""}${x === today ? " today" : ""}" href="#giorni/${x}" style="--c:${z ? zona[z].colore : "var(--muted)"}" ${x === d ? ' aria-current="page"' : ""} aria-label="Giorno ${k + 1}, ${fmtDay(x)}${x === today ? ", oggi" : ""}${z ? ", " + zona[z].nome : landsOn(x) ? ", arrivo" : flightOn(x) ? ", partenza" : ", libero"}${move ? ", trasferimento" : ""}"><small>${fmtDay(x, { weekday: "short" }).replace(".", "")}</small><b>${fmtDay(x, { day: "numeric" })}</b><em>${move ? icon("TrainFront") : ""}${z ? ZSHORT[z] : landsOn(x) ? "arrivo" : flightOn(x) ? "partenza" : "libero"}</em></a>`; }).join("")}</div>
       <div class="daycover" id="cover">${first ? `<div class="ph" data-bg="${photoUrl(first.id, 960)}"></div>` : art()}
         <span class="dn">Giorno ${i + 1}<small>/ ${DAYS.length}</small></span>
         <div class="dtxt"><div class="kicker">${fmtDay(d)}</div>${editMode ? `<input id="dlabel" value="${esc(day.l)}" placeholder="Dai un nome al giorno…" aria-label="Nome del giorno">` : `<div class="dtitle">${esc(dayTitle(d))}</div>`}</div>
@@ -1280,10 +1280,10 @@
       ${live.length ? `<ul class="tl${editMode ? " editing" : ""}">${day.i.map((id, k) => {
         const p = byId[id]; if (!p) return "";
         const at = live.indexOf(id), next = byId[live[at + 1]], tm = day.t?.[id];
-        const right = editMode ? `<div class="edit">${timeIn(`class="ttime" data-time="${id}" value="${esc(tm || "")}" aria-label="Orario"`)}<button class="iconbtn danger" data-rm="${k}" aria-label="Rimuovi">${icon("Trash2")}</button></div>` : "";
-        const row = placeRow(p, { noDays: true, compact: true, noZone: true, right }).replace('<div class="meta">', `<div class="meta">${closedOn(p, d) ? closedPill(p) : ""}${tm ? `<span class="pill">${icon("Clock")} ${esc(tm)}</span>` : ""}`);
+        const right = editMode ? `<div class="edit">${timeIn(`class="ttime" data-time="${id}" value="${esc(tm || "")}" aria-label="Orario di ${esc(p.n)}"`)}<button class="iconbtn danger" data-rm="${k}" aria-label="Rimuovi ${esc(p.n)}">${icon("Trash2")}</button></div>` : "";
+        const row = placeRow(p, { noDays: true, compact: true, noZone: true, right, day: d }).replace('<div class="meta">', `<div class="meta">${closedOn(p, d) ? closedPill(p) : ""}${tm ? `<span class="pill">${icon("Clock")} ${esc(tm)}</span>` : ""}`);
         const fatto = day.f?.includes(id);
-        return `<li data-k="${k}"${fatto ? ' class="done"' : ""}>${editMode ? `<span class="n grip" data-grip="${k}" style="background:${zona[p.z].colore}" aria-label="Trascina per spostare">${icon("GripVertical")}</span>` : fatto ? `<span class="n done" aria-label="Fatta">済</span>` : `<span class="n" style="background:${zona[p.z].colore}">${at + 1}</span>`}<div class="sw">${editMode ? "" : `<div class="swipebg">${icon("Trash2")} Togli</div>`}${row}</div>${next ? `<div class="hop">${hop(p, next)}</div>` : ""}</li>`;
+        return `<li data-k="${k}"${fatto ? ' class="done"' : ""}>${editMode ? `<span class="n grip" data-grip="${k}" style="background:${zona[p.z].colore}" aria-hidden="true">${icon("GripVertical")}</span>${at > 0 ? `<button class="sr" data-mv="${id}" data-to="${at - 1}">Sposta su: ${esc(p.n)}</button>` : ""}${at < live.length - 1 ? `<button class="sr" data-mv="${id}" data-to="${at + 1}">Sposta giù: ${esc(p.n)}</button>` : ""}` : fatto ? `<span class="n done" role="img" aria-label="Fatta">済</span>` : `<span class="n" style="background:${zona[p.z].colore}">${at + 1}</span>`}<div class="sw">${editMode ? "" : `<div class="swipebg">${icon("Trash2")} Togli</div>`}${row}</div>${next ? `<div class="hop">${hop(p, next)}</div>` : ""}</li>`;
       }).join("")}</ul>` : landsOn(d) ? `<div class="empty" style="margin-top:14px">Si atterra${landsOn(d).oraA ? " alle " + esc(landsOn(d).oraA) : ""}: il resto della giornata è vostro.<br><button class="btn small primary" id="add2" style="margin-top:10px">${icon("Plus")} Aggiungi tappe</button></div>`
         : flightOn(d) ? `<div class="empty" style="margin-top:14px">Giorno della partenza: niente tappe in programma.<br><button class="btn small" id="add2" style="margin-top:10px">${icon("Plus")} Aggiungi una tappa</button></div>`
         : notArrived() ? `<div class="empty" style="margin-top:14px">Il programma non è ancora arrivato su questo telefono: serve la rete una volta. Poi c'è anche offline.</div>`
@@ -1301,7 +1301,7 @@
     `;
     $("#strip .on")?.scrollIntoView({ inline: "center", block: "nearest" });
     // il giorno toccato si accende subito, mentre il contenuto si prepara a scorrere
-    $("#strip").addEventListener("click", e => { const c = e.target.closest(".dchip"); if (!c || c.classList.contains("on")) return; $("#strip .on")?.classList.remove("on"); c.classList.add("on"); buzz(); });
+    $("#strip").addEventListener("click", e => { const c = e.target.closest(".dchip"); if (!c || c.classList.contains("on")) return; const o = $("#strip .on"); o?.classList.remove("on"); o?.removeAttribute("aria-current"); c.classList.add("on"); c.setAttribute("aria-current", "page"); buzz(); });
     bindPcards();
     // nome e nota si salvano mentre si scrive: chiudendo l'app con la tastiera aperta iPhone non fa uscire dal campo
     const textField = (sel, k) => $(sel)?.addEventListener("input", e => { const v = e.target.value.trim(); if (getDay(d)[k] !== v) { getDay(d)[k] = v; savePlan(); } });
@@ -1329,6 +1329,24 @@
     // Mentre si sposta, le modifiche degli altri aspettano (pendingRemote): ridisegnando, la tappa sotto il dito sparirebbe.
     // Alla fine si sposta la tappa per nome, non per posizione: se intanto il giorno è cambiato, finisce comunque
     // dopo la tappa che le sta sopra sullo schermo (o prima di quella sotto)
+    const moveStop = (shown, id, to) => {
+      const dd = getDay(d);
+      if (!id || !dd.i.includes(id)) return false;
+      const want = shown.filter(x => x !== id); want.splice(to, 0, id);
+      const above = want.slice(0, to).reverse(), below = want.slice(to + 1);
+      // le tappe di luoghi che non ci sono più restano dove sono
+      const rest = dd.i.filter(x => x !== id), a = above.find(x => rest.includes(x)), b = below.find(x => rest.includes(x));
+      rest.splice(a ? rest.indexOf(a) + 1 : b ? rest.indexOf(b) : to, 0, id);
+      if (rest.join() === dd.i.join()) return false;
+      dd.i = rest; savePlan(); buzz(); return true;
+    };
+    // con VoiceOver non si trascina: "Sposta su / giù" (nascosti a chi vede); dopo, il fuoco resta sulla tappa spostata
+    $$("[data-mv]").forEach(b => b.onclick = () => {
+      const id = b.dataset.mv, shown = getDay(d).i.filter(x => byId[x]), to = +b.dataset.to, up = to < shown.indexOf(id);
+      if (!moveStop(shown, id, to)) return;
+      keepScroll(() => renderGiorni());
+      const bs = $$(`[data-mv="${id}"]`); (up ? bs[0] : bs[bs.length - 1])?.focus();
+    });
     const startReorder = (li, y0) => {
       reordering?.end();
       const items = [...li.parentElement.children], from = items.indexOf(li), s0 = SC.scrollTop;
@@ -1355,15 +1373,7 @@
           if (reordering !== r) return; reordering = null;
           cancelAnimationFrame(raf);
           items.forEach(x => (x.style.transform = "")); li.classList.remove("dragging");
-          const dd = getDay(d);
-          if (to !== from && id && dd.i.includes(id)) {
-            const want = shown.filter(x => x !== id); want.splice(to, 0, id);
-            const above = want.slice(0, to).reverse(), below = want.slice(to + 1);
-            // le tappe di luoghi che non ci sono più restano dove sono
-            const rest = dd.i.filter(x => x !== id), a = above.find(x => rest.includes(x)), b = below.find(x => rest.includes(x));
-            rest.splice(a ? rest.indexOf(a) + 1 : b ? rest.indexOf(b) : to, 0, id);
-            if (rest.join() !== dd.i.join()) { dd.i = rest; savePlan(); buzz(); }
-          }
+          if (to !== from) moveStop(shown, id, to);
           if (pendingRemote && !sheetOpen() && !typingNow()) { pendingRemote = false; rerender(); } else keepScroll(() => renderGiorni());
         },
       };
@@ -1467,7 +1477,7 @@
       $("#pk-list", el).innerHTML = list.map(p => {
         const inDay = plan[d]?.i?.includes(p.id);
         const other = dayOf(p.id).filter(x => x !== d);
-        return placeRow(p, { noDays: true, compact: true, noZone: fz !== "all", right: `<span class="iconbtn" style="${inDay ? "background:var(--ok);color:#fff" : ""}">${icon(inDay ? "Check" : "Plus")}</span>` })
+        return placeRow(p, { noDays: true, compact: true, noZone: fz !== "all", day: d, right: `<span class="iconbtn" style="${inDay ? "background:var(--ok);color:#fff" : ""}">${icon(inDay ? "Check" : "Plus")}</span>` })
           .replace('class="place', `data-pick="${p.id}" class="place`).replace(/data-place="[^"]+"/, "")
           .replace('<div class="meta">', `<div class="meta">${closedOn(p, d) ? closedPill(p) : ""}${other.length ? `<span class="pill">già il ${other.map(short).join(", ")}</span>` : ""}`);
       }).join("") + `<button class="btn addl" data-newl style="width:100%;margin-top:6px">${icon("Plus")} ${fq ? `Non c'è? Aggiungi «${esc($("#pk-q", el).value.trim())}»` : "Aggiungi un luogo che non è in lista"}</button>`;
@@ -4092,6 +4102,7 @@
   function slideDay(dir, update) {
     dayAnim?.stop();
     const strip = $("#strip"), old = [...view.children].filter(n => n !== strip);
+    const oldTop = old[0]?.getBoundingClientRect().top;   // dov'era sullo schermo il giorno vecchio (anche scorso in fondo)
     update();
     if (reduceMotion() || !old.length || !$("#strip")) return;
     const fresh = [...view.children].filter(n => n.id !== "strip");
@@ -4099,9 +4110,12 @@
     const vr = view.getBoundingClientRect(), fr = fresh[0].getBoundingClientRect();
     const ghost = document.createElement("div");
     ghost.className = "dayghost"; ghost.setAttribute("aria-hidden", "true"); ghost.inert = true;
-    ghost.style.cssText = `left:${fr.left - vr.left}px;width:${fr.width}px;top:${fr.top - vr.top}px`;
+    // la pagina torna in cima per il giorno nuovo: il vecchio esce restando dove lo si guardava (es. le ultime tappe
+    // con "Giorno N ›"), non ricomincia dalla copertina; tagliato sotto la fila dei giorni, che non copre
+    ghost.style.cssText = `left:${fr.left - vr.left}px;width:${fr.width}px;top:${fr.top - vr.top}px;height:${Math.max(0, SC.getBoundingClientRect().bottom - fr.top)}px;overflow:hidden`;
+    const inner = document.createElement("div"); inner.style.marginTop = `${Math.min(0, (oldTop ?? fr.top) - fr.top)}px`;
     old.forEach(n => { n.removeAttribute?.("id"); n.querySelectorAll?.("[id]").forEach(e => e.removeAttribute("id")); });
-    ghost.append(...old); view.append(ghost); view.classList.add("sliding");
+    inner.append(...old); ghost.append(inner); view.append(ghost); view.classList.add("sliding");
     const W = view.clientWidth, o = { duration: 340, easing: "cubic-bezier(.32, .72, 0, 1)" };
     const anims = [ghost.animate([{ transform: "translate3d(0,0,0)" }, { transform: `translate3d(${-dir * W}px,0,0)` }], { ...o, fill: "forwards" }),
       ...fresh.map(n => n.animate([{ transform: `translate3d(${dir * W}px,0,0)` }, { transform: "translate3d(0,0,0)" }], o))];

@@ -1119,3 +1119,6 @@ body.kb-up .sheet::after { content: ""; position: absolute; left: 0; right: 0; t
 .sheet.closing::after { display: none; }
 /* con la tastiera aperta lo spazio è poco: i pulsanti fissi in fondo alla scheda (es. "Fatto") non coprono i risultati, stanno in fondo alla lista */
 body.kb-up .sheetfoot { position: static !important; }
+
+/* solo per VoiceOver: invisibile a chi vede, senza spostare niente */
+.sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
