@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 155;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 156;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -70,7 +70,17 @@
       }
       if (name === "allegati") { const n = Math.round(+x.pagine); return str(x.pren) && n >= 1 && n <= 30 ? { ...x, pagine: n, nome: str(x.nome).slice(0, 60) || "Documento", t: +x.t || 0 } : null; }
       if (name === "categorie") return str(x.n) ? { ...x, n: str(x.n).slice(0, 24), e: oneEmo(x.e), col: /^#[0-9a-f]{6}$/i.test(x.col) ? x.col : "#8a6d4b" } : null;
-      if (name === "prenotazioni") return { ...x, tipo: ["hotel", "volo", "treno", "biglietto", "altro"].includes(x.tipo) ? x.tipo : "altro", titolo: str(x.titolo), dal: /^\d{4}-\d{2}-\d{2}$/.test(x.dal) ? x.dal : "", al: /^\d{4}-\d{2}-\d{2}$/.test(x.al) ? x.al : "", lat: isFinite(x.lat) && x.lat !== null ? +x.lat : null, lng: isFinite(x.lng) && x.lng !== null ? +x.lng : null };
+      if (name === "prenotazioni") {
+        // testi: un numero o un oggetto arrivato da una versione vecchia diventa testo (o niente), così ordinare per ora non si rompe
+        const txt = v => typeof v === "string" ? v : typeof v === "number" && Number.isFinite(v) ? String(v) : "";
+        const tipo = ["hotel", "volo", "treno", "biglietto", "altro"].includes(x.tipo) ? x.tipo : "altro", dal = isoDay(x.dal) ? x.dal : "";
+        let al = isoDay(x.al) ? x.al : "";
+        if (tipo === "volo" && !(al > dal)) al = "";   // arrivo prima della partenza (o senza partenza): ignorato, come nella scheda
+        const out = { ...x, tipo, dal, al, lat: isFinite(x.lat) && x.lat !== null ? +x.lat : null, lng: isFinite(x.lng) && x.lng !== null ? +x.lng : null };
+        for (const k of ["titolo", "ora", "oraA", "codice", "link", "note", "indirizzo", "jp", "da", "a", "luogo", "pagam"]) if (k in x || k === "titolo") out[k] = txt(x[k]);
+        if ("pagam" in x && !["saldato", "acconto", "loco"].includes(out.pagam)) delete out.pagam;
+        return out;
+      }
       return x;
     }).filter(Boolean);
   }
@@ -935,7 +945,7 @@
     if (!code) return "";
     const h = hotelFor(d), bs = bookingsOn(d), ci = lists.prenotazioni.filter(p => p.tipo === "hotel" && p.dal === d);
     const arr = lists.prenotazioni.filter(p => p.tipo === "volo" && p.al === d && p.dal !== d);   // atterraggi di oggi (partiti ieri)
-    const bsHtml = bs.map(p => { const [ic, col] = PTYPE[p.tipo] || PTYPE.altro; return `<div class="mini" data-pren="${p.id}"><span style="color:${col}">${icon(ic)}</span><span class="grow"><small>${p.ora ? esc(p.ora) : "Prenotato"}${p.tipo === "volo" && p.oraA ? ` → arrivo ${p.al && p.al !== p.dal ? fmtDay(p.al, { weekday: "short", day: "numeric" }) + " " : ""}${esc(p.oraA)}` : ""}</small><b>${esc(p.titolo)}</b></span>${docsOf(p.id).length ? `<button class="btn small" data-doc="${docsOf(p.id)[0].id}" aria-label="Apri il documento">${icon("Paperclip")}</button>` : ""}${p.link ? `<a class="btn small" href="${esc(p.link)}" target="_blank" rel="noopener">${icon("Link")}</a>` : ""}</div>`; }).join("");
+    const bsHtml = bs.map(p => { const [ic, col] = PTYPE[p.tipo] || PTYPE.altro; return `<div class="mini" data-pren="${p.id}"><span style="color:${col}">${icon(ic)}</span><span class="grow"><small>${p.ora ? esc(p.ora) : "Prenotato"}${p.tipo === "volo" && p.oraA ? ` → arrivo ${p.al && p.al !== p.dal ? fmtDay(p.al, { weekday: "short", day: "numeric" }) + " " : ""}${esc(p.oraA)}` : ""}</small><b>${esc(p.titolo)}</b></span>${docsOf(p.id).length ? `<button class="btn small" data-doc="${docsOf(p.id)[0].id}" aria-label="Apri il documento">${icon("Paperclip")}</button>` : ""}${webLink(p.link) ? `<a class="btn small" href="${esc(webLink(p.link))}" target="_blank" rel="noopener">${icon("Link")}</a>` : ""}</div>`; }).join("");
     const noHotel = !h && d !== T.fine && !inFlight(d) ? `<a class="mini" href="#utility/prenotazioni">${icon("BedDouble")} <span class="grow">Nessun hotel per questa notte</span><b>Aggiungi</b></a>` : "";
     return `${arr.map(p => `<div class="mini" data-pren="${p.id}"><span style="color:${PTYPE.volo[1]}">${icon("Plane")}</span><span class="grow"><small>Atterraggio${p.oraA ? " " + esc(p.oraA) : ""}${p.a ? " · " + esc(p.a) : ""}</small><b>${esc(p.titolo)}</b></span></div>`).join("")}${bsHtml}${noHotel}${h ? `<div class="mini hotel" data-pren="${h.id}">${icon("BedDouble")}<span class="grow"><small>${ci.includes(h) ? "Check-in" + (h.ora ? " " + esc(h.ora) : "") : "Notte"}</small><b>${esc(h.titolo)}</b></span>
         ${docsOf(h.id).length ? `<button class="btn small" data-doc="${docsOf(h.id)[0].id}" aria-label="Apri il documento">${icon("Paperclip")}</button>` : ""}<a class="btn small primary" href="${gmTo(addrQ(h))}" target="_blank" rel="noopener" aria-label="Portami all'hotel">${icon("Navigation")}</a><button class="btn small" data-taxi="${h.id}" aria-label="Mostra al tassista">${icon("CarTaxiFront")}</button></div>` : ""}`;
@@ -2216,7 +2226,9 @@
   const BOOK_DAYS = (() => { const out = [], a = new Date(T.inizio + "T00:00:00Z"), b = new Date(T.fine + "T00:00:00Z"); a.setUTCDate(a.getUTCDate() - 3); b.setUTCDate(b.getUTCDate() + 3); for (const d = a; d <= b; d.setUTCDate(d.getUTCDate() + 1)) out.push(d.toISOString().slice(0, 10)); return out; })();   // l'ultimo giorno si parte
   const hotelFor = d => lists.prenotazioni.find(p => p.tipo === "hotel" && p.dal <= d && d < (p.al || p.dal));
   const bookingsOn = d => lists.prenotazioni.filter(p => p.dal === d && p.tipo !== "hotel").sort((a, b) => (a.ora || "99").localeCompare(b.ora || "99"));
-  const nightsOf = p => p.dal && p.al ? Math.max(1, Math.round((new Date(p.al + "T00:00:00Z") - new Date(p.dal + "T00:00:00Z")) / 864e5)) : 0;
+  const nightsOf = p => p.dal && p.al > p.dal ? Math.round((new Date(p.al + "T00:00:00Z") - new Date(p.dal + "T00:00:00Z")) / 864e5) : 0;   // date invertite (versione vecchia): 0, come le notti coperte
+  // link della prenotazione: solo pagine web ("www.booking.com/…" scritto senza https diventa https://…); niente javascript: o altro
+  const webLink = s => { s = String(s || "").trim(); return /^https?:\/\/\S+$/i.test(s) ? s : /^[\w-]+(\.[\w-]+)+([/?#]\S*)?$/.test(s) ? "https://" + s : ""; };
   const addrQ = p => p.jp || p.indirizzo || p.titolo;
   const gmTo = s => `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(s)}&travelmode=transit`;
   const showTaxi = p => showBig(p.jp || p.indirizzo || p.titolo, `${esc(p.titolo)}<br><span class="jp" style="font-size:1.2rem;color:var(--ink)">ここに行ってください</span><br><small>"Mi porti qui, per favore"</small>`);
@@ -2249,7 +2261,7 @@
   function pcard(p) {
     const [ic, col, tn] = PTYPE[p.tipo] || PTYPE.altro;
     const when = p.tipo === "hotel"
-      ? (p.dal && p.al ? `${short(p.dal)} → ${short(p.al)} · ${nightsOf(p)} ${nightsOf(p) === 1 ? "notte" : "notti"}` : "date da definire") + (p.ora ? ` · check-in ${esc(p.ora)}` : "")
+      ? (nightsOf(p) ? `${short(p.dal)} → ${short(p.al)} · ${nightsOf(p)} ${nightsOf(p) === 1 ? "notte" : "notti"}` : p.dal && p.al ? `${short(p.dal)} → ${short(p.al)} · controlla le date` : "date da definire") + (p.ora ? ` · check-in ${esc(p.ora)}` : "")
       : `${p.dal ? fmtDay(p.dal, { weekday: "short", day: "numeric", month: "short" }) : "data da definire"}${p.ora ? " · " + esc(p.ora) : ""}`
         + (p.tipo === "volo" && (p.al || p.oraA) ? ` → arrivo ${p.al && p.al !== p.dal ? fmtDay(p.al, { weekday: "short", day: "numeric", month: "short" }) + " " : ""}${p.oraA ? esc(p.oraA) : ""}` : "");
     const route = p.da || p.a ? `<div class="small">${esc(p.da || "?")} → ${esc(p.a || "?")}</div>` : "";
@@ -2265,7 +2277,7 @@
       ${p.note ? `<div class="small muted" style="margin-top:4px">${esc(p.note)}</div>` : ""}
       <div class="btns">
         ${p.tipo === "hotel" ? `<a class="btn small primary" href="${gmTo(addrQ(p))}" target="_blank" rel="noopener">${icon("Navigation")} Portami</a><button class="btn small" data-taxi="${p.id}">${icon("CarTaxiFront")} Al tassista</button>` : ""}
-        ${p.link ? `<a class="btn small" href="${esc(p.link)}" target="_blank" rel="noopener">${icon("Link")} Apri</a>` : ""}
+        ${webLink(p.link) ? `<a class="btn small" href="${esc(webLink(p.link))}" target="_blank" rel="noopener">${icon("Link")} Apri</a>` : ""}
       </div>
     </div>`;
   }
