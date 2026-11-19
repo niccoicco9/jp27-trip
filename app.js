@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 154;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 155;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -506,6 +506,7 @@
     if (listSig(items) === listSig(lists[name])) { lists[name] = items; LS.set(name, items, true); return; }
     lists[name] = items; LS.set(name, items);
     if (name === "luoghi") mergeCustom();
+    if (name === "spese" && T.notifyUrl && code) addNotifyRemote(items);
     remoteChanged();
   }
   // codice appena rifiutato: torna nel campo (si corregge solo l'errore) finché l'app resta aperta, anche dopo il ricaricamento
@@ -3184,6 +3185,19 @@
     else if (!s.del && addGone.has(s.id)) { q.push({ ...addGone.get(s.id), item: notifItem(s), due: Date.now() + ADD_WAIT }); addGone.delete(s.id); }   // "Annulla" o ripristino
     else return;
     LS.set("notifyQ", q); flushNotify();
+  }
+  // le stesse spese cambiate da un altro telefono mentre l'avviso aspetta: eliminata → non parte (gli altri hanno già
+  // l'avviso di chi l'ha eliminata), modificata → parte con i dati di adesso. Se poi la ripristina un altro, l'avviso
+  // lo manda lui; se la ripristini tu riparte (addNotifyFollows)
+  function addNotifyRemote(items) {
+    const q = LS.get("notifyQ", []); let ch = false;
+    for (let i = q.length - 1; i >= 0; i--) {
+      const x = q[i]; if (x.kind !== "spesa") continue;
+      const s = items.find(y => y.id === x.item?.id); if (!s) continue;
+      if (s.del) { addGone.set(s.id, x); q.splice(i, 1); ch = true; continue; }
+      const it = notifItem(s); if (JSON.stringify(it) !== JSON.stringify(x.item)) { q[i] = { ...x, item: it }; ch = true; }
+    }
+    if (ch) LS.set("notifyQ", q);
   }
   function notifyOthers(kind, it, { c, wait = 0 } = {}) {
     if (!T.notifyUrl || !code) return null;
