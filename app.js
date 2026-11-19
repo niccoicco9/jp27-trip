@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 173;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 174;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -151,7 +151,9 @@
   }
   // foto che non arriva (offline, link rotto): al posto del riquadro vuoto, i colori e l'icona del luogo
   function noPhoto(el) {
-    const p = byId[el.dataset.pid || el.closest("[data-place]")?.dataset.place]; if (!p || el.closest(".hero")) return;
+    // copertina in cima (Oggi, Giorni): l'illustrazione (Fuji e torii) al posto della foto, senza la scritta "Foto: …"
+    if (el.matches(".hero > .ph, .daycover .ph")) { el.parentElement.querySelector(":scope > .credit")?.remove(); el.outerHTML = art(); return; }
+    const p =byId[el.dataset.pid || el.closest("[data-place]")?.dataset.place]; if (!p || el.closest(".hero")) return;
     const [ic, col] = cat(p);
     el.classList.add("none"); el.style.background = `linear-gradient(135deg, ${zona[p.z].colore}, ${col})`; el.insertAdjacentHTML("beforeend", icon(ic));
     el.parentElement.querySelector(":scope > .cat-ic")?.remove();   // l'icona piccola sulla foto ora sarebbe doppia
@@ -342,6 +344,9 @@
     confirmed = s; const j = JSON.stringify(s);
     if (j !== confirmedJ) { confirmedJ = j; try { localStorage.setItem("jp27:syncBase", j); } catch {} }
   };
+  // telefono con il codice che non ha mai letto i dati dal server, aperto offline: programma e prenotazioni vuoti
+  // non vuol dire che non ci siano (non ancora arrivati)
+  const notArrived = () => !!code && !navigator.onLine && !localStorage.getItem("jp27:syncBase");
   // impronta dei dati indipendente dall'ordine delle chiavi e dalla versione del server ("at" e "w"):
   // serve a riconoscere gli aggiornamenti di Firestore che non cambiano niente (conferme delle proprie modifiche, passaggio online)
   const sig = v => JSON.stringify(v ?? null, (k, x) => k === "at" || k === "w" ? undefined
@@ -944,6 +949,9 @@
         : `<button class="btn" id="delp" style="width:100%;margin-top:16px;color:var(--shu)">${icon("Trash2")} Elimina luogo</button>`}
     `, el => {
       const again = () => { const y = sheetCard.scrollTop; openPlace(id); sheetCard.scrollTop = y; };   // ridisegna la scheda senza tornare in cima
+      // foto della copertina che non arriva (offline e mai vista): colori e icona del luogo, non un riquadro vuoto
+      const cv = $(".cover[data-full]", el);
+      if (cv) { const im = new Image(); im.src = cv.dataset.small; (im.decode ? im.decode() : Promise.resolve()).catch(() => { if (!cv.isConnected) return; cv.style.backgroundImage = ""; cv.removeAttribute("data-full"); $(".credit", cv)?.remove(); noPhoto(cv); }); }
       $("#delp", el)?.addEventListener("click", () => deletePlace(p));
       $("#restp", el)?.addEventListener("click", () => restorePlace(id));
       $("#bk", el)?.addEventListener("change", e => { e.target.checked ? booked.add(id) : booked.delete(id); savePlan(); again(); });
@@ -1135,6 +1143,7 @@
     const d = plan[today], ids = (d?.i || []).filter(id => byId[id]);
     const quick = `<button class="btn small primary" id="qspesa">${icon("Plus")} Spesa</button>`;
     if (!ids.length && today === T.fine) return `<div class="card tripc"><div class="between"><h3 style="margin:0">Si torna a casa ✈️</h3>${quick}</div><p class="small muted" style="margin:6px 0 0">Ultimo giorno: niente tappe in programma.${code && bookingsOn(today).length ? ` Il volo è qui sotto, in "Oggi e stanotte".` : ""}</p></div>`;
+    if (!ids.length && notArrived()) return `<div class="card tripc"><div class="between"><h3 style="margin:0">Programma non ancora arrivato</h3>${quick}</div><p class="small muted" style="margin:6px 0 0">Serve la rete una volta su questo telefono: poi il programma c'è anche offline.</p></div>`;
     if (!ids.length) return `<div class="card tripc"><div class="between"><h3 style="margin:0">Giornata libera</h3>${quick}</div><p class="small muted" style="margin:6px 0 0">Nessuna tappa in programma. Guardate "Vicino a te" qui sotto.</p></div>`;
     const done = new Set(d.f || []), n = ids.filter(id => done.has(id)).length, k = ids.findIndex(id => !done.has(id));
     const p = k >= 0 ? byId[ids[k]] : null, prev = k > 0 ? byId[ids[k - 1]] : null, t = d.t || {};
@@ -1277,6 +1286,7 @@
         return `<li data-k="${k}"${fatto ? ' class="done"' : ""}>${editMode ? `<span class="n grip" data-grip="${k}" style="background:${zona[p.z].colore}" aria-label="Trascina per spostare">${icon("GripVertical")}</span>` : fatto ? `<span class="n done" aria-label="Fatta">済</span>` : `<span class="n" style="background:${zona[p.z].colore}">${at + 1}</span>`}<div class="sw">${editMode ? "" : `<div class="swipebg">${icon("Trash2")} Togli</div>`}${row}</div>${next ? `<div class="hop">${hop(p, next)}</div>` : ""}</li>`;
       }).join("")}</ul>` : landsOn(d) ? `<div class="empty" style="margin-top:14px">Si atterra${landsOn(d).oraA ? " alle " + esc(landsOn(d).oraA) : ""}: il resto della giornata è vostro.<br><button class="btn small primary" id="add2" style="margin-top:10px">${icon("Plus")} Aggiungi tappe</button></div>`
         : flightOn(d) ? `<div class="empty" style="margin-top:14px">Giorno della partenza: niente tappe in programma.<br><button class="btn small" id="add2" style="margin-top:10px">${icon("Plus")} Aggiungi una tappa</button></div>`
+        : notArrived() ? `<div class="empty" style="margin-top:14px">Il programma non è ancora arrivato su questo telefono: serve la rete una volta. Poi c'è anche offline.</div>`
         : `<div class="empty" style="margin-top:14px">Nessuna tappa per questo giorno.<br><button class="btn small primary" id="add2" style="margin-top:10px">${icon("Plus")} Aggiungi tappe</button></div>`}
       <div class="btns daynav">
         ${i > 0 ? `<a class="btn" href="#giorni/${DAYS[i - 1]}">‹ Giorno ${i}</a>` : ""}
@@ -2553,7 +2563,7 @@
       </div>
       <div class="section-h"><h3>Aggiungi</h3></div>
       <div class="addgrid">${Object.entries(PTYPE).map(([k, [ic, col, tn]]) => `<button data-addp="${k}"><span class="pic" style="background:${col}">${icon(ic)}</span>${tn}</button>`).join("")}</div>
-      ${all.length ? all.map((p, k) => (k === 0 || p.dal !== all[k - 1].dal ? `<h3>${p.dal ? cap1(fmtDay(p.dal)) : "Senza data"}</h3>` : "") + pcard(p)).join("") : code && !navigator.onLine && !localStorage.getItem("jp27:syncBase") ? `<p class="empty">Le prenotazioni non sono ancora arrivate su questo telefono: serve la rete una volta. Poi ci sono anche offline.</p>` : `<p class="empty">Ancora nessuna prenotazione. Comincia dagli hotel e dai voli.</p>`}`;
+      ${all.length ? all.map((p, k) => (k === 0 || p.dal !== all[k - 1].dal ? `<h3>${p.dal ? cap1(fmtDay(p.dal)) : "Senza data"}</h3>` : "") + pcard(p)).join("") : notArrived() ? `<p class="empty">Le prenotazioni non sono ancora arrivate su questo telefono: serve la rete una volta. Poi ci sono anche offline.</p>` : `<p class="empty">Ancora nessuna prenotazione. Comincia dagli hotel e dai voli.</p>`}`;
     $$("[data-addp]").forEach(b => b.onclick = () => editPren({ tipo: b.dataset.addp }));
     bindPcards();
   }
