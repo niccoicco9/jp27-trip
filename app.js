@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 152;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 153;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -3101,7 +3101,8 @@
         const files = [new File([B.xlsx(B.tables(b, backupInfo()))], name + ".xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
           new File([JSON.stringify(b)], name + ".json", { type: "application/json" })];
         try {
-          if (navigator.canShare?.({ files })) await navigator.share({ files, title: "Backup Giappone 2027" });
+          // solo i file: con un titolo, "Salva su File" di iPhone salva anche un Testo.txt col titolo
+          if (navigator.canShare?.({ files })) await navigator.share({ files });
           else for (const f of files) { const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }
         } catch (err) { if (err?.name === "AbortError") return; toast("Non sono riuscito a salvare il backup"); return; }
         LS.set("lastBackup", Date.now()); toast("Backup salvato ✓"); buzz();
