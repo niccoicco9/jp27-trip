@@ -1109,5 +1109,9 @@ body.has-fab .scroller { padding-bottom: calc(var(--nav-h) + 24px + 76px + env(s
 .sheet { top: var(--vv-top, 0px); bottom: auto; height: var(--vv-h, 100%); }
 .sheet-card { max-height: min(92dvh, calc(var(--vv-h, 100dvh) - 16px)); }
 body.kb-up .sheet-card { bottom: 0; padding-bottom: 16px; border-radius: 26px 26px 0 0; }   /* sopra la tastiera non serve lo spazio della barra home */
+/* sotto la parte visibile c'è la tastiera, ma la barra trasparente sopra di essa (frecce e ✓ di iOS) lascia vedere cosa c'è dietro:
+   si prolunga lo sfondo della scheda fino in fondo allo schermo, così dietro la barra c'è la scheda e non la pagina */
+body.kb-up .sheet::after { content: ""; position: absolute; left: 0; right: 0; top: calc(100% - 1px); height: 100vh; max-width: 640px; margin: 0 auto; background: var(--bg); pointer-events: none; }
+.sheet.closing::after { display: none; }
 /* con la tastiera aperta lo spazio è poco: i pulsanti fissi in fondo alla scheda (es. "Fatto") non coprono i risultati, stanno in fondo alla lista */
 body.kb-up .sheetfoot { position: static !important; }
