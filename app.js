@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 162;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 163;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -511,6 +511,17 @@
   }
   function onList(name, items) {
     items = cleanList(name, items);
+    // documento allegato da qui ed eliminato da un altro mentre le pagine erano ancora in viaggio (rete lenta, PDF grande):
+    // la sua cancellazione può arrivare al server prima delle pagine, che resterebbero lì per sempre. Le ritoglie chi le ha
+    // mandate: le scritture di un telefono arrivano in ordine, quindi dopo le sue pagine. Solo voci già viste sul server
+    // ("at"): una appena allegata qui e non ancora arrivata non è stata eliminata
+    if (name === "allegati") {
+      const ids = new Set(items.map(a => a.id));
+      for (const a of lists.allegati) if (!ids.has(a.id) && a.at != null && (a.by === (me || "?") || a.id in docUp)) {
+        if (a.id in docUp) { delete docUp[a.id]; LS.set("docUp", docUp); }
+        for (let k = 0; k < a.pagine; k++) sync?.delPage(a.id, k);
+      }
+    }
     if (name === "allegati") setTimeout(prefetchDocs, 1500);   // anche all'avvio: scarica quelli che mancano su questo telefono
     if (name === "allegati" || name === "prenotazioni") setTimeout(sweepDocs, 2000);
     // stessi dati: nessuna ricostruzione, ma si salva lo stesso (cambiano "at" e "w", che servono alla coda di riserva)
@@ -2471,7 +2482,16 @@
       <div class="btns">${isNew ? `<button class="btn" data-close>Annulla</button>` : `<button class="btn" id="p-del" style="color:var(--shu)">${icon("Trash2")} Elimina</button>`}<button class="btn primary" id="p-save">Salva</button></div>
     `, el => {
       const v = id => $("#" + id, el)?.value.trim() || "";
-      const impOf = () => $("#p-imp", el) ? parseNum($("#p-imp", el).value, cs.valuta === "JPY") || 0 : 0;
+      const readForm = () => {
+        const o = { titolo: v("p-tit"), dal: v("p-dal"), ora: v("p-ora"), codice: v("p-cod"), link: v("p-link"), note: v("p-note") };
+        if (t === "hotel") Object.assign(o, { al: v("p-al"), indirizzo: v("p-ind"), jp: v("p-jp") });
+        if (t === "volo" || t === "treno") Object.assign(o, { da: v("p-da"), a: v("p-a") });
+        if (t === "volo") Object.assign(o, { al: v("p-al") && v("p-al") > o.dal ? v("p-al") : "", oraA: v("p-oraA") });
+        if (t === "biglietto") o.luogo = v("p-luogo");
+        return o;
+      };
+      const form0 = readForm();   // com'era la scheda all'apertura (vedi Salva)
+      const impOf =() => $("#p-imp", el) ? parseNum($("#p-imp", el).value, cs.valuta === "JPY") || 0 : 0;
       const drawCost = () => {
         if (!$("#p-imp", el)) return;
         $$("[data-val]", el).forEach(b => b.classList.toggle("on", b.dataset.val === cs.valuta));
@@ -2564,17 +2584,19 @@
         else if (ok) toast(done + (navigator.onLine ? " ✓" : ""));
       });
       $("#p-save", el).onclick = async () => {
-        const item = { ...p, id: pid, tipo: t, titolo: v("p-tit"), dal: v("p-dal"), ora: v("p-ora"), codice: v("p-cod"), link: v("p-link"), note: v("p-note") };
-        if (t === "hotel") Object.assign(item, { al: v("p-al"), indirizzo: v("p-ind"), jp: v("p-jp") });
-        if (t === "volo" || t === "treno") Object.assign(item, { da: v("p-da"), a: v("p-a") });
-        const badArr = t === "volo" && v("p-al") && item.dal && v("p-al") < item.dal;   // arrivo prima della partenza: si toglie, il resto si salva
-        if (t === "volo") Object.assign(item, { al: v("p-al") && v("p-al") > item.dal ? v("p-al") : "", oraA: v("p-oraA") });
-        if (t === "biglietto") item.luogo = v("p-luogo");
+        const form = readForm();
+        const badArr = t === "volo" && v("p-al") && form.dal && v("p-al") < form.dal;   // arrivo prima della partenza: si toglie, il resto si salva
+        // si parte dalla prenotazione com'è adesso e si scrivono solo i campi cambiati in questa scheda: quelli cambiati
+        // intanto dagli altri (es. l'ora mentre qui si scrivevano le note) restano. Le date vanno in coppia (check-out dopo il check-in)
+        const ch = new Set(Object.keys(form).filter(k => isNew || form[k] !== form0[k]));
+        if (ch.has("dal") || ch.has("al")) { ch.add("dal"); if ("al" in form) ch.add("al"); }
+        const item = { ...(lists.prenotazioni.find(x => x.id === pid) || p), id: pid, tipo: t };
+        for (const k of ch) item[k] = form[k];
         if (!item.titolo) return toast("Scrivi almeno il nome");
         if (t === "hotel" && (!item.dal || !item.al || item.al <= item.dal)) return toast("Controlla check-in e check-out");
         { const ct = $("#p-imp", el)?.value || ""; if (ct.trim() && !(parseNum(ct, cs.valuta === "JPY") >= 0)) { const h = numHint(ct, cs.valuta === "JPY"); return toast("Costo: " + h[0].toLowerCase() + h.slice(1)); } }   // "0" o vuoto = niente costo
         if (impOf() && !cs.perChi.length) return toast("Scegli tra chi dividere il costo");
-        if ($("#p-imp", el)) { if (cs.pagam) item.pagam = cs.pagam; else delete item.pagam; }
+        if ($("#p-imp", el) && (isNew || cs.pagam !== cs0.pagam)) { if (cs.pagam) item.pagam = cs.pagam; else delete item.pagam; }
         // intanto un altro l'ha eliminata: si chiede prima di rimetterla (con il suo costo, se era nel cestino)
         if (!isNew && !lists.prenotazioni.some(x => x.id === pid)) {
           const lost = lists.spese.filter(x => x.pren === pid && x.del).sort((a, b) => b.del.t - a.del.t)[0];
@@ -2584,7 +2606,7 @@
         }
         const prev = lists.prenotazioni.find(x => x.id === pid), titNow = prev?.titolo;
         // indirizzo cambiato: la puntina vecchia si toglie subito (senza rete o se non si trova resta senza, non nel posto sbagliato)
-        const moved = t === "hotel" && (item.jp !== p.jp || item.indirizzo !== p.indirizzo || (!item.jp && !item.indirizzo && item.titolo !== p.titolo));
+        const moved = t === "hotel" && (ch.has("jp") || ch.has("indirizzo") || (!item.jp && !item.indirizzo && ch.has("titolo")));
         if (moved) { delete item.lat; delete item.lng; }
         const stored = putItem("prenotazioni", item);
         saveCost(item, titNow);
@@ -2602,7 +2624,7 @@
       };
       $("#p-del", el)?.addEventListener("click", async () => {
         if (!(await ask({ title: `Eliminare "${p.titolo || "prenotazione"}"?`, text: spesaOf(p.id) ? "Anche il suo costo finirà nel cestino delle Spese." : "Sparirà per tutti e quattro.", ok: "Elimina", danger: true }))) return;
-        const old = { ...p }; let back = false; saved = true;
+        const old = { ...(lists.prenotazioni.find(x => x.id === p.id) || p) }; let back = false; saved = true;   // com'è adesso: "Annulla" non riporta indietro le modifiche fatte intanto dagli altri
         docGone[p.id] = Date.now(); LS.set("docGone", docGone);   // se l'app si chiude prima dei 6 secondi li toglie sweepDocs
         delItem("prenotazioni", p.id); const gone = trashPrenSpesa(p.id); closeSheet(); rerender();
         toast(gone ? "Prenotazione eliminata (il costo è nel cestino delle Spese)" : "Prenotazione eliminata", () => {
