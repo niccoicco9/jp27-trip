@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 172;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 173;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -1508,12 +1508,16 @@
       return true;
     }
     const m = location.hash.match(/^#import=(.+)$/); if (!m) return false;
-    let data; try { data = JSON.parse(b64d(m[1])); } catch { toast("Link non valido"); location.replace("#giorni"); return true; }
-    const n = Object.values(data.p || {}).reduce((s, d) => s + (d.i?.length || 0), 0), g = Object.keys(data.p || {}).length, nb = data.b?.length || 0;
+    // link rotto, troncato o con dati rovinati: avviso e niente import (prima "null" o un giorno vuoto davano la pagina bianca)
+    let data; try { data = JSON.parse(b64d(m[1])); } catch {}
+    if (!data || typeof data !== "object" || !data.p || typeof data.p !== "object" || Array.isArray(data.p)) { history.replaceState(null, "", "#giorni"); render(); toast("Link non valido: fatevelo rimandare"); return true; }
+    const p = Object.fromEntries(Object.entries(cleanPlan(data.p)).filter(([d]) => DAYS.includes(d))), b = Array.isArray(data.b) ? data.b.filter(x => typeof x === "string") : null;
+    const n = Object.values(p).reduce((s, d) => s + d.i.length, 0), g = Object.values(p).filter(d => d.i.length || d.l || d.n).length, nb = b?.length || 0;
+    if (!g && !nb) { history.replaceState(null, "", "#giorni"); render(); toast("Link non valido: fatevelo rimandare"); return true; }
     history.replaceState(null, "", "#giorni"); render();
-    openSheet(`<h2>Importa programma</h2><p>Questo link contiene un programma con <b>${n} ${n === 1 ? "tappa" : "tappe"}</b> in ${g} ${g === 1 ? "giorno" : "giorni"}${nb ? ` e ${nb} ${nb === 1 ? "prenotazione segnata" : "prenotazioni segnate"}` : ""}.</p><p class="muted small">Sostituirà il programma salvato su questo telefono.</p><div class="btns"><button class="btn" data-close>Annulla</button><button class="btn primary" id="imp">Importa</button></div>`, el => {
+    openSheet(`<h2>Importa programma</h2><p>Questo link contiene un programma con <b>${n} ${n === 1 ? "tappa" : "tappe"}</b> in ${g} ${g === 1 ? "giorno" : "giorni"}${nb ? ` e ${nb} ${nb === 1 ? "prenotazione segnata" : "prenotazioni segnate"}` : ""}.</p><p class="muted small">${code ? "Sostituirà il programma condiviso, per tutti e quattro." : "Sostituirà il programma salvato su questo telefono."}</p><div class="btns"><button class="btn" data-close>Annulla</button><button class="btn primary" id="imp">Importa</button></div>`, el => {
       $("#imp", el).onclick = () => {
-        plan = data.p || {}; if (data.b) booked = new Set(data.b);
+        plan = p; if (b) booked = new Set(b);
         savePlan(); closeSheet(); toast("Programma importato ✓"); render();
       };
     });
@@ -3436,7 +3440,7 @@
       ${prev ? `<button class="btn" id="bk-undo" style="width:100%;margin-top:10px">${icon("Undo2")} Torna a com'era prima dell'ultimo ripristino</button>
         <p class="small muted">Copia del ${new Date(prev.creato).toLocaleString("it-IT", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}</p>` : ""}`, el => {
       $("#bk-save", el).onclick = async () => {
-        const b = now(), day = new Date().toISOString().slice(0, 10), name = `Giappone2027-backup-${day}`;
+        const b = now(), day = new Intl.DateTimeFormat("en-CA").format(new Date()), name = `Giappone2027-backup-${day}`;
         const files = [new File([B.xlsx(B.tables(b, backupInfo()))], name + ".xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
           new File([JSON.stringify(b)], name + ".json", { type: "application/json" })];
         try {
