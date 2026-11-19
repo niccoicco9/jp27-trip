@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 151;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 152;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2748,7 +2748,7 @@
     let off = 0;
     const arcs = rows.map(([k, v]) => { const len = v / sum * C, a = `<circle r="${R}" cx="66" cy="66" stroke="${catOf(k).col}" stroke-dasharray="${Math.max(.5, len - (rows.length > 1 ? 2 : 0))} ${C}" stroke-dashoffset="${-off}" opacity="${spFilter && spFilter !== k ? .25 : 1}"/>`; off += len; return a; }).join("");
     return `<div class="card"><div class="between" style="gap:8px"><h3 style="margin:0">Per categoria</h3>${me ? `<div class="seg"><button data-spmine="0" class="${spMine ? "" : "on"}">Gruppo</button><button data-spmine="1" class="${spMine ? "on" : ""}">La mia parte</button></div>` : ""}</div>
-      ${sum ? `<div class="catchart"><div class="donut"><svg viewBox="0 0 132 132" aria-hidden="true"><circle r="${R}" cx="66" cy="66" stroke="var(--card-2)"/>${arcs}</svg><div class="mid"><small class="muted">${spMine ? "la tua parte" : "totale"}</small><b>${eurF(sum)}</b></div></div>
+      ${sum ? `<div class="catchart"><div class="donut"><svg viewBox="0 0 132 132" aria-hidden="true"><circle r="${R}" cx="66" cy="66" stroke="var(--card-2)"/>${arcs}</svg><div class="mid"><small class="muted">${spMine ? "la tua parte" : "totale"}</small><b${eurF(sum).length > 11 ? ' style="font-size:.85rem"' : ""}>${eurF(sum)}</b></div></div>
         <div class="catrows">${rows.map(([k, v]) => { const c = catOf(k); return `<button class="catrow${spFilter === k ? " on" : ""}" data-fcat="${esc(k)}"><span class="sw" style="background:${c.col}">${c.html}</span><span class="nm">${esc(c.n)}</span><span><b>${eurF(v)}</b><span class="pc">${Math.round(v / sum * 100)}%</span></span></button>`; }).join("")}</div></div>
         <p class="small muted" style="margin:8px 0 0">Tocca una categoria per vedere solo quelle spese. I rimborsi non contano.</p>` : `<p class="small muted" style="margin:10px 0 0">Nessuna spesa a tuo carico per ora.</p>`}</div>`;
   }
@@ -2841,7 +2841,7 @@
     const dups = Object.entries(byPren).filter(([, l]) => l.length > 1).map(([id, l]) => `<b>${esc(lists.prenotazioni.find(x => x.id === id)?.titolo || l[0].desc || "Una prenotazione")}</b> ha ${l.length} costi (${l.map(spImp).join(" e ")})`);
     view.innerHTML = `${back}<h2>Spese</h2><button id="adds" hidden aria-hidden="true"></button><p class="lead">Chi ha pagato cosa, e alla fine chi deve quanto a chi.</p>
       <div class="hero solid" style="min-height:0"><span class="kanji" aria-hidden="true">会計</span><div class="hero-in" style="min-height:190px">
-        <span class="kicker">Spesa totale del gruppo</span><div class="big-n" style="font-size:2.6rem" data-count="${total}" data-fmt="eur">${eurF(total)}</div>
+        <span class="kicker">Spesa totale del gruppo</span><div class="big-n" style="font-size:${eurF(total).length > 11 ? "2.1rem" : "2.6rem"};white-space:nowrap" data-count="${total}" data-fmt="eur">${eurF(total)}</div>
         <p>${debt ? `<b>${coupleName(debt[0])}</b> devono <b>${eurF(cent(debt[2]))}</b> a ${coupleName(debt[1])}` : "Siete in pari 🤝"}</p>
       </div></div>
       <div class="card"><div class="between" style="margin-bottom:12px"><h3 style="margin:0">Saldo tra le coppie</h3>${debt ? `<button class="btn small" id="settle">${icon("HandCoins")} Segna rimborso</button>` : ""}</div>
@@ -3011,7 +3011,7 @@
     const topWho = Object.entries(byWho).sort((a, b) => b[1] - a[1])[0];
     const big = [...sp].sort((a, b) => b.eur - a.eur)[0];
     const seenU = new Set(), pics = uniq.filter(id => { const u = photoUrl(id); if (!u || seenU.has(u)) return false; seenU.add(u); return true; }).slice(0, 9);   // stessa foto su più luoghi: una volta sola
-    const stat = (n, l, c) => `<div class="rstat" style="--c:${c}"><b>${n}</b><small>${l}</small></div>`;
+    const stat = (n, l, c) => `<div class="rstat" style="--c:${c}"><b${String(n).length > 6 ? ' class="long"' : ""}>${n}</b><small>${l}</small></div>`;
     view.innerHTML = `${back}<h2>Il nostro Giappone</h2><p class="lead">${before ? "Anteprima: si completa durante il viaggio, man mano che timbrate le tappe e segnate le spese." : after ? "Com'è andata, in numeri." : "Il viaggio fin qui, in numeri."}</p>
       <div class="rgrid">
         ${stat(DAYS.length, "giorni", "#c8402f")}${stat(cities.length, "città", "#7b4fa0")}
@@ -3643,7 +3643,7 @@
   // vibrazione leggera quando si spunta qualcosa
   document.addEventListener("change", e => { if (e.target.matches?.('input[type="checkbox"]') && !e.target.closest(".haptic")) buzz(); });
   // ogni pagina ricorda dov'eri arrivato; entrare in una sottopagina scorre da destra, tornare da sinistra
-  const scrollMem = {};
+  const scrollMem = {}, scrollAt = {};
   // riaperta dopo che iOS l'ha chiusa in sottofondo: torna alla pagina di prima se è passata meno di mezz'ora
   // (dopo, si riparte da Oggi; un link o una notifica portano comunque dove dicono)
   { const lp = LS.get("lastPage"); if ((location.hash || "#oggi") === "#oggi" && lp?.h && lp.h !== "#oggi" && Date.now() - lp.at < 30 * 60e3) history.replaceState(null, "", lp.h); }
@@ -3670,7 +3670,7 @@
     // la "fotografia" della pagina di prima sopra quella nuova)
     vtRun?.skipTransition?.();
     const to = location.hash || "#oggi", kind = navKind(lastHash, to);
-    if (!lastHash.startsWith("#mappa")) scrollMem[lastHash] = SC.scrollTop;
+    if (!lastHash.startsWith("#mappa")) { scrollMem[lastHash] = SC.scrollTop; scrollAt[lastHash] = Date.now(); }
     // ferma l'inerzia della pagina di prima (su iPhone continuerebbe a scorrere la pagina nuova)
     SC.style.overflowY = "hidden"; setTimeout(() => { SC.style.overflowY = ""; }, 30);
     lastHash = to;
@@ -3690,6 +3690,8 @@
           if (goal != null) st.scrollTo({ left: goal, behavior: reduceMotion() ? "auto" : "smooth" }); }
       }
       if (!to.startsWith("#mappa") && back) restoreScroll(scrollMem[location.hash || "#oggi"] || 0);
+      // una sottopagina (Spese, Prenotazioni…) lasciata da poco si riapre dov'era, non in cima
+      else if (isSub(to) && Date.now() - (scrollAt[to] || 0) < 10 * 60e3) restoreScroll(scrollMem[to] || 0);
       if (!restored) playIntro();
     };
     // come su iPhone: le schede in basso cambiano all'istante; entrare/uscire da una pagina (o passare al giorno dopo)

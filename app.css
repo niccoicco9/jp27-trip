@@ -879,8 +879,9 @@ main#view { will-change: auto; }
 .offpill svg.i { width: 15px; height: 15px; }
 /* Il nostro Giappone */
 .rgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
-.rstat { background: var(--card); border-radius: 20px; padding: 16px; box-shadow: var(--shadow-s); border-top: 4px solid var(--c); }
+.rstat { background: var(--card); border-radius: 20px; padding: 16px; box-shadow: var(--shadow-s); border-top: 4px solid var(--c); container-type: inline-size; }
 .rstat b { display: block; font-size: 1.7rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--c); }
+.rstat b.long { white-space: nowrap; font-size: min(1.7rem, 17cqw); }   /* "124.713 €" su una riga anche su iPhone SE */
 .rstat small { color: var(--muted); font-weight: 600; }
 .rtrip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .rtrip span { padding: 6px 10px; border-radius: 12px; background: color-mix(in srgb, var(--c) 14%, transparent); }
