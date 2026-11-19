@@ -584,6 +584,7 @@ table.budget td:last-child { text-align: right; font-variant-numeric: tabular-nu
 .mini small { display: block; font-size: .7rem; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
 .mini b { display: block; font-size: .92rem; line-height: 1.25; }
 .mini .btn.small { min-height: 34px; padding: 6px 10px; }
+.mini .btn .dcount { font-size: .74rem; font-weight: 700; font-variant-numeric: tabular-nums; margin-left: -2px; }
 .mini.hotel { background: color-mix(in srgb, #2e6fb0 10%, var(--card)); }
 a.mini:not(.hotel) b { font-size: .8rem; color: var(--shu); }
 .mini-card { display: block; text-decoration: none; color: var(--ink); }
@@ -1054,7 +1055,7 @@ html, body, .scroller { overscroll-behavior-x: none; }
 .docs { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
 .doc { display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%; padding: 6px 14px 6px 6px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; text-align: left; transition: transform .15s; }
 .doc.pressed { transform: scale(.97); transition-duration: .1s; }
-.doc .dth { flex: none; width: 40px; height: 40px; border-radius: 9px; background: var(--line) center / cover no-repeat; display: grid; place-items: center; color: var(--muted); }
+.doc .dth { flex: none; width: 40px; height: 40px; border-radius: 9px; background: var(--line) center top / cover no-repeat; display: grid; place-items: center; color: var(--muted); }
 .doc .dth svg { width: 20px; height: 20px; }
 .doc .dth.ok svg { display: none; }
 .doc .dtx { display: flex; flex-direction: column; min-width: 0; }

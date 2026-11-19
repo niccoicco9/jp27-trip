@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 159;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 160;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -944,15 +944,16 @@
   function dayPren(d) {
     if (!code) return "";
     const hs = hotelsFor(d), h = hs[0], bs = bookingsOn(d), ci = lists.prenotazioni.filter(p => p.tipo === "hotel" && p.dal === d);
-    const docBtn = p => docsOf(p.id).length ? `<button class="btn small" data-doc="${docsOf(p.id)[0].id}" aria-label="Apri il documento">${icon("Paperclip")}</button>` : "";
+    // graffetta: apre tutti i documenti della prenotazione (es. le carte d'imbarco di tutti e quattro), si sfogliano di lato
+    const docBtn = p => { const n = docsOf(p.id).length; return n ? `<button class="btn small" data-pdocs="${p.id}" aria-label="${n > 1 ? `Apri i ${n} documenti` : "Apri il documento"}">${icon("Paperclip")}${n > 1 ? `<span class="dcount">${n}</span>` : ""}</button>` : ""; };
     // si lascia un hotel (anche se stanotte se ne prende un altro); un altro hotel sulla stessa notte si vede con l'avviso
     const outHtml = checkoutsOn(d).map(p => `<div class="mini" data-pren="${p.id}">${icon("Luggage")}<span class="grow"><small>Check-out</small><b>${esc(p.titolo)}</b></span>${docBtn(p)}</div>`).join("");
     const dupHtml = hs.slice(1).map(p => `<div class="mini" data-pren="${p.id}"><span style="color:var(--warn-fg)">${icon("BedDouble")}</span><span class="grow"><small>Stessa notte, si sovrappone</small><b>${esc(p.titolo)}</b></span>${docBtn(p)}</div>`).join("");
     const arr = lists.prenotazioni.filter(p => p.tipo === "volo" && p.al === d && p.dal !== d);   // atterraggi di oggi (partiti ieri)
-    const bsHtml = bs.map(p => { const [ic, col] = PTYPE[p.tipo] || PTYPE.altro; return `<div class="mini" data-pren="${p.id}"><span style="color:${col}">${icon(ic)}</span><span class="grow"><small>${p.ora ? esc(p.ora) : "Prenotato"}${p.tipo === "volo" && p.oraA ? ` → arrivo ${p.al && p.al !== p.dal ? fmtDay(p.al, { weekday: "short", day: "numeric" }) + " " : ""}${esc(p.oraA)}` : ""}</small><b>${esc(p.titolo)}</b></span>${docsOf(p.id).length ? `<button class="btn small" data-doc="${docsOf(p.id)[0].id}" aria-label="Apri il documento">${icon("Paperclip")}</button>` : ""}${webLink(p.link) ? `<a class="btn small" href="${esc(webLink(p.link))}" target="_blank" rel="noopener">${icon("Link")}</a>` : ""}</div>`; }).join("");
+    const bsHtml = bs.map(p => { const [ic, col] = PTYPE[p.tipo] || PTYPE.altro; return `<div class="mini" data-pren="${p.id}"><span style="color:${col}">${icon(ic)}</span><span class="grow"><small>${p.ora ? esc(p.ora) : "Prenotato"}${p.tipo === "volo" && p.oraA ? ` → arrivo ${p.al && p.al !== p.dal ? fmtDay(p.al, { weekday: "short", day: "numeric" }) + " " : ""}${esc(p.oraA)}` : ""}</small><b>${esc(p.titolo)}</b></span>${docBtn(p)}${webLink(p.link) ? `<a class="btn small" href="${esc(webLink(p.link))}" target="_blank" rel="noopener">${icon("Link")}</a>` : ""}</div>`; }).join("");
     const noHotel = !h && d !== T.fine && !inFlight(d) ? `<a class="mini" href="#utility/prenotazioni">${icon("BedDouble")} <span class="grow">Nessun hotel per questa notte</span><b>Aggiungi</b></a>` : "";
     return `${outHtml}${arr.map(p => `<div class="mini" data-pren="${p.id}"><span style="color:${PTYPE.volo[1]}">${icon("Plane")}</span><span class="grow"><small>Atterraggio${p.oraA ? " " + esc(p.oraA) : ""}${p.a ? " · " + esc(p.a) : ""}</small><b>${esc(p.titolo)}</b></span></div>`).join("")}${bsHtml}${noHotel}${h ? `<div class="mini hotel" data-pren="${h.id}">${icon("BedDouble")}<span class="grow"><small>${ci.includes(h) ? "Check-in" + (h.ora ? " " + esc(h.ora) : "") : "Notte"}</small><b>${esc(h.titolo)}</b></span>
-        ${docsOf(h.id).length ? `<button class="btn small" data-doc="${docsOf(h.id)[0].id}" aria-label="Apri il documento">${icon("Paperclip")}</button>` : ""}<a class="btn small primary" href="${gmTo(addrQ(h))}" target="_blank" rel="noopener" aria-label="Portami all'hotel">${icon("Navigation")}</a><button class="btn small" data-taxi="${h.id}" aria-label="Mostra al tassista">${icon("CarTaxiFront")}</button></div>` : ""}${dupHtml}`;
+        ${docBtn(h)}<a class="btn small primary" href="${gmTo(addrQ(h))}" target="_blank" rel="noopener" aria-label="Portami all'hotel">${icon("Navigation")}</a><button class="btn small" data-taxi="${h.id}" aria-label="Mostra al tassista">${icon("CarTaxiFront")}</button></div>` : ""}${dupHtml}`;
   }
   function oggiPren(today, before, after) {
     if (!code || after) return "";
@@ -2115,7 +2116,7 @@
     try {
       const c = await caches.open(DOCS), keep = new Set(); let got = 0;
       for (const a of lists.allegati) for (let k = 0; k < a.pagine; k++) {
-        keep.add(docKey(a.id, k));
+        keep.add(docKey(a.id, k)); if (!k) keep.add(docKey(a.id, "t"));
         if (!(await c.match(docKey(a.id, k))) && await docBlob(a, k)) got++;
       }
       for (const r of await c.keys()) if (!keep.has(r.url) && !docPrep.has(r.url.split("__doc/")[1]?.split("/")[0])) await c.delete(r);
@@ -2124,21 +2125,61 @@
   }
   addEventListener("online", () => setTimeout(prefetchDocs, 2000));
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") setTimeout(prefetchDocs, 3000); });
-  // miniatura: prima pagina del documento
+  // miniatura: prima pagina del documento, rimpicciolita una volta sola e salvata accanto alle pagine ("t"):
+  // con la pagina intera (fino a 2800 px) dieci miniature tenevano in memoria centinaia di MB di immagini
+  const thumbURLs = new Map();
+  async function docThumb(a) {
+    if (thumbURLs.has(a.id)) return thumbURLs.get(a.id);
+    const c = await caches.open(DOCS), key = docKey(a.id, "t");
+    let b = await (await c.match(key))?.blob();
+    if (!b) {
+      const big = await docBlob(a, 0); if (!big) return null;
+      try {
+        const bm = await createImageBitmap(big), r = Math.min(1, 160 / Math.min(bm.width, bm.height)), cv = document.createElement("canvas");
+        cv.width = Math.max(1, Math.round(bm.width * r)); cv.height = Math.max(1, Math.round(bm.height * r));
+        cv.getContext("2d").drawImage(bm, 0, 0, cv.width, cv.height); bm.close?.();
+        b = await new Promise(res => cv.toBlob(res, "image/jpeg", .8)); cv.width = cv.height = 0;
+      } catch { b = null; }
+      if (b) await c.put(key, new Response(b, { headers: { "Content-Type": "image/jpeg" } })).catch(() => {}); else b = big;
+    }
+    if (thumbURLs.has(a.id)) return thumbURLs.get(a.id);   // preparata intanto da un'altra miniatura dello stesso documento
+    if (!lists.allegati.some(x => x.id === a.id)) return null;   // eliminato intanto
+    const u = URL.createObjectURL(b); thumbURLs.set(a.id, u); return u;
+  }
   function fillThumb(el) {
     const a = lists.allegati.find(x => x.id === el.dataset.dth); if (!a) return;
-    docURL(a, 0).then(u => { if (u && el.isConnected) { el.style.backgroundImage = `url("${u}")`; el.classList.add("ok"); } });
+    docThumb(a).catch(() => null).then(u => { if (u && el.isConnected) { el.style.backgroundImage = `url("${u}")`; el.classList.add("ok"); } });
   }
   let thumbF = 0;
   new MutationObserver(() => { if (!thumbF) thumbF = requestAnimationFrame(() => { thumbF = 0; $$("[data-dth]:not(.ok):not(.wait)").forEach(el => { el.classList.add("wait"); fillThumb(el); }); }); }).observe(document.body, { childList: true, subtree: true });
   const docBtn = a => `<button class="doc" data-doc="${a.id}"><span class="dth" data-dth="${a.id}">${icon("FileText")}</span><span class="dtx"><b>${esc(a.nome)}</b><small>${a.pagine > 1 ? a.pagine + " pagine" : "Tocca per aprire"}</small></span></button>`;
-  async function openDoc(id) {
-    const a = lists.allegati.find(x => x.id === id); if (!a) return;
-    const urls = [];
-    for (let k = 0; k < a.pagine; k++) { const u = await docURL(a, k); if (!u) { toast(navigator.onLine ? "Documento non ancora caricato da chi l'ha aggiunto: riprova tra poco" : "Documento non ancora scaricato su questo telefono: serve la rete una volta"); return; } urls.push(u); }
-    buzz(); openViewer(urls, null, { title: a.nome, share: k => docBlob(a, k) });
+  // as: uno o più documenti, le pagine si sfogliano tutte di seguito. Mentre si scarica, altri tocchi non aprono un secondo visore
+  let docOpening = false;
+  async function openDocs(as) {
+    if (docOpening || !as.length || $(".viewer")) return;
+    docOpening = true; let waitShown = false;
+    const wait = setTimeout(() => { waitShown = true; toast("Scarico il documento…"); }, 500);
+    try {
+      const pages = [];
+      for (const a of as) for (let k = 0; k < a.pagine; k++) {
+        const u = await docURL(a, k);
+        if (!u) { clearTimeout(wait); toast(navigator.onLine ? "Documento non ancora caricato da chi l'ha aggiunto: riprova tra poco" : "Documento non ancora scaricato su questo telefono: serve la rete una volta"); return; }
+        pages.push({ a, k, u });
+      }
+      clearTimeout(wait); if (waitShown) $("#toast").hidden = true;
+      as.forEach(a => $$(`[data-dth="${a.id}"]:not(.ok)`).forEach(fillThumb));   // arrivato adesso: anche la miniatura
+      buzz();
+      openViewer(pages.map(p => p.u), null, {
+        title: k => pages[k].a.nome, share: k => docBlob(pages[k].a, pages[k].k),
+        fileName: k => pages[k].a.nome + (pages[k].a.pagine > 1 ? " " + (pages[k].k + 1) : ""),
+      });
+    } finally { clearTimeout(wait); docOpening = false; }
   }
-  document.addEventListener("click", e => { const d = e.target.closest("[data-doc]"); if (d) { e.preventDefault(); openDoc(d.dataset.doc); } });
+  document.addEventListener("click", e => {
+    const d = e.target.closest("[data-doc], [data-pdocs]"); if (!d) return;
+    e.preventDefault();
+    openDocs(d.dataset.doc ? lists.allegati.filter(a => a.id === d.dataset.doc) : docsOf(d.dataset.pdocs));
+  });
 
   // foto → JPEG (al massimo ~900 KB, il limite di un documento Firestore è 1 MB)
   // le foto partono da 2800 px sul lato lungo: uno screenshot dell'iPhone (fino a 2796) resta com'è, così i codici a barre
@@ -2249,6 +2290,7 @@
     delItem("allegati", a.id);
     if (a.id in docUp) { delete docUp[a.id]; LS.set("docUp", docUp); }
     const c = await caches.open(DOCS).catch(() => null);
+    c?.delete(docKey(a.id, "t")); const tu = thumbURLs.get(a.id); if (tu) { URL.revokeObjectURL(tu); thumbURLs.delete(a.id); }
     for (let k = 0; k < a.pagine; k++) { sync?.delPage(a.id, k); c?.delete(docKey(a.id, k)); const u = docURLs.get(a.id + "/" + k); if (u) { URL.revokeObjectURL(u); docURLs.delete(a.id + "/" + k); } }
   }
 
@@ -3901,9 +3943,10 @@
   // src: una foto o, per i documenti, l'elenco delle pagine (si sfogliano col dito di lato). opts: { title, share(k) → Blob }
   function openViewer(src, small, opts = {}) {
     const srcs = Array.isArray(src) ? src : [src], many = srcs.length > 1;
+    const titleOf = k => (typeof opts.title === "function" ? opts.title(k) : opts.title) || "";
     let cur = 0;
     const v = document.createElement("div"); v.className = "viewer";
-    v.innerHTML = `<img src="${srcs[0]}" alt="">${opts.title || many ? `<div class="vbar"><b>${esc(opts.title || "")}</b>${many ? `<span class="vcount">1 / ${srcs.length}</span>` : ""}</div>` : ""}
+    v.innerHTML = `<img src="${srcs[0]}" alt="">${opts.title || many ? `<div class="vbar"><b>${esc(titleOf(0))}</b>${many ? `<span class="vcount">1 / ${srcs.length}</span>` : ""}</div>` : ""}
       ${opts.share && navigator.share ? `<button class="vx vshare" aria-label="Condividi">${icon("Share2")}</button>` : ""}<button class="vx" aria-label="Chiudi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>`;
     document.body.appendChild(v);
     const img = $("img", v); if (small) img.onerror = () => { img.onerror = null; img.src = small; };   // foto originale più piccola di 1600px
@@ -3913,6 +3956,7 @@
       const n = cur + d; if (n < 0 || n >= srcs.length) { tx = 0; apply(true); return; }
       cur = n; buzz(); img.src = srcs[cur]; tx = d * innerWidth * .4; apply(false); requestAnimationFrame(() => { tx = 0; apply(true); });
       const c = $(".vcount", v); if (c) c.textContent = `${cur + 1} / ${srcs.length}`;
+      const b = $(".vbar b", v); if (b) b.textContent = titleOf(cur);
     };
     const close = () => { if (v.classList.contains("out")) return; v.classList.add("out"); document.removeEventListener("keydown", key); setTimeout(() => v.remove(), 200); };
     const key = e => { if (e.key === "Escape") close(); else if (many && e.key === "ArrowRight") page(1); else if (many && e.key === "ArrowLeft") page(-1); };
@@ -3928,13 +3972,13 @@
         if (s > 1) { s = 1; tx = ty = 0; } else { const x = t[0].clientX - innerWidth / 2, y = t[0].clientY - innerHeight / 2; s = 2.5; tx = -x * 1.5; ty = -y * 1.5; }
         apply(true); st = null; lastTap = 0; return;
       }
-      lastTap = now; st = { x: t[0].clientX, y: t[0].clientY, tx, ty, axis: null };
+      st = { x: t[0].clientX, y: t[0].clientY, tx, ty, axis: null, t0: now };
     }, { passive: true });
     v.addEventListener("touchmove", e => {
       e.preventDefault(); const t = e.touches; if (!st) return;
       if (t.length === 2 && st.d) { const m = mid(t); s = Math.min(5, Math.max(1, st.s * dist(t) / st.d)); tx = m.x - st.lx * s; ty = m.y - st.ly * s; apply(); return; }
       if (t.length === 1 && st.x != null) {
-        const dx = t[0].clientX - st.x, dy = t[0].clientY - st.y;
+        const dx = t[0].clientX - st.x, dy = t[0].clientY - st.y; if (Math.hypot(dx, dy) > 8) st.moved = true;
         if (s > 1) { tx = st.tx + dx; ty = st.ty + dy; }
         else {
           if (!st.axis && Math.hypot(dx, dy) > 8) st.axis = many && Math.abs(dx) > Math.abs(dy) ? "x" : "y";
@@ -3944,8 +3988,13 @@
         apply();
       }
     }, { passive: false });
+    // ingrandita: l'immagine non si può spingere fuori dallo schermo
+    const clamp = () => { const mx = Math.max(0, (img.offsetWidth * s - innerWidth) / 2), my = Math.max(0, (img.offsetHeight * s - innerHeight) / 2); tx = Math.min(mx, Math.max(-mx, tx)); ty = Math.min(my, Math.max(-my, ty)); };
     v.addEventListener("touchend", e => {
       if (e.touches.length) { st = null; return; }
+      // un tocco (non uno sfoglio né una trascinata) può essere il primo di un doppio tocco
+      lastTap = st && st.x != null && !st.moved && Date.now() - st.t0 < 300 ? Date.now() : 0;
+      if (s > 1.02) { const ox = tx, oy = ty; clamp(); if (ox !== tx || oy !== ty) apply(true); }
       if (s <= 1.02) {
         if (st?.axis === "x" && Math.abs(tx) > 60) { page(tx < 0 ? 1 : -1); st = null; return; }
         if (ty > 110) return close();
@@ -3956,7 +4005,7 @@
     v.addEventListener("click", async e => {
       if (e.target.closest(".vshare")) {
         const b = await opts.share(cur).catch(() => null); if (!b) return;
-        const name = `${(opts.title || "documento").replace(/[\\/:*?"<>|]+/g, " ").trim()}${many ? " " + (cur + 1) : ""}.jpg`;
+        const name = `${((opts.fileName ? opts.fileName(cur) : titleOf(cur)) || "documento").replace(/[\\/:*?"<>|]+/g, " ").trim()}${many ? " " + (cur + 1) : ""}.jpg`;
         try { await navigator.share({ files: [new File([b], name, { type: "image/jpeg" })] }); } catch {}
         return;
       }
