@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 161;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 162;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2112,18 +2112,28 @@
     const u = URL.createObjectURL(b); docURLs.set(key, u); return u;
   }
   // in sottofondo scarica i documenti che mancano su questo telefono (così ci sono anche senza rete) e toglie quelli eliminati
-  let prefetching = false; const docPrep = new Set();   // documenti che si stanno allegando adesso (pagine già salvate, voce non ancora)
+  // La voce arriva prima delle pagine (un PDF grande con rete lenta ci mette un po'): le pagine che non sono ancora
+  // sul server si riprovano da sole, sempre più di rado (15 s, 30 s, 1 min… fino a 10 min). Prima si provava una
+  // volta sola: senza aprire il documento, sull'altro telefono non c'era offline.
+  let prefetching = false, prefetchAgain = false, prefetchT = 0, prefetchTry = 0; const docPrep = new Set();   // docPrep: documenti che si stanno allegando adesso (pagine già salvate, voce non ancora)
   async function prefetchDocs() {
-    if (prefetching || !sync || !navigator.onLine || !("caches" in window)) return; prefetching = true;
+    if (!sync || !navigator.onLine || !("caches" in window)) return;
+    if (prefetching) { prefetchAgain = true; return; }   // arrivato altro mentre si scaricava: un altro giro subito dopo
+    prefetching = true; clearTimeout(prefetchT); let missing = 0;
     try {
       const c = await caches.open(DOCS), keep = new Set(); let got = 0;
       for (const a of lists.allegati) for (let k = 0; k < a.pagine; k++) {
         keep.add(docKey(a.id, k)); if (!k) keep.add(docKey(a.id, "t"));
-        if (!(await c.match(docKey(a.id, k))) && await docBlob(a, k)) got++;
+        if (!(await c.match(docKey(a.id, k)))) { if (await docBlob(a, k)) got++; else missing++; }
       }
       for (const r of await c.keys()) if (!keep.has(r.url) && !docPrep.has(r.url.split("__doc/")[1]?.split("/")[0])) await c.delete(r);
       if (got) { keepData(); $$("[data-dth]:not(.ok)").forEach(fillThumb); }
-    } catch {} finally { prefetching = false; }
+    } catch { missing++; } finally {
+      prefetching = false;
+      if (prefetchAgain) { prefetchAgain = false; prefetchT = setTimeout(prefetchDocs, 500); }
+      else if (missing) prefetchT = setTimeout(prefetchDocs, Math.min(10 * 60e3, 15e3 * 2 ** prefetchTry++));
+      else prefetchTry = 0;
+    }
   }
   addEventListener("online", () => setTimeout(prefetchDocs, 2000));
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") setTimeout(prefetchDocs, 3000); });
@@ -2165,7 +2175,7 @@
       const pages = [];
       for (const a of as) for (let k = 0; k < a.pagine; k++) {
         const u = await docURL(a, k);
-        if (!u) { clearTimeout(wait); toast(navigator.onLine ? "Documento non ancora caricato da chi l'ha aggiunto: riprova tra poco" : "Documento non ancora scaricato su questo telefono: serve la rete una volta"); return; }
+        if (!u) { clearTimeout(wait); toast(navigator.onLine ? `Documento non ancora caricato ${a.by && a.by !== "?" && a.by !== me ? "da " + a.by : "da chi l'ha aggiunto"}: arriva da solo appena apre l'app con la rete` : "Documento non ancora scaricato su questo telefono: serve la rete una volta"); return; }
         pages.push({ a, k, u });
       }
       clearTimeout(wait); if (waitShown) $("#toast").hidden = true;
@@ -2410,7 +2420,7 @@
       </div>
       <div class="section-h"><h3>Aggiungi</h3></div>
       <div class="addgrid">${Object.entries(PTYPE).map(([k, [ic, col, tn]]) => `<button data-addp="${k}"><span class="pic" style="background:${col}">${icon(ic)}</span>${tn}</button>`).join("")}</div>
-      ${all.length ? all.map((p, k) => (k === 0 || p.dal !== all[k - 1].dal ? `<h3>${p.dal ? cap1(fmtDay(p.dal)) : "Senza data"}</h3>` : "") + pcard(p)).join("") : `<p class="empty">Ancora nessuna prenotazione. Comincia dagli hotel e dai voli.</p>`}`;
+      ${all.length ? all.map((p, k) => (k === 0 || p.dal !== all[k - 1].dal ? `<h3>${p.dal ? cap1(fmtDay(p.dal)) : "Senza data"}</h3>` : "") + pcard(p)).join("") : code && !navigator.onLine && !localStorage.getItem("jp27:syncBase") ? `<p class="empty">Le prenotazioni non sono ancora arrivate su questo telefono: serve la rete una volta. Poi ci sono anche offline.</p>` : `<p class="empty">Ancora nessuna prenotazione. Comincia dagli hotel e dai voli.</p>`}`;
     $$("[data-addp]").forEach(b => b.onclick = () => editPren({ tipo: b.dataset.addp }));
     bindPcards();
   }
