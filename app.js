@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 164;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 165;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -1341,7 +1341,15 @@
       }
     }, { passive: false });
   })();
-  function keepScroll(fn) { const y = SC.scrollTop; fn(); SC.scrollTop = y; }
+  // ridisegna senza muovere quello che si sta guardando: se intanto arriva una prenotazione o una spesa più in alto
+  // (da un altro telefono) la card sotto gli occhi resta dov'era, invece di scivolare giù
+  function keepScroll(fn) {
+    const y = SC.scrollTop, hb = $(".top")?.getBoundingClientRect().bottom || 0;
+    const a = y > 0 ? $$("#view [data-pren].pcard, #view [data-spesa]").find(e => e.getBoundingClientRect().bottom > hb) : null;
+    const key = a && (a.dataset.pren ? `[data-pren="${CSS.escape(a.dataset.pren)}"].pcard` : `[data-spesa="${CSS.escape(a.dataset.spesa)}"]`), off = a?.getBoundingClientRect().top;
+    fn(); SC.scrollTop = y;
+    const b = key && $("#view " + key); if (b) SC.scrollTop += b.getBoundingClientRect().top - off;
+  }
 
   // changed: il giorno è già cambiato prima di aprire (es. luogo nuovo appena creato da qui), chiudendo va ridisegnato
   function openPicker(d, changed) {
@@ -2175,7 +2183,7 @@
   }
   let thumbF = 0;
   new MutationObserver(() => { if (!thumbF) thumbF = requestAnimationFrame(() => { thumbF = 0; $$("[data-dth]:not(.ok):not(.wait)").forEach(el => { el.classList.add("wait"); fillThumb(el); }); }); }).observe(document.body, { childList: true, subtree: true });
-  const docBtn = a => `<button class="doc" data-doc="${a.id}"><span class="dth" data-dth="${a.id}">${icon("FileText")}</span><span class="dtx"><b>${esc(a.nome)}</b><small>${a.pagine > 1 ? a.pagine + " pagine" : "Tocca per aprire"}</small></span></button>`;
+  const docBtn = a => `<button class="doc" data-doc="${a.id}"><span class="dth" data-dth="${a.id}">${icon("FileText")}</span><span class="dtx"><b>${esc(a.nome)}</b><small>${a.pagine > 1 ? a.pagine + " pagine" : "1 pagina"}</small></span></button>`;
   // as: uno o più documenti, le pagine si sfogliano tutte di seguito. Mentre si scarica, altri tocchi non aprono un secondo visore
   let docOpening = false;
   async function openDocs(as) {
@@ -2333,12 +2341,14 @@
   // una prenotazione nuova mai salvata. Si tolgono quando sono orfani da almeno un minuto con la rete (così un "Annulla"
   // o un "Rimetti" fatto intanto li ritrova). Ogni telefono toglie solo i propri documenti e quelli delle prenotazioni
   // che ha eliminato lui (docGone): mai quelli di una prenotazione che un altro sta ancora creando nella sua scheda.
-  const ORPHAN_WAIT = 60e3, docOrphan = LS.get("docOrphan", {}), docGone = LS.get("docGone", {}), editingPren = new Set();
+  const ORPHAN_WAIT = 60e3, BK_KEEP = 30 * 864e5, docOrphan = LS.get("docOrphan", {}), docGone = LS.get("docGone", {}), editingPren = new Set();
   function sweepDocs() {
     if (!sync || syncStatus !== "online" || Date.now() - onlineSince < 10e3) return;   // appena riconnessi le liste potrebbero essere ancora vecchie
     const now = Date.now(), live = new Set(lists.prenotazioni.map(p => p.id)), seen = {};
     for (const a of lists.allegati) {
-      if (live.has(a.pren) || editingPren.has(a.pren) || (a.by !== (me || "?") && !docGone[a.pren])) continue;
+      // tolti da un ripristino di backup (bk): restano 30 giorni, poi li toglie chiunque
+      const bkOld = a.bk && now - a.bk >= BK_KEEP;
+      if (live.has(a.pren) || editingPren.has(a.pren) || (a.bk && !bkOld) || (a.by !== (me || "?") && !docGone[a.pren] && !bkOld)) continue;
       seen[a.id] = docOrphan[a.id] || now;
       if (now - seen[a.id] >= ORPHAN_WAIT) { delDoc(a); delete seen[a.id]; }
     }
@@ -3265,6 +3275,7 @@
   // rimette programma, spese, prenotazioni e luoghi come nel backup, per tutti: si scrive solo quello che è diverso.
   // I documenti allegati restano come sono (le immagini non sono nel backup)
   function applyBackup(B, b) {
+    const pren0 = new Set(lists.prenotazioni.map(p => p.id));
     plan = cleanPlan(b.plan); booked = new Set(Array.isArray(b.booked) ? b.booked : []);
     savePlan();
     for (const name of B.RESTORE_LISTS) {
@@ -3289,6 +3300,16 @@
       });
       lists[name] = next; LS.set(name, next);
     }
+    // documenti delle prenotazioni che il backup non ha: non si vedono più ma restano da parte (bk) per 30 giorni,
+    // anche sugli altri telefoni, così "Torna a com'era prima del ripristino" li ritrova (prima dopo un minuto si cancellavano)
+    const live = new Set(lists.prenotazioni.map(p => p.id)), t = Date.now();
+    lists.allegati = lists.allegati.map(a => {
+      const keep = pren0.has(a.pren) && !live.has(a.pren), back = live.has(a.pren) && a.bk;
+      if (!keep && !back) return a;
+      const { bk, ...rest } = a, x = { ...(keep ? { ...a, bk: t } : rest), w: uid() };
+      queuePut("allegati", x, a); return x;
+    });
+    LS.set("allegati", lists.allegati);
     mergeCustom();
   }
   const nOf = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -3302,7 +3323,7 @@
       <div class="card small">${backupTxt(c)}</div>
       <button class="btn primary" id="bk-save" style="width:100%">${icon("Download")} Salva il backup</button>
       <h3>Ripristina</h3>
-      <p class="small muted" style="margin-top:0">Riporta tutto com'era in un backup, per tutti e quattro. I documenti allegati non vengono toccati.</p>
+      <p class="small muted" style="margin-top:0">Riporta tutto com'era in un backup, per tutti e quattro. I documenti allegati non vengono toccati: quelli di prenotazioni che nel backup non ci sono restano da parte e tornano con "Torna a com'era".</p>
       <button class="btn" id="bk-load" style="width:100%">${icon("RotateCcw")} Ripristina da un file…</button><input type="file" id="bk-file" accept=".json,application/json" hidden>
       ${prev ? `<button class="btn" id="bk-undo" style="width:100%;margin-top:10px">${icon("Undo2")} Torna a com'era prima dell'ultimo ripristino</button>
         <p class="small muted">Copia del ${new Date(prev.creato).toLocaleString("it-IT", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}</p>` : ""}`, el => {

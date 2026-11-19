@@ -1052,7 +1052,9 @@ html, body, .scroller { overscroll-behavior-x: none; }
 .pacts { margin: var(--sp-2) 0 0; }
 
 /* documenti allegati alle prenotazioni */
-.docs { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
+/* in colonne uguali: con 3–5 documenti niente righe sfalsate (uno da solo, poi due) */
+.docs { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--sp-2); margin-top: var(--sp-3); }
+.doc .dtx small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .doc { display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%; padding: 6px 14px 6px 6px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; text-align: left; transition: transform .15s; }
 .doc.pressed { transform: scale(.97); transition-duration: .1s; }
 .doc .dth { flex: none; width: 40px; height: 40px; border-radius: 9px; background: var(--line) center top / cover no-repeat; display: grid; place-items: center; color: var(--muted); }

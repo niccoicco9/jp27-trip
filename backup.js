@@ -78,9 +78,16 @@ export function tables(b, info) {
   }
   const storia = [["Quando (ora italiana)", "Chi", "Cosa", "Spesa", "Dettaglio"], ...ev.sort((a, c) => c[0] - a[0]).map(r => r.slice(1))];
 
-  const pren = [["Tipo", "Titolo", "Dal", "Al", "Ora", "Arrivo", "Codice", "Link", "Note"]];
-  for (const p of [...(b.lists.prenotazioni || [])].sort((a, c) => (a.dal || "9").localeCompare(c.dal || "9") || (a.ora || "").localeCompare(c.ora || "")))
-    pren.push([PREN[p.tipo] || p.tipo || "", p.titolo || "", p.dal ? day(p.dal) : "", p.al ? day(p.al) : "", p.ora || "", p.oraA || "", p.codice || "", p.link || "", p.note || ""]);
+  // tutto quello che si scrive nella scheda, più il costo (la spesa collegata) e quanti documenti ha
+  const PAGAM = { saldato: "saldato", acconto: "solo acconto", loco: "da pagare sul posto" }, t = v => typeof v === "string" ? v : typeof v === "number" ? String(v) : "";
+  const costo = {}, nDoc = {};
+  for (const s of allSp) if (s.pren && !s.del) costo[s.pren] = Math.round((+s.eur || 0) * 100) / 100;
+  for (const a of b.lists.allegati || []) if (a?.pren) nDoc[a.pren] = (nDoc[a.pren] || 0) + 1;
+  const pren = [["Tipo", "Titolo", "Dal", "Al", "Ora", "Arrivo", "Da", "A", "Indirizzo", "Indirizzo giapponese", "Codice", "Pagamento", "Costo", "Documenti", "Link", "Note"]];
+  // testi controllati: il servizio notturno passa i dati del server così come sono (anche da versioni vecchie)
+  for (const p of (b.lists.prenotazioni || []).filter(p => p && typeof p === "object").sort((a, c) => (t(a.dal) || "9").localeCompare(t(c.dal) || "9") || t(a.ora).localeCompare(t(c.ora))))
+    pren.push([PREN[p.tipo] || t(p.tipo), t(p.titolo), p.dal ? day(p.dal) : "", p.al ? day(p.al) : "", t(p.ora), t(p.oraA), t(p.da), t(p.a), t(p.indirizzo), t(p.jp), t(p.codice),
+      PAGAM[p.pagam] || "", p.id in costo ? { eur: costo[p.id] } : "", nDoc[p.id] || "", t(p.link), t(p.note)]);
 
   // tutti i luoghi dell'app: quelli di Wanderlog (con le modifiche fatte da voi) e quelli aggiunti da voi; in fondo scartati ed eliminati
   const inDays = {};
@@ -105,7 +112,7 @@ export function tables(b, info) {
     luoghi.push([p.n || p.id, p.jp || "", zona(p.z), info.catLuoghi?.[p.c] || cat[p.c] || p.c || "", p.stato, (inDays[p.id] || []).join(", "), p.pren ? "sì" : "", booked.has(p.id) ? "sì" : "",
       p.dur || "", +p.eur > 0 ? { eur: +p.eur } : "", p.chiuso || "", p.addr || "", p.lat != null ? `${p.lat}, ${p.lng}` : "", p.d || "", p.note || "", p.chi || ""]);
 
-  const pTit = Object.fromEntries((b.lists.prenotazioni || []).map(p => [p.id, p.titolo]));
+  const pTit = Object.fromEntries((b.lists.prenotazioni || []).filter(p => p && typeof p === "object").map(p => [p.id, p.titolo]));
   const docs = [["Documento", "Prenotazione", "Pagine"]];
   for (const a of b.lists.allegati || []) docs.push([a.nome || "Documento", pTit[a.pren] || "", +a.pagine || 0]);
 
