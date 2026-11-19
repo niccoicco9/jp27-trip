@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 165;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 166;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -40,15 +40,23 @@
   // (versione vecchia dell'app, salvataggio interrotto) non può bloccare una pagina
   const str = v => typeof v === "string" ? v : v == null ? "" : String(v);
   const oneEmo = v => (window.Intl?.Segmenter ? [...new Intl.Segmenter().segment(str(v).trim())].map(x => x.segment) : [...str(v).trim()])[0] || "🏷️";   // la prima emoji intera (🇯🇵, 👍🏽)
+  const okTime = v => { const m = /^(\d{1,2})(?:[:.](\d{2}))?$/.exec(typeof v === "string" ? v.trim() : ""); return m && +m[1] < 24 && +(m[2] || 0) < 60 ? m[1].padStart(2, "0") + ":" + (m[2] || "00") : ""; };
   const isoDay = d => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && new Date(d + "T00:00:00Z").getUTCDate() === +d.slice(8);   // anche niente 2027-02-31
   function cleanPlan(p) {
     const out = {};
     for (const [d, v] of Object.entries(p && typeof p === "object" ? p : {})) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
-      const o = v && typeof v === "object" ? v : {};
-      out[d] = { ...o, l: str(o.l), n: str(o.n), i: Array.isArray(o.i) ? o.i.filter(x => typeof x === "string" && x) : [] };
-      if (o.f !== undefined) out[d].f = Array.isArray(o.f) ? o.f.filter(x => typeof x === "string") : [];   // tappe fatte
-      if (o.t && typeof o.t !== "object") delete out[d].t;
+      const o = v && typeof v === "object" && !Array.isArray(v) ? v : {};
+      // testi: un numero diventa testo, un oggetto niente (niente "[object Object]"); tappe: una volta sola, anche se arrivano come testo
+      const txt = x => typeof x === "string" ? x : typeof x === "number" && Number.isFinite(x) ? String(x) : "";
+      const ids = [...new Set((Array.isArray(o.i) ? o.i : typeof o.i === "string" ? [o.i] : []).filter(x => typeof x === "string" && x))];
+      out[d] = { ...o, l: txt(o.l), n: txt(o.n), i: ids };
+      if (o.f !== undefined) out[d].f = [...new Set(Array.isArray(o.f) ? o.f.filter(x => typeof x === "string" && x) : [])];   // tappe fatte
+      delete out[d].t;
+      if (o.t && typeof o.t === "object") {   // orari: solo delle tappe del giorno, scritti come "09:30" ("9.30" e "9" si capiscono, "25:00" no)
+        const t = {}; for (const [k, x] of Object.entries(o.t)) { const h = okTime(x); if (h && ids.includes(k)) t[k] = h; }
+        if (Object.keys(t).length) out[d].t = t;
+      }
     }
     return out;
   }
@@ -198,7 +206,7 @@
   // orario: su iPhone un campo vuoto sembra rotto, quindi mostra "--:--" finché non si sceglie
   const timeIn = attrs => `<span class="tin"><input type="time" required ${attrs}><i aria-hidden="true">--:--</i></span>`;
   const cap1 = t => t.charAt(0).toUpperCase() + t.slice(1);   // "lunedì 22 febbraio" → "Lunedì 22 febbraio"
-  const fakeToday = new URLSearchParams(location.search).get("oggi");
+  const fakeToday = isoDay(new URLSearchParams(location.search).get("oggi")) ? new URLSearchParams(location.search).get("oggi") : null;   // "?oggi=" scritto male: si ignora
   const todayJP = () => fakeToday || new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo" }).format(new Date());
   const nowJP = () => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Tokyo", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date());
   const kmBetween = (a, b) => { const r = x => x * Math.PI / 180; return 2 * 6371 * Math.asin(Math.sqrt(Math.sin(r(b.lat - a.lat) / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lng - a.lng) / 2) ** 2)); };
@@ -235,7 +243,12 @@
     return parseFloat(t);
   }
   // il luogo è chiuso quel giorno? ("lun", "mar e mer"…)
-  const closedOn = (p, d) => { if (!p?.chiuso || !d) return false; const wd = fmtDay(d, { weekday: "short" }).replace(".", "").toLowerCase(); return new RegExp(`(^|[^a-zà-ù])${wd}([^a-zà-ù]|$)`).test(p.chiuso.toLowerCase()); };
+  // vale anche il nome intero o accorciato ("lunedì", "Lun.", "merc"), con o senza accento; "mar" è martedì, "marzo" no
+  const closedOn = (p, d) => {
+    if (!p?.chiuso || typeof p.chiuso !== "string" || !isoDay(d)) return false;
+    const plain = t => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(), wd = plain(fmtDay(d, { weekday: "long" }));
+    return (plain(p.chiuso).match(/[a-z]+/g) || []).some(w => w.length >= 3 && wd.startsWith(w));
+  };
   const closedPill = p => `<span class="pill warn">${icon("Clock")} chiuso di ${esc(p.chiuso)}!</span>`;
   // numeri interi sempre con il punto delle migliaia (1.500 ¥ come 12.000 ¥)
   const fmtInt = n => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
@@ -249,7 +262,7 @@
   // titolo di un giorno senza nome: le zone delle tappe ("Tokyo", "Kyoto e Nara"); "Giorno libero" solo se è vuoto
   function dayTitle(d) {
     const day = plan[d]; if (day?.l) return day.l;
-    const ids = day?.i || []; if (!ids.length) return "Giorno libero";
+    const ids = (day?.i || []).filter(id => byId[id]); if (!ids.length) return "Giorno libero";   // un luogo che non c'è più non conta
     const zs = [...new Set(ids.map(id => byId[id]?.z).filter(z => z && z !== "altre"))].map(z => zona[z].nome);
     return zs.length ? zs.slice(0, 2).join(" e ") + (zs.length > 2 ? " e dintorni" : "") : `${ids.length} ${ids.length === 1 ? "tappa" : "tappe"}`;
   }
@@ -589,7 +602,7 @@
   const gmSearch = p => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q(p))}`;
   const gmDir = p => `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(q(p))}&travelmode=transit`;
   const gmRoute = ids => {
-    const ps = ids.map(id => byId[id]).filter(Boolean).map(q);
+    ids = ids.filter(id => byId[id]); const ps = ids.map(id => q(byId[id]));
     if (ps.length < 2) return ps.length ? gmSearch(byId[ids[0]]) : null;
     const wp = ps.slice(1, -1).slice(0, 8).join("|");
     return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(ps[0])}&destination=${encodeURIComponent(ps.at(-1))}${wp ? "&waypoints=" + encodeURIComponent(wp) : ""}&travelmode=walking`;
@@ -1171,7 +1184,8 @@
     if (!DAYS.includes(selDay)) selDay = DAYS.includes(today) ? today : DAYS[0];
     LS.set("selDay", selDay);
     const d = selDay, i = dayIndex(d), day = getDay(d);
-    const first = day.i.map(id => byId[id]).find(p => p && photoUrl(p.id));
+    const live = day.i.filter(id => byId[id]);   // tappe di luoghi che esistono ancora (uno eliminato non lascia buchi)
+    const first = live.map(id => byId[id]).find(p => photoUrl(p.id));
     const editedBy = lastEdit?.by && lastEdit.by !== "?" ? ` · ultima modifica di ${esc(lastEdit.by)}` : "";
 
     view.innerHTML = `
@@ -1185,19 +1199,19 @@
       ${dayPren(d)}
       <div class="dayact">
         <button id="add">${icon("Plus")}<span>Aggiungi</span></button>
-        ${day.i.length ? `<a href="#mappa" id="dmap">${icon("Map")}<span>Mappa</span></a>` : `<button disabled>${icon("Map")}<span>Mappa</span></button>`}
-        ${day.i.length > 1 ? `<a href="${gmRoute(day.i)}" target="_blank" rel="noopener">${icon("Route")}<span>Percorso</span></a>` : `<button disabled>${icon("Route")}<span>Percorso</span></button>`}
-        <button id="edit" class="${editMode ? "on" : ""}" ${day.i.length || editMode ? "" : "disabled"}>${icon(editMode ? "Check" : "Pencil")}<span>${editMode ? "Fatto" : "Modifica"}</span></button>
+        ${live.length ? `<a href="#mappa" id="dmap">${icon("Map")}<span>Mappa</span></a>` : `<button disabled>${icon("Map")}<span>Mappa</span></button>`}
+        ${live.length > 1 ? `<a href="${gmRoute(day.i)}" target="_blank" rel="noopener">${icon("Route")}<span>Percorso</span></a>` : `<button disabled>${icon("Route")}<span>Percorso</span></button>`}
+        <button id="edit" class="${editMode ? "on" : ""}" ${live.length || editMode ? "" : "disabled"}>${icon(editMode ? "Check" : "Pencil")}<span>${editMode ? "Fatto" : "Modifica"}</span></button>
       </div>
-      ${editMode && day.i.length ? `<p class="small muted" style="margin:0 0 6px">Trascina il numero per cambiare l'ordine · metti un orario alle tappe</p>`
-        : day.i.length > 1 ? `<p class="small muted" style="margin:0 0 6px">Tieni premuta una tappa per spostarla · scorri a sinistra per toglierla</p>` : ""}
-      ${day.i.length ? `<ul class="tl${editMode ? " editing" : ""}">${day.i.map((id, k) => {
+      ${editMode && live.length ? `<p class="small muted" style="margin:0 0 6px">Trascina il numero per cambiare l'ordine · metti un orario alle tappe</p>`
+        : live.length > 1 ? `<p class="small muted" style="margin:0 0 6px">Tieni premuta una tappa per spostarla · scorri a sinistra per toglierla</p>` : ""}
+      ${live.length ? `<ul class="tl${editMode ? " editing" : ""}">${day.i.map((id, k) => {
         const p = byId[id]; if (!p) return "";
-        const next = byId[day.i[k + 1]], tm = day.t?.[id];
+        const at = live.indexOf(id), next = byId[live[at + 1]], tm = day.t?.[id];
         const right = editMode ? `<div class="edit">${timeIn(`class="ttime" data-time="${id}" value="${esc(tm || "")}" aria-label="Orario"`)}<button class="iconbtn danger" data-rm="${k}" aria-label="Rimuovi">${icon("Trash2")}</button></div>` : "";
         const row = placeRow(p, { noDays: true, compact: true, noZone: true, right }).replace('<div class="meta">', `<div class="meta">${closedOn(p, d) ? closedPill(p) : ""}${tm ? `<span class="pill">${icon("Clock")} ${esc(tm)}</span>` : ""}`);
         const fatto = day.f?.includes(id);
-        return `<li${fatto ? ' class="done"' : ""}>${editMode ? `<span class="n grip" data-grip="${k}" style="background:${zona[p.z].colore}" aria-label="Trascina per spostare">${icon("GripVertical")}</span>` : fatto ? `<span class="n done" aria-label="Fatta">済</span>` : `<span class="n" style="background:${zona[p.z].colore}">${k + 1}</span>`}<div class="sw">${editMode ? "" : `<div class="swipebg">${icon("Trash2")} Togli</div>`}${row}</div>${next ? `<div class="hop">${hop(p, next)}</div>` : ""}</li>`;
+        return `<li data-k="${k}"${fatto ? ' class="done"' : ""}>${editMode ? `<span class="n grip" data-grip="${k}" style="background:${zona[p.z].colore}" aria-label="Trascina per spostare">${icon("GripVertical")}</span>` : fatto ? `<span class="n done" aria-label="Fatta">済</span>` : `<span class="n" style="background:${zona[p.z].colore}">${at + 1}</span>`}<div class="sw">${editMode ? "" : `<div class="swipebg">${icon("Trash2")} Togli</div>`}${row}</div>${next ? `<div class="hop">${hop(p, next)}</div>` : ""}</li>`;
       }).join("")}</ul>` : landsOn(d) ? `<div class="empty" style="margin-top:14px">Si atterra${landsOn(d).oraA ? " alle " + esc(landsOn(d).oraA) : ""}: il resto della giornata è vostro.<br><button class="btn small primary" id="add2" style="margin-top:10px">${icon("Plus")} Aggiungi tappe</button></div>`
         : flightOn(d) ? `<div class="empty" style="margin-top:14px">Giorno della partenza: niente tappe in programma.<br><button class="btn small" id="add2" style="margin-top:10px">${icon("Plus")} Aggiungi una tappa</button></div>`
         : `<div class="empty" style="margin-top:14px">Nessuna tappa per questo giorno.<br><button class="btn small primary" id="add2" style="margin-top:10px">${icon("Plus")} Aggiungi tappe</button></div>`}
@@ -1261,7 +1275,8 @@
         end() {
           cancelAnimationFrame(raf);
           items.forEach(x => (x.style.transform = "")); li.classList.remove("dragging");
-          if (to !== from) { const dd = getDay(d), [id] = dd.i.splice(from, 1); dd.i.splice(to, 0, id); savePlan(); buzz(); }
+          // from/to contano solo le tappe mostrate: quelle di luoghi che non ci sono più restano al loro posto
+          if (to !== from) { const dd = getDay(d), vis = dd.i.filter(x => byId[x]), [id] = vis.splice(from, 1); vis.splice(to, 0, id); let j = 0; dd.i = dd.i.map(x => byId[x] ? vis[j++] : x); savePlan(); buzz(); }
           keepScroll(() => renderGiorni());
         },
       };
@@ -1295,7 +1310,7 @@
       li.addEventListener("touchend", stop); li.addEventListener("touchcancel", stop);
     });
     // scorri una tappa verso sinistra per toglierla
-    if (!editMode) $$(".tl li").forEach((li, k) => {
+    if (!editMode) $$(".tl li").forEach(li => {
       const card = $(".place", li); if (!card) return;
       let x0 = 0, y0 = 0, dx = 0, on = null;
       li.addEventListener("touchstart", e => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; on = null; card.style.transition = "none"; }, { passive: true });
@@ -1308,7 +1323,7 @@
       }, { passive: true });
       li.addEventListener("touchend", () => {
         card.style.transition = "";
-        if (on && dx < -110) { card.style.transform = "translateX(-110%)"; setTimeout(() => collapse(li).then(() => removeStop(k)), 140); }
+        if (on && dx < -110) { card.style.transform = "translateX(-110%)"; setTimeout(() => collapse(li).then(() => removeStop(+li.dataset.k)), 140); }
         else { card.style.transform = ""; li.classList.remove("swipe-go"); setTimeout(() => li.classList.remove("swiping"), 220); }
       });
     });
