@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 170;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 171;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -928,7 +928,7 @@
     `, el => {
       const again = () => { const y = sheetCard.scrollTop; openPlace(id); sheetCard.scrollTop = y; };   // ridisegna la scheda senza tornare in cima
       $("#delp", el)?.addEventListener("click", () => deletePlace(p));
-      $("#restp", el)?.addEventListener("click", () => { delItem("luoghi", "h" + id); toast("Luogo ripristinato"); closeSheet(); rerender(); });
+      $("#restp", el)?.addEventListener("click", () => restorePlace(id));
       $("#bk", el)?.addEventListener("change", e => { e.target.checked ? booked.add(id) : booked.delete(id); savePlan(); again(); });
       $("#editl", el)?.addEventListener("click", () => inSheet("push", () => p.mine ? editLuogo(lists.luoghi.find(x => x.id === id) || p, null, true) : editBase(p)));
       if ($("#showjp", el)) $("#showjp", el).onclick = () => showBig(p.jp, `${esc(p.n)}<br><span class="jp" style="font-size:1.3rem;color:var(--ink)">ここに行きたいです</span><br><small>"Vorrei andare qui"</small>`);
@@ -1073,9 +1073,20 @@
   const bookUrl = p => p.link || `https://www.google.com/search?q=${encodeURIComponent(p.n + " official tickets booking")}`;
   // quando prenotare (data.js › PRENOTA): "da" apre le vendite, "entro" è l'ultimo giorno sicuro. Data di oggi in Italia
   const PREN = window.PRENOTA || {};
-  const bookBy = p => PREN[p.id]?.entro || "9999-12-31";
-  function bookWhen(p, today = todayJP()) {
+  const bookBy = p => bookWin(p)?.entro || "9999-12-31";
+  // finestra di vendita di data.js riportata al giorno in programma: con "prima" le vendite aprono N giorni prima della
+  // visita (si sposta con lei); in ogni caso "entro" non va oltre il giorno prima di andarci
+  function bookWin(p) {
     const w = PREN[p.id]; if (!w) return null;
+    const v = p.giorno || dayOf(p.id)[0]; if (!v) return w;
+    const add = (d, n) => new Date(Date.parse(d + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
+    let { da, entro } = w;
+    if (w.prima > 0) { const span = Math.round((Date.parse(entro) - Date.parse(da)) / 864e5); da = add(v, -w.prima); entro = add(da, span); }
+    const last = add(v, -1); if (entro > last) entro = last; if (da > entro) da = entro;
+    return { ...w, da, entro };
+  }
+  function bookWhen(p, today = todayJP()) {
+    const w = bookWin(p); if (!w) return null;
     const left = Math.round((new Date(w.entro + "T00:00:00Z") - new Date(today + "T00:00:00Z")) / 864e5);
     const fd = d => fmtDay(d, { day: "numeric", month: "short" });
     if (left < 0) return { txt: `entro il ${fd(w.entro)}: controllate se c'è ancora posto`, cls: "late" };
@@ -2966,7 +2977,7 @@
         if (!st.lat) return toast("Scegli dove si trova");
         const eur = parseNum(v("l-eur"));
         const item = { id: p.id || "u" + uid(), n, jp: v("l-jp"), d: v("l-d"), c: st.c, z: st.z || guessZone(st.lat, st.lng), lat: +(+st.lat).toFixed(6), lng: +(+st.lng).toFixed(6), addr: st.where, chi: p.chi || me || "", dur: v("l-dur"), pren: $("#l-pren", el).checked, eur: eur > 0 ? eur : null, ts: p.ts || Date.now() };
-        if (!item.pren) booked.delete(item.id);
+        if (!item.pren && booked.delete(item.id)) savePlan();   // tolto "da prenotare": anche la spunta prenotato, per tutti
         // foto scelta: quelle di Google si salvano come indirizzo diretto dell'immagine (così funzionano anche offline)
         let img = null;
         if (st.sel === "cur") img = p.img;
@@ -3000,7 +3011,8 @@
     const id = p.id, wasBooked = booked.has(id), pos = dayOf(id).map(d => takeStop(d, id)).filter(Boolean);
     const old = p.mine ? lists.luoghi.find(x => x.id === id) : null;
     booked.delete(id); savePlan();
-    if (p.mine) delItem("luoghi", id); else putItem("luoghi", { id: "h" + id, hide: id });
+    // per "Ripristina il luogo" (anche giorni dopo, da un altro telefono) l'eliminazione ricorda giorni e prenotato
+    if (p.mine) delItem("luoghi", id); else putItem("luoghi", { id: "h" + id, hide: id, bk: wasBooked, pos: pos.map(s => ({ d: s.d, k: s.k, prev: s.prev || "", next: s.next || "", tm: s.tm || "", done: s.done })) });   // niente undefined: Firestore li rifiuta
     closeSheet(); rerender(); buzz();
     toast(pos.length ? `Luogo eliminato e tolto da ${pos.length === 1 ? "1 giorno" : pos.length + " giorni"}` : "Luogo eliminato", () => {
       if (old) putItem("luoghi", old); else delItem("luoghi", "h" + id);
@@ -3008,6 +3020,17 @@
       if (wasBooked) booked.add(id);
       savePlan(); rerender();
     });
+  }
+
+  // "Ripristina il luogo" dagli eliminati: torna nei giorni in cui era (al suo posto, con orario e spunta) e prenotato
+  function restorePlace(id) {
+    const h = lists.luoghi.find(x => x.id === "h" + id), pos = (Array.isArray(h?.pos) ? h.pos : []).filter(s => s && DAYS.includes(s.d) && !(plan[s.d]?.i || []).includes(id));
+    delItem("luoghi", "h" + id);
+    pos.forEach(s => putStop({ d: s.d, id, k: +s.k || 0, prev: str(s.prev), next: str(s.next), tm: okTime(s.tm), done: s.done === true }));
+    if (h?.bk === true && byId[id]?.pren) booked.add(id);
+    if (pos.length || h?.bk === true) savePlan();
+    toast(pos.length ? `Luogo ripristinato e rimesso in ${pos.length === 1 ? "1 giorno" : pos.length + " giorni"}` : "Luogo ripristinato");
+    closeSheet(); rerender();
   }
 
   // ——— SPESE condivise tra le due coppie ———

@@ -222,6 +222,7 @@ window.LUOGHI = [
 // Quando prenotare (ricerca di ottobre 2026, da ricontrollare sui siti ufficiali).
 // da = quando aprono le vendite / da quando muoversi, entro = ultimo giorno utile prima di rischiare il tutto esaurito
 // (date italiane; le vendite giapponesi alle 14:00 JST = 6:00 in Italia d'inverno). come = cosa fare
+// prima = le vendite aprono N giorni prima della visita: da ed entro si spostano con il giorno in programma
 // cassa: si compra anche all'ingresso, quindi niente promemoria di prenotazione (l'app lo mostra comunque)
 window.PRENOTA = {
   h2:  { da: "2026-11-10", entro: "2026-11-30", come: "Notte di sabato 27 febbraio, 4 persone, con cena kaiseki: dite che arrivate verso le 17 e chiedete l'orario della cena. I ryokan buoni finiscono mesi prima, e di sabato prima ancora. Se Mitake è pieno, un altro a Hakone-Yumoto vicino alla stazione" },
@@ -236,7 +237,7 @@ window.PRENOTA = {
   o9:  { da: "2026-12-01", entro: "2027-01-05", come: "Per venerdì 5 marzo (non sabato 6: di venerdì le code sono più corte). Biglietto ed Express Pass con Super Nintendo World vanno comprati circa 2 mesi prima, l'Express Pass finisce" },
   t24: { da: "2026-12-01", entro: "2026-12-15", come: "Le date escono il 1° del mese, circa 2 mesi prima: il 1° dicembre per febbraio, il 1° gennaio per marzo. I weekend finiscono anche in pochi minuti" },
   t25: { da: "2026-12-01", entro: "2026-12-15", come: "Circa 2 mesi prima sul sito teamLab. Weekend e festivi finiscono presto; su Klook a volte restano posti" },
-  t28: { da: "2027-02-06", entro: "2027-02-08", come: "Si apre 14 giorni prima a mezzanotte giapponese (16:00 in Italia). L'orario del tramonto finisce in pochi minuti" },
+  t28: { da: "2027-02-06", entro: "2027-02-08", prima: 14, come: "Si apre 14 giorni prima a mezzanotte giapponese (16:00 in Italia). L'orario del tramonto finisce in pochi minuti" },
   t31: { da: "2027-01-20", entro: "2027-02-07", come: "Laboratorio a orari fissi con pochi posti: 2-3 settimane prima" },
   t20: { da: "2027-01-25", entro: "2027-02-14", come: "Biglietto a orario online, 1-2 settimane prima (nei weekend prima)" },
   t19: { da: "2027-01-25", entro: "2027-02-14", come: "Biglietto a orario online, 1-2 settimane prima. Nei giorni feriali si trova anche in cassa" },
