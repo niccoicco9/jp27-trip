@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 169;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 170;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -1024,12 +1024,13 @@
         <p>In Giappone dal ${fmtDay(T.inizio, { day: "numeric", month: "long" })} al ${fmtDay(T.fine, { day: "numeric", month: "long", year: "numeric" })} · Niccolò & Antonella · Miriam & Paolo</p>
       </div></div>`;
     else {
-      const d = getDay(today), first = d.i[0] && byId[d.i[0]], nst = d.i.filter(id => byId[id]).length;
+      const d = getDay(today), live = d.i.filter(id => byId[id]), first = byId[live[0]], nst = live.length;
+      const next = byId[live.find(id => !d.f?.includes(id))];   // "Portami": la prossima da fare (tutte fatte: niente)
       hero = `<div class="hero">${first && photoUrl(first.id) ? `<div class="ph" data-bg="${photoUrl(first.id, 960)}"></div>` : art()}${KANJI[zNow] ? `<span class="kanji" aria-hidden="true">${KANJI[zNow]}</span>` : ""}<div class="hero-in">
         <span class="kicker">${hi}Giorno ${idx + 1} di ${DAYS.length}</span>
         <div class="title">${esc(d.l || "Oggi")}</div>
         ${nst ? `<p>${nst} ${nst === 1 ? "tappa" : "tappe"} in programma</p>` : ""}
-        <div class="btns"><a class="btn primary" href="#giorni/${today}">${icon("CalendarDays")} Programma</a>${first ? `<a class="btn" href="${gmDir(first)}" target="_blank" rel="noopener">${icon("Navigation")} Portami</a>` : ""}</div>
+        <div class="btns"><a class="btn primary" href="#giorni/${today}">${icon("CalendarDays")} Programma</a>${next ? `<a class="btn" href="${gmDir(next)}" target="_blank" rel="noopener">${icon("Navigation")} Portami</a>` : ""}</div>
       </div></div>`;
     }
 
@@ -1117,7 +1118,7 @@
   }
   const onOggi = () => (location.hash || "#oggi") === "#oggi";
   function bindTrip(today) {
-    $("#qspesa")?.addEventListener("click", () => code ? editSpesa({ data: today }, true) : askWho(true));
+    $("#qspesa")?.addEventListener("click", () => code ? editSpesa({ data: todayJP() }, true) : askWho(true));
     $$("[data-stop]").forEach(c => c.onchange = () => { toggleDone(today, c.dataset.stop, c.checked); setTimeout(() => { if (onOggi()) keepScroll(render); }, 420); });
     $$("[data-fatto]").forEach(b => b.onclick = () => { buzz(); toggleDone(today, b.dataset.fatto, true); keepScroll(render); });
     $("#nearbtn")?.addEventListener("click", () => {
@@ -1175,10 +1176,10 @@
     const cached = LS.get("weather2", null);
     if (cached?.key === key) { paint(cached); if (Date.now() - cached.at < 20 * 60e3) return; }
     try {
-      const j = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=2&timezone=Asia%2FTokyo`)).json();
+      const j = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=2&timezone=Asia%2FTokyo`, { signal: AbortSignal.timeout?.(10e3) })).json();   // rete debole: dopo 10 s si lascia perdere invece di restare su "…"
       const w = { key, at: Date.now(), cur: [j.current.temperature_2m, j.current.weather_code], days: j.daily.time.map((_, i) => [i ? "Domani" : "Oggi", j.daily.weather_code[i], j.daily.temperature_2m_max[i], j.daily.temperature_2m_min[i], j.daily.precipitation_probability_max[i]]) };
       LS.set("weather2", w); paint(w);
-    } catch { if (cached?.key !== key) { const el = $("#weather"); if (el) el.innerHTML = `<div style="grid-column:1/-1">Meteo non disponibile offline</div>`; } }
+    } catch { if (cached?.key !== key) { const el = $("#weather"); if (el) el.innerHTML = `<div style="grid-column:1/-1">${navigator.onLine ? "Meteo non disponibile adesso: riprovo alla prossima apertura" : "Meteo non disponibile offline"}</div>`; } }
   }
 
   // ——— GIORNI ———
@@ -3624,11 +3625,22 @@
   }
 
   // ——— orologi ———
+  // che Oggi si vede: giorno di Tokyo e se è già sera (dalle 21)
+  let oggiKey = "";
+  const oggiNow = () => todayJP() + (nowJP() >= "21:00" ? "|sera" : "");
   function tick() {
     const f = tz => new Date().toLocaleTimeString("it-IT", { timeZone: tz, hour: "2-digit", minute: "2-digit" });
     $$("[data-clock]").forEach(el => { el.textContent = f(el.dataset.clock); });
+    // con l'app aperta: a mezzanotte di Tokyo Oggi passa al giorno nuovo, alle 21 compare la sera.
+    // Non sotto le dita: con un foglio aperto, una tappa in mano o la tastiera aperta si riprova al giro dopo
+    const k = oggiNow(); if (k === oggiKey || document.hidden) return;
+    const [tab] = (location.hash.slice(1) || "oggi").split("/");
+    if (tab !== "oggi" && tab !== "giorni") { oggiKey = k; return; }   // le altre pagine non cambiano; tornando su Oggi si ricostruisce
+    if (sheetOpen() || reordering || document.activeElement?.matches?.("input, textarea, select")) return;
+    rerender();
   }
   setInterval(tick, 30e3);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") setTimeout(tick, 300); });
 
   // ——— router ———
   const TABS = [["oggi", "Sun", "Oggi"], ["giorni", "CalendarDays", "Giorni"], ["luoghi", "MapPin", "Luoghi"], ["mappa", "Map", "Mappa"], ["utility", "LayoutGrid", "Utility"]];
@@ -3764,7 +3776,7 @@
     restored = !!kept && kept.stamp === stampNow();
     if (restored) { view.replaceChildren(kept.frag); if (tab === "oggi") tick(); }
     else ({ oggi: renderOggi, giorni: () => renderGiorni(sub), luoghi: renderLuoghi, mappa: renderMappa, utility: () => renderUtility(sub) }[tab] || renderOggi)();
-    shown = { key, stamp: stampNow() };
+    shown = { key, stamp: stampNow() }; oggiKey = oggiNow();
     watchTitle();
     // Spese: pulsante "+ Spesa" in basso a destra, a portata di pollice (anche su iPhone grandi)
     let fab = $("#fab");
