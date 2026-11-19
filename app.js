@@ -3,7 +3,7 @@
 
   // ——— storage (protetto: in privato o con dati bloccati può fallire) ———
   let dataVer = 0;   // cresce a ogni modifica salvata: le pagine tenute in memoria più vecchie si ricostruiscono
-  const UI_KEYS = new Set(["selDay", "lview", "mapMode", "notifyQ", "skipCode", "lastPage", "lastBackup", "preRestore", "outbox", "syncBase", "docUp"]);   // solo preferenze di navigazione: non cambiano le pagine
+  const UI_KEYS = new Set(["selDay", "selDayOn", "lview", "mapMode", "notifyQ", "skipCode", "lastPage", "lastBackup", "preRestore", "outbox", "syncBase", "docUp"]);   // solo preferenze di navigazione: non cambiano le pagine
   const LS = {
     get(k, d) { try { const v = localStorage.getItem("jp27:" + k); return v ? JSON.parse(v) : d; } catch { return d; } },
     // quiet: dati uguali per le pagine (solo versioni del server): niente ricostruzione
@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 168;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 169;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -1203,12 +1203,18 @@
     if (s.tm && !dd.t?.[s.id]) (dd.t ||= {})[s.id] = s.tm;
     if (s.done) { const f = new Set([...(dd.f || []), s.id]); dd.f = dd.i.filter(x => f.has(x)); }
   }
+  // giorno da mostrare: quello chiesto, se no l'ultimo guardato; durante il viaggio il primo giro su Giorni di ogni
+  // giornata (seenOn = giornata in cui si è guardato l'ultima volta) parte da oggi
+  function pickDay(sel, sub, today, seenOn) {
+    if (sub && DAYS.includes(sub)) return sub;
+    if (DAYS.includes(today) && seenOn !== today) return today;
+    return DAYS.includes(sel) ? sel : DAYS.includes(today) ? today : DAYS[0];
+  }
   const ZSHORT = { tokyo: "Tokyo", vicino: "Dintorni", kyoto: "Kyoto", osaka: "Osaka", nara: "Nara", fuji: "Fuji", kanazawa: "Kanaz.", altre: "Altro" };
   function renderGiorni(sub) {
     const today = todayJP();
-    if (sub && DAYS.includes(sub)) selDay = sub;
-    if (!DAYS.includes(selDay)) selDay = DAYS.includes(today) ? today : DAYS[0];
-    LS.set("selDay", selDay);
+    selDay = pickDay(selDay, sub, today, LS.get("selDayOn", null));
+    LS.set("selDay", selDay); LS.set("selDayOn", today);
     const d = selDay, i = dayIndex(d), day = getDay(d);
     const live = day.i.filter(id => byId[id]);   // tappe di luoghi che esistono ancora (uno eliminato non lascia buchi)
     // percorso: le tappe ancora da fare (quelle già fatte non servono più), tutte se ne resta una sola
