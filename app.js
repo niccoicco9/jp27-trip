@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 156;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 157;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2270,7 +2270,7 @@
     const cost = sp ? `<div class="pcost"><b>${spImp(sp)}</b><span class="small muted">${esc(sp.pagatoDa)} ha pagato${per.length > 1 ? ` · <b>${eurF(sp.eur / per.length)}</b> a testa${per.length < T.viaggiatori.length ? ` (${esc(splitLabel(per))})` : ""}` : ` per ${esc(per[0])}`}</span></div>` : "";
     return `<div class="card pcard${p.id === freshId ? " fresh" : ""}" data-pren="${p.id}">
       <div class="row"><span class="pic" style="background:${col}">${icon(ic)}</span>
-        <div class="grow"><b>${esc(p.titolo || tn)}</b><div class="muted small">${when}</div>${stato}${route}${p.indirizzo ? `<div class="small muted">${esc(p.indirizzo)}</div>` : ""}</div></div>
+        <div class="grow"><b>${esc(p.titolo || tn)}</b><div class="muted small">${when}</div>${stato}${route}${p.indirizzo || p.jp ? `<div class="small muted">${esc(p.indirizzo || p.jp)}</div>` : ""}</div></div>
       ${p.codice ? `<div class="small" style="margin-top:8px">${icon("KeyRound")} Codice: <b class="copiabile">${esc(p.codice)}</b></div>` : ""}
       ${cost}
       ${docsOf(p.id).length ? `<div class="docs">${docsOf(p.id).map(docBtn).join("")}</div>` : ""}
@@ -2427,6 +2427,7 @@
         const item = { ...p, id: pid, tipo: t, titolo: v("p-tit"), dal: v("p-dal"), ora: v("p-ora"), codice: v("p-cod"), link: v("p-link"), note: v("p-note") };
         if (t === "hotel") Object.assign(item, { al: v("p-al"), indirizzo: v("p-ind"), jp: v("p-jp") });
         if (t === "volo" || t === "treno") Object.assign(item, { da: v("p-da"), a: v("p-a") });
+        const badArr = t === "volo" && v("p-al") && item.dal && v("p-al") < item.dal;   // arrivo prima della partenza: si toglie, il resto si salva
         if (t === "volo") Object.assign(item, { al: v("p-al") && v("p-al") > item.dal ? v("p-al") : "", oraA: v("p-oraA") });
         if (t === "biglietto") item.luogo = v("p-luogo");
         if (!item.titolo) return toast("Scrivi almeno il nome");
@@ -2441,14 +2442,23 @@
           if (lost && !spesaOf(pid)) { const { del, ...rest } = lost; putItem("spese", { ...rest, storia: conStoria(lost, "rip") }); }
           if (lists.prenotazioni.some(x => x.id === pid)) return toast("Nel frattempo è tornata: riaprila per modificarla");
         }
-        const titNow = lists.prenotazioni.find(x => x.id === pid)?.titolo;
+        const prev = lists.prenotazioni.find(x => x.id === pid), titNow = prev?.titolo;
+        // indirizzo cambiato: la puntina vecchia si toglie subito (senza rete o se non si trova resta senza, non nel posto sbagliato)
+        const moved = t === "hotel" && (item.jp !== p.jp || item.indirizzo !== p.indirizzo || (!item.jp && !item.indirizzo && item.titolo !== p.titolo));
+        if (moved) { delete item.lat; delete item.lng; }
         const stored = putItem("prenotazioni", item);
         saveCost(item, titNow);
         if (isNew) notifyOthers("pren", stored);
-        if (t === "hotel" && (item.jp !== p.jp || item.indirizzo !== p.indirizzo || item.titolo !== p.titolo || !p.lat)) geocodeHotel(stored);
-        if (item.luogo && !booked.has(item.luogo)) { booked.add(item.luogo); savePlan(); }   // biglietto preso = "prenotato" spuntato
+        if (t === "hotel" && (moved || !stored.lat)) geocodeHotel(stored);
+        // biglietto preso = "prenotato" spuntato; luogo tolto o cambiato: il vecchio non è più prenotato,
+        // a meno che un'altra prenotazione non sia ancora collegata a lui
+        const oldL = prev?.luogo || p.luogo;
+        let planCh = false;
+        if (t === "biglietto" && oldL && oldL !== item.luogo && booked.has(oldL) && !lists.prenotazioni.some(x => x.id !== pid && x.luogo === oldL)) { booked.delete(oldL); planCh = true; }
+        if (item.luogo && !booked.has(item.luogo)) { booked.add(item.luogo); planCh = true; }
+        if (planCh) savePlan();
         const clash = t === "hotel" && lists.prenotazioni.find(o => o.tipo === "hotel" && o.id !== pid && o.dal < item.al && item.dal < (o.al || o.dal));
-        saved = true; closeSheet(); toast(clash ? `Salvato · attenzione, si sovrappone a ${clash.titolo}` : "Salvato ✓"); rerender();
+        saved = true; closeSheet(); toast(clash ? `Salvato · attenzione, si sovrappone a ${clash.titolo}` : badArr ? "Salvato · l'arrivo era prima della partenza, l'ho tolto" : "Salvato ✓"); rerender();
       };
       $("#p-del", el)?.addEventListener("click", async () => {
         if (!(await ask({ title: `Eliminare "${p.titolo || "prenotazione"}"?`, text: spesaOf(p.id) ? "Anche il suo costo finirà nel cestino delle Spese." : "Sparirà per tutti e quattro.", ok: "Elimina", danger: true }))) return;
@@ -2468,15 +2478,26 @@
   }
 
   // posizione dell'hotel dall'indirizzo (OpenStreetMap), per la puntina sulla mappa
+  const geoTried = new Set();
   async function geocodeHotel(h) {
     if (!navigator.onLine) return;
+    geoTried.add(h.id + "|" + h.jp + "|" + h.indirizzo + "|" + h.titolo);
     for (const q of [h.jp, h.indirizzo && h.indirizzo + ", Japan", h.titolo + ", Japan"].filter(Boolean)) {
       try {
         const r = await (await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=jp&q=${encodeURIComponent(q)}`)).json();
-        if (r[0]) { putItem("prenotazioni", { ...h, lat: +r[0].lat, lng: +r[0].lon }); return; }
+        if (r[0]) {
+          // intanto cambiato o eliminato (anche da un altro): la posizione vale solo se l'indirizzo è ancora quello
+          const cur = lists.prenotazioni.find(x => x.id === h.id);
+          if (cur && cur.jp === h.jp && cur.indirizzo === h.indirizzo && cur.titolo === h.titolo) putItem("prenotazioni", { ...cur, lat: +r[0].lat, lng: +r[0].lon });
+          return;
+        }
       } catch {}
     }
   }
+  // hotel rimasti senza puntina (indirizzo cambiato senza rete): si riprova quando torna la rete, una volta per indirizzo, uno alla volta
+  addEventListener("online", () => setTimeout(async () => {
+    for (const h of lists.prenotazioni.filter(h => h.tipo === "hotel" && !h.lat && !geoTried.has(h.id + "|" + h.jp + "|" + h.indirizzo + "|" + h.titolo))) await geocodeHotel(h);
+  }, 2000));
 
   // ——— LUOGHI aggiunti da voi ———
   // la zona si deduce dal luogo Wanderlog più vicino (entro ~40 km), altrimenti "Altre località"
