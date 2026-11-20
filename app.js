@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 175;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 176;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -1162,8 +1162,9 @@
       if (!navigator.geolocation) return toast("Posizione non disponibile");
       toast("Cerco la tua posizione…");
       // la posizione può arrivare dopo qualche secondo: si ridisegna Oggi solo se è ancora sullo schermo
+      // "Aggiorna": sempre una posizione nuova (con maximumAge Safari ridava quella di prima, anche dopo un tragitto in metro)
       navigator.geolocation.getCurrentPosition(pos => { nearPos = { lat: pos.coords.latitude, lng: pos.coords.longitude, at: Date.now() }; dataVer++; if (onOggi()) keepScroll(render); },
-        geoFail, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+        geoFail, { enableHighAccuracy: true, timeout: 12000, maximumAge: nearPos ? 0 : 60000 });
     });
   }
   // sera (dalle 21 in Giappone): com'è andata e cosa c'è domani
@@ -1623,7 +1624,7 @@
       if (!navigator.geolocation) return toast("Posizione non disponibile");
       toast("Cerco la tua posizione…");
       navigator.geolocation.getCurrentPosition(pos => { lf.near = { lat: pos.coords.latitude, lng: pos.coords.longitude }; dataVer++; if (!b.isConnected) return; b.classList.add("on"); draw(); },
-        geoFail, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+        geoFail, { enableHighAccuracy: true, timeout: 12000, maximumAge: 10000 });
     };
   }
 
