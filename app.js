@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 188;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 189;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -1829,8 +1829,11 @@
       }
     };
     const openIw = (id, anchor) => {
-      iw.setContent(iwHtml(id)); iw.open({ map, anchor });
-      google.maps.event.addListenerOnce(iw, "domready", () => setTimeout(() => keepInView(el.querySelector(".gm-style-iw-c"), (dx, dy) => map.panBy(dx, dy)), 60));
+      const html = iwHtml(id); iw.setContent(html); iw.open({ map, anchor });
+      // a tempo e non con "domready": con la finestrella già aperta su un altro luogo Google non lo manda.
+      // La seconda volta: la foto arrivata dopo la allunga verso l'alto
+      const fit = () => { if (iw.getContent() === html && iw.isOpen) keepInView(el.querySelector(".gm-style-iw-c"), (dx, dy) => map.panBy(dx, dy)); };
+      setTimeout(fit, 150); setTimeout(fit, 900);
     };
     const zoomInto = g => {
       const b = new google.maps.LatLngBounds(); g.ids.forEach(id => b.extend({ lat: byId[id].lat, lng: byId[id].lng }));
