@@ -106,6 +106,9 @@ svg.i { width: 1.15em; height: 1.15em; flex: none; vertical-align: -.2em; }
   min-height: calc(44px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 12px 0;
   background: var(--bg); border-bottom: .5px solid transparent; transition: border-color .2s, background-color .3s;
 }
+/* app dalla schermata Home: iOS sfoca e sbiadisce una fascia sottile subito sotto la barra di stato, e "‹ indietro"
+   ci finiva dentro (sfocato già all'apertura). 16 px più in basso è nitido come in Safari (misurato sul simulatore iOS 27); in Safari quella fascia non c'è */
+@media (display-mode: standalone) { .top { min-height: calc(60px + env(safe-area-inset-top)); padding-top: calc(16px + env(safe-area-inset-top)); } }
 .top.compact { border-bottom-color: var(--line); }
 .tb-l { justify-self: start; min-width: 0; }
 .tb-r { justify-self: end; display: flex; align-items: center; gap: 10px; }
@@ -498,6 +501,7 @@ table.budget td:last-child { text-align: right; font-variant-numeric: tabular-nu
 /* la mappa finisce sopra la barra in basso: logo e crediti (obbligatori) restano visibili e non coperti */
 .mapwrap { position: relative; overflow: hidden; border-radius: 0 0 24px 24px; isolation: isolate;
   height: calc(100dvh - 59px - env(safe-area-inset-top) - var(--nav-h) - 20px - env(safe-area-inset-bottom)); }
+@media (display-mode: standalone) { .mapwrap { height: calc(100dvh - 75px - env(safe-area-inset-top) - var(--nav-h) - 20px - env(safe-area-inset-bottom)); } }   /* testata 16 px più alta, vedi .top */
 #map { position: absolute; inset: 0; background: var(--bg-2); }
 .map-ui { position: absolute; left: 0; right: 0; top: 0; z-index: 2; padding: 12px 16px 0; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
 .map-ui > * { pointer-events: auto; }
