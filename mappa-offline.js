@@ -35,6 +35,12 @@
   // un file di zona si scarica una volta sola anche se lo chiedono due download insieme (es. la panoramica
   // per Tokyo e per Kyoto): il secondo aspetta il primo. got/total servono all'avanzamento
   const inflight = {};
+  // lunghezza di un file PMTiles v3 secondo il suo header (fine della sezione più lontana); -1 se non è PMTiles
+  function pmtilesSize(h) {
+    if (h.length < 127 || String.fromCharCode(...h.slice(0, 7)) !== "PMTiles") return -1;
+    const dv = new DataView(h.buffer, h.byteOffset, h.byteLength), u = o => Number(dv.getBigUint64(o, true));
+    return Math.max(...[8, 24, 40, 56].map(o => u(o) + u(o + 8)));
+  }
   function fetchFile(zz) {
     if (inflight[zz.id]) return inflight[zz.id];
     const job = { got: 0, total: zz.mb * 1e6 };
@@ -45,9 +51,11 @@
       const len = +res.headers.get("content-length"); if (len) job.total = len;
       const reader = res.body.getReader(), parts = [];
       for (;;) { const { done, value } = await reader.read(); if (done) break; parts.push(value); job.got += value.length; }
-      // connessione chiusa prima della fine senza errore: niente zona "offline" a metà
-      if (len && job.got !== len) throw new Error("download incompleto");
+      // connessione chiusa prima della fine senza errore: niente zona "offline" a metà.
+      // Non si usa content-length: GitHub Pages manda il file compresso (gzip) e quello è la misura
+      // compressa, mentre qui arrivano i byte già decompressi. La misura vera la dice l'header PMTiles.
       const blob = new Blob(parts, { type: "application/octet-stream" });
+      if (blob.size !== pmtilesSize(new Uint8Array(await blob.slice(0, 127).arrayBuffer()))) throw new Error("download incompleto");
       await cache.put(abs(zz.file), new Response(blob, { headers: { "Content-Type": "application/octet-stream", "Content-Length": String(blob.size) } }));
     })().finally(() => { delete inflight[zz.id]; });
     return (inflight[zz.id] = job);
