@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 177;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 178;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -4126,7 +4126,8 @@
   }
 
   // ——— transizioni native (View Transitions): pagine che scorrono e liste che si riordinano da sole ———
-  const canVT = () => !!document.startViewTransition && !reduceMotion() && !document.hidden;
+  // niente transizioni finché c'è la schermata d'avvio: testata e barra (con view-transition-name) verrebbero disegnate sopra di lei
+  const canVT = () => !!document.startViewTransition && !reduceMotion() && !document.hidden && !document.getElementById("boot");
   let vtRun = null;
   function runVT(type, update, keys) {
     vtRun?.skipTransition?.();
