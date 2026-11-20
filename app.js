@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 178;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 179;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -3702,6 +3702,7 @@
     const [tab] = (location.hash.slice(1) || "oggi").split("/");
     if (tab !== "oggi" && tab !== "giorni") { oggiKey = k; return; }   // le altre pagine non cambiano; tornando su Oggi si ricostruisce
     if (sheetOpen() || reordering || document.activeElement?.matches?.("input, textarea, select")) return;
+    oggiKey = k;   // prima di ridisegnare: Oggi richiama tick() mentre si disegna, e senza questo ridisegnerebbe all'infinito
     rerender();
   }
   setInterval(tick, 30e3);
@@ -3837,6 +3838,7 @@
     const navTab = TABS.some(t => t[0] === fromTab) ? fromTab : tab;
     tabLinks().forEach(a => a.classList.toggle("on", a.dataset.tab === navTab));
     syncInd(!L.raf && L.x === 0);
+    oggiKey = oggiNow();   // prima di disegnare: renderOggi chiama tick(), che altrimenti ridisegnerebbe subito un'altra volta
     const kept = pages.get(key); pages.delete(key);
     restored = !!kept && kept.stamp === stampNow();
     if (restored) { view.replaceChildren(kept.frag); if (tab === "oggi") tick(); }
