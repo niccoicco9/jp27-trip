@@ -32,26 +32,40 @@
   async function status() { const out = {}; for (const z of ZONE) out[z.id] = await isDownloaded(z); return out; }
   async function usedMB() { try { const e = await navigator.storage?.estimate?.(); return e ? Math.round(e.usage / 1048576) : null; } catch { return null; } }
 
-  // scarica con avanzamento; insieme alla prima zona salva anche librerie, caratteri e icone
+  // un file di zona si scarica una volta sola anche se lo chiedono due download insieme (es. la panoramica
+  // per Tokyo e per Kyoto): il secondo aspetta il primo. got/total servono all'avanzamento
+  const inflight = {};
+  function fetchFile(zz) {
+    if (inflight[zz.id]) return inflight[zz.id];
+    const job = { got: 0, total: zz.mb * 1e6 };
+    job.done = (async () => {
+      const cache = await caches.open(CACHE);
+      const res = await fetch(abs(zz.file), { cache: "no-store" });
+      if (!res.ok || !res.body) throw new Error("download " + res.status);
+      const len = +res.headers.get("content-length"); if (len) job.total = len;
+      const reader = res.body.getReader(), parts = [];
+      for (;;) { const { done, value } = await reader.read(); if (done) break; parts.push(value); job.got += value.length; }
+      // connessione chiusa prima della fine senza errore: niente zona "offline" a metà
+      if (len && job.got !== len) throw new Error("download incompleto");
+      const blob = new Blob(parts, { type: "application/octet-stream" });
+      await cache.put(abs(zz.file), new Response(blob, { headers: { "Content-Type": "application/octet-stream", "Content-Length": String(blob.size) } }));
+    })().finally(() => { delete inflight[zz.id]; });
+    return (inflight[zz.id] = job);
+  }
+
+  // scarica con avanzamento (panoramica compresa, se manca); insieme alla prima zona salva anche librerie, caratteri e icone
   async function download(z, onProgress) {
     try { await navigator.storage?.persist?.(); } catch {}
     const cache = await caches.open(CACHE);
     for (const u of LIBS) { try { await fetch(u, { mode: "cors" }); } catch {} }   // le salva il service worker (cache CDN)
     for (const a of ASSETS) { if (!(await cache.match(abs(a)))) { const r = await fetch(abs(a)); if (r.ok) await cache.put(abs(a), r); } }
-    const todo = z.base ? [z] : [ZONE[0], z].filter((x, i, arr) => arr.indexOf(x) === i);
-    for (const zz of todo) {
-      if (await cache.match(abs(zz.file))) continue;
-      const res = await fetch(abs(zz.file), { cache: "no-store" });
-      if (!res.ok || !res.body) throw new Error("download " + res.status);
-      const total = +res.headers.get("content-length") || zz.mb * 1048576;
-      const reader = res.body.getReader(), parts = []; let got = 0;
-      for (;;) {
-        const { done, value } = await reader.read(); if (done) break;
-        parts.push(value); got += value.length;
-        if (zz === z) onProgress?.(Math.min(1, got / total));
-      }
-      const blob = new Blob(parts, { type: "application/octet-stream" });
-      await cache.put(abs(zz.file), new Response(blob, { headers: { "Content-Type": "application/octet-stream", "Content-Length": String(blob.size) } }));
+    const todo = [];
+    for (const zz of z.base ? [z] : [ZONE[0], z]) if (!(await cache.match(abs(zz.file)))) todo.push(zz);
+    const jobs = [];
+    for (const zz of todo) {   // uno dopo l'altro: la panoramica prima, così la mappa serve già a qualcosa
+      const job = fetchFile(zz); jobs.push(job);
+      const tick = setInterval(() => onProgress?.(Math.min(.99, jobs.reduce((a, j) => a + j.got, 0) / todo.reduce((a, x, i) => a + (jobs[i]?.total ?? x.mb * 1e6), 0))), 250);
+      try { await job.done; } finally { clearInterval(tick); }
     }
     onProgress?.(1);
   }

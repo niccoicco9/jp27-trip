@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 190;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 191;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2147,6 +2147,7 @@
   }
 
   // ——— foto offline: le miniature di tutti i luoghi (le salva il service worker) ———
+  const FOTO_MB = 6;   // miniature dei luoghi salvate per l'offline: misurate circa 6 MB (v191)
   const thumbUrls = () => Object.keys(FOTO).map(id => photoUrl(id, 330));
   async function photosSaved() {
     try { const c = await caches.open("jp27-cdn"); let n = 0; for (const u of thumbUrls()) if (await c.match(u)) n++; return n; } catch { return 0; }
@@ -2166,58 +2167,95 @@
   async function keepData() { try { return !!(await navigator.storage?.persisted?.()) || !!(await navigator.storage?.persist?.()); } catch { return false; } }
 
   // ——— gestione mappe offline ———
+  // i download vanno avanti anche chiudendo la scheda: lo stato sta qui fuori, così riaprendola si vede
+  // l'avanzamento (e non "Scarica", che farebbe partire un secondo download) e alla fine la scheda si
+  // aggiorna solo se è aperta (prima si riapriva da sola, anche sopra un'altra scheda)
+  const zjobs = {};            // zona → { f: 0…1, done: Promise }
+  const zfail = new Set();     // zone il cui ultimo tentativo non è riuscito → "Riprova"
+  let zall = null, fotoJob = null;   // "Scarica tutte" { label, text } e foto { f, done }
+  const mapsOpen = () => sheetOpen() && !!$("#sheet-body #zfoto");
+  const pct = f => Math.round(f * 100) + "%";
+  function paintMaps() {
+    if (!mapsOpen()) return;
+    const busy = (b, bar, f) => { if (!b) return; b.disabled = true; b.textContent = pct(f); bar.hidden = false; $("i", bar).style.width = pct(f); };
+    for (const [id, j] of Object.entries(zjobs)) { const card = $(`#sheet-body [data-zone="${id}"]`); if (card) busy($("[data-zdl]", card), $(".progress", card), j.f); }
+    if (fotoJob) busy($("#sheet-body #fdl"), $("#sheet-body #zfoto .progress"), fotoJob.f);
+    const all = $("#sheet-body #zall"); if (all && zall) { all.disabled = true; all.textContent = zall.text; }
+  }
+  const refreshMaps = () => { if (mapsOpen()) openOfflineMaps(); };
+  // scarica una zona (se sta già scaricando, aspetta quel download invece di farne un altro)
+  function zoneDownload(z) {
+    if (zjobs[z.id]) return zjobs[z.id].done;
+    const j = zjobs[z.id] = { f: 0 }; zfail.delete(z.id);
+    j.done = OfflineMap.download(z, f => { j.f = f; if (zall?.cur === z) zall.text = zall.label(z, f); paintMaps(); })
+      .then(async () => { OfflineMap.reset(); engines.offline?.hint?.(); await keepData(); })
+      .catch(e => { zfail.add(z.id); throw e; })
+      .finally(() => { delete zjobs[z.id]; });
+    paintMaps();
+    return j.done;
+  }
+  function photosDownload() {
+    if (fotoJob) return fotoJob.done;
+    const j = fotoJob = { f: 0 };
+    j.done = savePhotos(f => { j.f = f; if (zall) zall.text = `Foto: ${pct(f)}`; paintMaps(); }).then(() => keepData()).finally(() => { fotoJob = null; });
+    paintMaps();
+    return j.done;
+  }
+
   async function openOfflineMaps() {
     const st = await OfflineMap.status(), used = await OfflineMap.usedMB();
     const kept = await keepData();
     const nFoto = Object.keys(FOTO).length, fotoOk = (await photosSaved()) >= nFoto * .9;
-    const busy = {};
     const row = z => `<div class="card zrow" data-zone="${z.id}"><div class="row"><span class="pic" style="--c:${z.base ? "#6b5a45" : "#1f9488"}">${icon(z.base ? "Map" : "Mountain")}</span>
       <div class="grow"><b>${esc(z.nome)}</b><div class="small muted">${z.mb.toLocaleString("it-IT")} MB${z.base ? " · si scarica con la prima zona" : ""}</div></div>
-      ${st[z.id] ? `<span class="pill ok">${icon("Check")} offline</span><button class="iconbtn danger" data-zdel="${z.id}" aria-label="Elimina">${icon("Trash2")}</button>` : `<button class="btn small primary" data-zdl="${z.id}">${icon("Download")} Scarica</button>`}</div>
+      ${st[z.id] ? `<span class="pill ok">${icon("Check")} offline</span><button class="iconbtn danger" data-zdel="${z.id}" aria-label="Elimina">${icon("Trash2")}</button>` : `<button class="btn small primary" data-zdl="${z.id}">${icon("Download")} ${zfail.has(z.id) ? "Riprova" : "Scarica"}</button>`}</div>
       <div class="progress" hidden style="margin-top:10px"><i style="width:0"></i></div></div>`;
     openSheet(`<div class="ttl"><span class="pic" style="--c:#1f9488">${icon("CloudOff")}</span><h2>Mappe offline</h2></div>
       <p class="lead">Scaricale ora col Wi-Fi: in Giappone la mappa funzionerà anche senza rete, con la vostra posizione GPS. Per navigare con i treni serve comunque la rete (Google Maps).</p>
-      ${OfflineMap.ZONE.some(z => !st[z.id]) || !fotoOk ? `<button class="btn primary" id="zall" style="width:100%;margin-bottom:14px">${icon("Download")} Scarica tutte (${Math.round(OfflineMap.ZONE.filter(z => !st[z.id]).reduce((a, z) => a + z.mb, 0) + (fotoOk ? 0 : 3))} MB)</button>` : `<p class="small" style="color:var(--ok);margin-top:0">${icon("Check")} Tutte le zone sono disponibili offline</p>`}
+      ${OfflineMap.ZONE.some(z => !st[z.id]) || !fotoOk ? `<button class="btn primary" id="zall" style="width:100%;margin-bottom:14px">${icon("Download")} Scarica tutte (${Math.round(OfflineMap.ZONE.filter(z => !st[z.id]).reduce((a, z) => a + z.mb, 0) + (fotoOk ? 0 : FOTO_MB))} MB)</button>` : `<p class="small" style="color:var(--ok);margin-top:0">${icon("Check")} Tutte le zone sono disponibili offline</p>`}
       ${OfflineMap.ZONE.map(row).join("")}
       <div class="card zrow" id="zfoto"><div class="row"><span class="pic" style="--c:#7b4fa0">${icon("Palette")}</span>
-        <div class="grow"><b>Foto dei luoghi</b><div class="small muted">${nFoto} miniature · circa 3 MB</div></div>
+        <div class="grow"><b>Foto dei luoghi</b><div class="small muted">${nFoto} miniature · circa ${FOTO_MB} MB</div></div>
         ${fotoOk ? `<span class="pill ok">${icon("Check")} offline</span>` : `<button class="btn small primary" id="fdl">${icon("Download")} Scarica</button>`}</div>
         <div class="progress" hidden style="margin-top:10px"><i style="width:0"></i></div></div>
       <div class="card zrow" id="zkeep"><div class="row"><span class="pic" style="--c:${kept ? "var(--ok)" : "#b8860b"}">${icon("ShieldCheck")}</span>
         <div class="grow"><b>${kept ? "Protette da iPhone" : "Non ancora protette"}</b><div class="small muted">${kept ? "Mappe, foto e documenti restano anche se lo spazio finisce."
           : standalone ? "Se lo spazio finisce, iPhone potrebbe cancellarle." : "Aprila dalla schermata Home: solo così iPhone le conserva."}${used >= 1 ? ` Occupano circa ${used} MB.` : ""}</div></div>
         ${kept ? `<span class="pill ok">${icon("Check")} attiva</span>` : `<button class="btn small" id="zprot">Proteggi</button>`}</div></div>`, el => {
+      paintMaps();
       $("#zprot", el)?.addEventListener("click", async () => {
         const ok = await keepData(); buzz();
         toast(ok ? "Dati protetti ✓" : "iPhone non l'ha concessa: apri l'app dalla schermata Home e riprova");
-        if (ok) openOfflineMaps();
+        if (ok) refreshMaps();
       });
       $$("[data-zdl]", el).forEach(b => b.onclick = async () => {
-        const z = OfflineMap.ZONE.find(x => x.id === b.dataset.zdl); if (busy[z.id]) return; busy[z.id] = true;
-        const card = b.closest(".zrow"), bar = $(".progress", card); bar.hidden = false; b.disabled = true; b.textContent = "0%";
-        try {
-          await OfflineMap.download(z, f => { $("i", bar).style.width = Math.round(f * 100) + "%"; b.textContent = Math.round(f * 100) + "%"; });
-          OfflineMap.reset(); engines.offline?.hint?.(); await keepData(); toast(`${z.nome}: pronta offline ✓`); openOfflineMaps();
-        } catch { toast("Download non riuscito: riprova col Wi-Fi"); b.disabled = false; b.innerHTML = `${icon("Download")} Riprova`; busy[z.id] = false; }
+        const z = OfflineMap.ZONE.find(x => x.id === b.dataset.zdl); if (zjobs[z.id]) return;
+        try { await zoneDownload(z); toast(`${z.nome}: pronta offline ✓`); }
+        catch { toast("Download non riuscito: riprova col Wi-Fi"); }
+        if (!zall) refreshMaps();
       });
-      $("#zall", el)?.addEventListener("click", async e => {
-        const b = e.currentTarget; b.disabled = true;
+      $("#zall", el)?.addEventListener("click", async () => {
+        if (zall) return;
         const todo = OfflineMap.ZONE.filter(z => !st[z.id]);
+        zall = { label: (z, f) => `${z.nome}: ${pct(f)} (${todo.indexOf(z) + 1}/${todo.length})`, text: "…" }; paintMaps();
         try {
-          for (const [i, z] of todo.entries()) await OfflineMap.download(z, f => { b.textContent = `${z.nome}: ${Math.round(f * 100)}% (${i + 1}/${todo.length})`; });
-          if (!fotoOk) await savePhotos(f => { b.textContent = `Foto: ${Math.round(f * 100)}%`; });
-          OfflineMap.reset(); engines.offline?.hint?.(); await keepData(); toast("Tutte le mappe sono offline ✓"); openOfflineMaps();
-        } catch { toast("Download interrotto: riprova col Wi-Fi"); openOfflineMaps(); }
+          // una zona dopo l'altra; quella che stava già scaricando non riparte: si aspetta il suo download
+          for (const z of todo) if (!(await OfflineMap.status())[z.id]) { zall.cur = z; zall.text = zall.label(z, zjobs[z.id]?.f ?? 0); paintMaps(); await zoneDownload(z); }
+          if ((await photosSaved()) < nFoto * .9) await photosDownload();
+          toast("Tutte le mappe sono offline ✓");
+        } catch { toast("Download interrotto: riprova col Wi-Fi"); }
+        zall = null; refreshMaps();
       });
-      $("#fdl", el)?.addEventListener("click", async e => {
-        const b = e.currentTarget, bar = $("#zfoto .progress", el); bar.hidden = false; b.disabled = true;
-        try { await savePhotos(f => { $("i", bar).style.width = Math.round(f * 100) + "%"; b.textContent = Math.round(f * 100) + "%"; }); await keepData(); toast("Foto salvate per l'offline ✓"); openOfflineMaps(); }
-        catch { toast("Alcune foto non si sono scaricate: riprova col Wi-Fi"); openOfflineMaps(); }
+      $("#fdl", el)?.addEventListener("click", async () => {
+        if (fotoJob) return;
+        try { await photosDownload(); toast("Foto salvate per l'offline ✓"); }
+        catch { toast("Alcune foto non si sono scaricate: riprova col Wi-Fi"); }
+        if (!zall) refreshMaps();
       });
       $$("[data-zdel]", el).forEach(b => b.onclick = async () => {
         const z = OfflineMap.ZONE.find(x => x.id === b.dataset.zdel);
         if (!(await ask({ title: `Eliminare "${z.nome}"?`, text: "La mappa offline verrà tolta da questo telefono. Potrai riscaricarla quando vuoi.", ok: "Elimina", danger: true }))) return;
-        await OfflineMap.remove(z); OfflineMap.reset(); openOfflineMaps();
+        await OfflineMap.remove(z); OfflineMap.reset(); engines.offline?.hint?.(); refreshMaps();
       });
     });
   }
