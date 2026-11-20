@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 193;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 194;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -973,6 +973,7 @@
       };
       if ($("#addday", el)) $("#addday", el).onchange = e => {
         const d = e.target.value; if (!d) return;
+        if (!byId[id] || byId[id].gone) { e.target.value = ""; return toast("Intanto questo luogo è stato eliminato da un altro"); }   // scheda aperta da prima
         getDay(d).i.push(id); savePlan(); toast(closedOn(p, d) ? `Attenzione: quel giorno è chiuso (${p.chiuso})` : `Aggiunto al giorno ${dayIndex(d) + 1}: ora puoi mettere l'orario`); again();
       };
       // ora in cui andarci, giorno per giorno (la stessa che si mette in Giorni › Modifica)
@@ -1513,6 +1514,8 @@
         if (e.target.closest("[data-newl]")) return editLuogo({ n: $("#pk-q", el).value.trim() }, d);
         const it = e.target.closest("[data-pick]"); if (!it) return;
         const day = getDay(d); const id = it.dataset.pick; const k = day.i.indexOf(id);
+        // eliminato intanto da un altro (il foglio era già aperto): niente tappa di un luogo che non c'è più
+        if (k < 0 && (!byId[id] || byId[id].gone)) { toast("Intanto questo luogo è stato eliminato da un altro"); return draw(el); }
         if (k >= 0) takeStop(d, id); else { day.i.push(id); markFresh(id); buzz(); if (closedOn(byId[id], d)) toast(`Attenzione: ${byId[id].n} è chiuso di ${byId[id].chiuso}`); }
         savePlan(); draw(el);
       };
@@ -3044,16 +3047,21 @@
       <div class="btns"><button class="btn" id="b-cancel">Annulla</button><button class="btn primary" id="b-save">Salva</button></div>
     `, el => {
       const v = id => $("#" + id, el).value.trim();
+      const read = () => ({ n: v("b-n"), jp: v("b-jp"), d: v("b-d"), dur: v("b-dur"), eur: v("b-eur"), pren: $("#b-pren", el).checked });
+      const f0 = read();   // com'era aprendo la scheda
       $("#b-save", el).onclick = () => {
-        const n = v("b-n"); if (!n) return toast("Scrivi il nome del luogo");
-        const eur = v("b-eur") ? parseNum(v("b-eur")) : 0;
+        const fm = read(); if (!fm.n) return toast("Scrivi il nome del luogo");
+        const eur = fm.eur ? parseNum(fm.eur) : 0;
         if (!(eur >= 0)) return toast("Costo non valido: solo cifre, es. 12 o 8,50 (vuoto = nessun costo)");   // "abc" non cancella il costo in silenzio
-        const now = { n, jp: v("b-jp"), d: v("b-d"), dur: v("b-dur"), eur, pren: $("#b-pren", el).checked };
+        // si scrivono solo i campi cambiati in questa scheda; gli altri restano come sono adesso, anche se intanto
+        // li ha cambiati un altro (es. la durata mentre qui si scriveva la descrizione). pl: il luogo com'è adesso
+        const pl = byId[p.id] || p, cur = k => k === "eur" ? (+pl.eur || 0) : k === "pren" ? !!pl.pren : (pl[k] || "");
+        const now = {}; for (const k of EDIT_F) now[k] = fm[k] !== f0[k] ? (k === "eur" ? eur : fm[k]) : cur(k);
         // si salvano solo i campi diversi dall'originale di Wanderlog
         const diff = {}; for (const f of EDIT_F) { const a = now[f], b = f === "eur" ? (+o.eur || 0) : f === "pren" ? !!o.pren : (o[f] || ""); if (a !== b) diff[f] = a; }
         if (!now.pren) booked.delete(p.id), savePlan();
         if (Object.keys(diff).length) putItem("luoghi", { id: "e" + p.id, edit: p.id, ...diff });
-        else if (ed) delItem("luoghi", ed.id);
+        else if (lists.luoghi.some(x => x.id === "e" + p.id)) delItem("luoghi", "e" + p.id);
         mergeCustom(); rerender(); toast("Salvato ✓"); inSheet("pop", () => openPlace(p.id));
       };
       $("#b-cancel", el).onclick = async () => { if (await canLeave()) inSheet("pop", () => openPlace(p.id)); };
@@ -3070,6 +3078,7 @@
     let st = { c: p.c || "cibo", z: p.z || "", lat: p.lat, lng: p.lng, where: p.lat ? (p.addr || `${(+p.lat).toFixed(5)}, ${(+p.lng).toFixed(5)}`) : "", pren: !!p.pren,
       gid: "", sel: isPhotoUrl(p.img?.u) ? "cur" : -1, picked: isPhotoUrl(p.img?.u),
       zManual: !isNew && !!p.z && p.lat != null && p.z !== guessZone(+p.lat, +p.lng) };   // zona scelta a mano in una modifica di prima: resta anche cambiando posizione   // sel: "cur" = foto già salvata, numero = proposta, -1 = nessuna
+    const st0 = { ...st }, p0 = { ...p };   // com'era aprendo la scheda: al salvataggio si scrive solo quello cambiato qui
     let cands = [], phTok = 0, phT, sTok = 0, jpTok = 0, live = null;
     const thumbOf = c => c.src === "g" ? c.thumb : c.u.replace(/\/\d+px-/, "/330px-");
     // risposte che arrivano tardi (ricerca, foto, posizione, nome giapponese) valgono solo per questa scheda ancora aperta,
@@ -3209,7 +3218,6 @@
         const eur = v("l-eur") ? parseNum(v("l-eur")) : 0;
         if (!(eur >= 0)) return toast("Costo non valido: solo cifre, es. 12 o 8,50 (vuoto = nessun costo)");
         const item = { id: p.id || "u" + uid(), n, jp: v("l-jp"), d: v("l-d"), c: st.c, z: st.z || guessZone(st.lat, st.lng), lat: +(+st.lat).toFixed(6), lng: +(+st.lng).toFixed(6), addr: st.where, chi: p.chi || me || "", dur: v("l-dur"), pren: $("#l-pren", el).checked, eur: eur > 0 ? eur : null, ts: p.ts || Date.now() };
-        if (!item.pren && booked.delete(item.id)) savePlan();   // tolto "da prenotare": anche la spunta prenotato, per tutti
         // foto scelta: quelle di Google si salvano come indirizzo diretto dell'immagine (così funzionano anche offline)
         let img = null, noPh = false;
         if (st.sel === "cur") img = p.img;
@@ -3224,6 +3232,26 @@
           }
         }
         item.img = img;
+        if (!isNew) {
+          const cur = lists.luoghi.find(x => x.id === p.id);
+          // intanto un altro l'ha eliminato: si chiede prima di rimetterlo
+          if (!cur) {
+            if (!(await ask({ title: "Intanto è stato eliminato", text: `Qualcun altro ha eliminato "${p.n}" mentre lo modificavi. Vuoi rimetterlo, con le tue modifiche?`, ok: "Rimetti", icon: "RotateCcw" }))) { closeSheet(); rerender(); return; }
+            if (!alive()) return;
+          } else {
+            // si parte dal luogo com'è adesso: i campi non toccati in questa scheda restano come li ha lasciati un altro
+            // (es. la descrizione mentre qui si cambiava la durata). Posizione e indirizzo vanno insieme
+            const take = k => { if (k in cur) item[k] = cur[k]; else delete item[k]; };
+            for (const k of ["n", "jp", "d", "dur"]) if (item[k] === str(p0[k]).trim()) take(k);
+            if (st.c === st0.c) take("c");
+            if (st.lat === st0.lat && st.lng === st0.lng && st.where === st0.where) { take("lat"); take("lng"); take("addr"); if (st.z === st0.z) take("z"); }
+            if (item.pren === !!p0.pren) take("pren");
+            if (item.eur === (p0.eur ?? null)) take("eur");
+            if (same(item.img, p0.img)) take("img");
+            take("chi"); take("ts");
+          }
+        }
+        if (!item.pren && booked.delete(item.id)) savePlan();   // tolto "da prenotare": anche la spunta prenotato, per tutti
         const saved = putItem("luoghi", item);
         toast((isNew ? "Luogo aggiunto ✓" : "Salvato ✓") + (noPh ? " (la foto non è arrivata: riprova da Modifica)" : ""));
         if (day) {
