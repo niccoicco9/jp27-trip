@@ -633,6 +633,8 @@ a.mini:not(.hotel) b { font-size: .8rem; color: var(--shu); }
 .map-ui .row select { flex: 1; max-width: none; }
 .map-ui .row .chip { min-height: 40px; }
 .map-ui .row .chip svg { width: 16px; height: 16px; }
+.map-ui .mhint { align-self: flex-start; display: flex; gap: 8px; align-items: flex-start; text-align: left; max-width: 100%; padding: 9px 12px; border: 0; border-radius: 14px; background: var(--card); box-shadow: var(--shadow); color: var(--ink); font: inherit; font-size: .82rem; line-height: 1.35; }
+.map-ui .mhint svg { width: 16px; height: 16px; flex: none; margin-top: 1px; color: #1f9488; }
 .map-ui #mmode.on { background: #1f9488; color: #fff; border-color: transparent; }
 .locbtn.up { bottom: 190px; }
 .mcar {

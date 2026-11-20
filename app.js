@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 189;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 190;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -1921,6 +1921,28 @@
       if (span < .002) map.easeTo({ center: [g.lng, g.lat], zoom: Math.min(18, map.getZoom() + 3) });
       else { const h = el.clientHeight; map.fitBounds(b, { padding: h > 420 ? { top: mapPadTop(), bottom: mapPadBottom(), left: 50, right: 50 } : 30, maxZoom: 17 }); }
     };
+    let fitAt = 0, fitPts = [];
+    const doFit = pts => {
+      if (!pts.length) return;
+      map.resize();
+      if (pts.length === 1) { map.jumpTo({ center: pts[0], zoom: 14 }); return; }
+      const b = pts.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]));
+      const h = el.clientHeight, w = el.clientWidth;
+      const pad = h > 420 && w > 200 ? { top: mapPadTop(), bottom: mapPadBottom(), left: 40, right: 60 } : 20;
+      try { map.fitBounds(b, { padding: pad, duration: 0, maxZoom: 15 }); } catch { map.jumpTo({ center: b.getCenter(), zoom: 9 }); }
+    };
+    // senza rete, oltre lo zoom della panoramica e fuori dalle zone scaricate c'è solo lo sfondo vuoto: lo si dice
+    const hint = () => {
+      const h = $("#mhint"); if (!h) return;
+      if (!map || eng?.kind !== "offline" || navigator.onLine || map.getZoom() < 9) { h.hidden = true; return; }
+      const c = map.getCenter();
+      OfflineMap.covers([c.lng, c.lat]).then(({ ok, baseMax }) => {
+        const h2 = $("#mhint"); if (!map || !h2) return;
+        const was = h2.hidden; h2.hidden = ok || map.getZoom() < baseMax + 1;
+        // l'avviso è comparso subito dopo un'inquadratura: la si rifà, così non copre le prime puntine
+        if (was && !h2.hidden && Date.now() - fitAt < 1500 && fitPts.length) { fitAt = 0; doFit(fitPts); }
+      }, () => {});
+    };
     const markerEl = (url, n) => { const [w, h] = pinSize(n); const i = document.createElement("img"); i.src = url; i.width = w; i.height = h; i.className = "ml-pin"; return i; };
     const addRoute = () => {
       if (!map.getSource("route")) {
@@ -1937,8 +1959,10 @@
         popup = new maplibregl.Popup({ offset: 34, closeButton: false, maxWidth: "240px", className: "ml-pop" });
         map.on("style.load", addRoute);
         map.on("zoomend", recluster);
+        map.on("moveend", hint);
         addRoute();
       },
+      hint,
       show(vis, nums) {
         for (const p of LUOGHI) {
           if ((p.out && !vis.has(p.id)) || mk[p.id]) continue;
@@ -1957,15 +1981,7 @@
         popup?.remove();
       },
       route(pts) { routePts = pts; if (map.isStyleLoaded()) addRoute(); },
-      fit(pts) {
-        if (!pts.length) return;
-        map.resize();
-        if (pts.length === 1) { map.jumpTo({ center: pts[0], zoom: 14 }); return; }
-        const b = pts.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]));
-        const h = el.clientHeight, w = el.clientWidth;
-        const pad = h > 420 && w > 200 ? { top: mapPadTop(), bottom: mapPadBottom(), left: 40, right: 60 } : 20;
-        try { map.fitBounds(b, { padding: pad, duration: 0, maxZoom: 15 }); } catch { map.jumpTo({ center: b.getCenter(), zoom: 9 }); }
-      },
+      fit(pts) { fitPts = pts; fitAt = Date.now(); doFit(pts); },
       focus(id, pop) { const p = byId[id]; if (!p) return; map.easeTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 15.5) }); if (pop) setTimeout(() => openPop(id), 350); },
       you(ll) {
         // il segnaposto va creato già con la posizione: senza, la libreria va in errore a ogni movimento e la mappa si blocca
@@ -1989,10 +2005,13 @@
   }
 
   // la mappa è a tutto schermo: i margini dello zoom tengono conto di intestazione, filtri, barra e schede
-  const mapPadTop = () => ($(".top")?.offsetHeight || 60) + 120;
+  // in alto: sotto i filtri (misurati: cambiano con il telefono e il testo grande) più l'altezza di una puntina
+  const mapPadTop = () => { const u = $(".map-ui"), s = $("#mapslot"); return u && s ? Math.round(u.getBoundingClientRect().bottom - s.getBoundingClientRect().top) + 58 : ($(".top")?.offsetHeight || 60) + 120; };
   const mapPadBottom = () => { const n = $("#tabs"); const navSpace = n ? innerHeight - n.getBoundingClientRect().top : 110; return navSpace + ($("#mcar") && !$("#mcar").hidden ? 190 : 24); };
+  let wantEngine = null;   // l'ultima mappa chiesta (tasto Google/Offline, rete che cade)
   async function useEngine(kind) {
     const slot = $("#mapslot"); if (!slot) return;
+    wantEngine = kind;
     if (!engines[kind]) {
       engineInit[kind] ||= (async () => {
         const el = document.createElement("div"); el.className = "mapel";
@@ -2001,6 +2020,8 @@
         try { await e.init(); engines[kind] = e; } catch (err) { el.remove(); throw err; } finally { engineInit[kind] = null; }
       })();
       await engineInit[kind];
+      // nel frattempo è stata scelta l'altra mappa (es. «Offline» toccato mentre Google caricava): questa si chiude
+      if (wantEngine !== kind) { const e = engines[kind]; if (e && e !== eng) { try { e.destroy?.(); } catch {} e.el.remove(); delete engines[kind]; } return; }
       if (!$("#mapslot")) return;   // nel frattempo si è cambiata pagina
     }
     eng = engines[kind];
@@ -2013,10 +2034,12 @@
     eng.resize?.();
     $("#mmode") && ($("#mmode").innerHTML = eng.kind === "offline" ? `${icon("CloudOff")} Offline` : `${icon("Map")} Google`);
     $("#mmode")?.classList.toggle("on", eng.kind === "offline");
+    if ($("#mhint")) $("#mhint").hidden = true;
     // aperta da "Sulla mappa": niente inquadratura di tutto il Giappone (con Google arrivava dopo e copriva lo zoom sul luogo)
     if (mapFocus && !byId[mapFocus]) mapFocus = null;   // luogo eliminato intanto (da un altro telefono)
     applyMapFilter(!mapFocus);
     if (mapFocus) { const id = mapFocus; mapFocus = null; eng.focus(id, true); }
+    eng.hint?.();
   }
 
   function renderMappa() {
@@ -2027,6 +2050,7 @@
         <div class="chips">${[["all", "Tutte"], ...ZONE.map(z => [z.id, z.nome])].map(([id, n]) => `<button class="chip${!mapFilter.d && mapFilter.z === id ? " on" : ""}" data-mz="${id}">${id !== "all" ? `<span class="dot" style="background:${zona[id].colore}"></span>` : ""}${esc(n)}</button>`).join("")}</div>
         <div class="row" style="gap:8px"><select id="mday" aria-label="Filtra per giorno"><option value="">Tutti i giorni</option>${dayOpts}</select>
           <button class="chip" id="mmode" title="Mappa Google o offline">${icon("Map")} Google</button><button class="chip" id="mdl" aria-label="Mappe offline">${icon("Download")}</button></div>
+        <button class="mhint" id="mhint" hidden>${icon("CloudOff")}<span>Qui senza rete c'è solo la panoramica: per vedere le strade scarica la zona da <u>Mappe offline</u></span></button>
       </div>
       <div id="mapslot" style="position:absolute;inset:0"><div class="map-loading">${icon("Map")}<span>Carico la mappa…</span></div></div>
       <div class="mcar" id="mcar" hidden></div>
@@ -2035,7 +2059,7 @@
     $$("[data-mz]").forEach(c => c.onclick = () => { mapFilter = { z: c.dataset.mz, d: "" }; $("#mday").value = ""; $$("[data-mz]").forEach(x => x.classList.toggle("on", x === c)); applyMapFilter(true); });
     $("#mday").onchange = e => { mapFilter = { z: "all", d: e.target.value }; $$("[data-mz]").forEach(x => x.classList.toggle("on", !e.target.value && x.dataset.mz === "all")); applyMapFilter(true); };
     $("#loc").onclick = locateMe;
-    $("#mdl").onclick = openOfflineMaps;
+    $("#mdl").onclick = $("#mhint").onclick = openOfflineMaps;
     $("#mmode").onclick = () => {
       if (eng?.kind === "offline") { if (!navigator.onLine) return toast("Sei offline: serve la rete per Google"); mapMode = "auto"; LS.set("mapMode", mapMode); pickEngine(); }
       else { mapMode = "offline"; LS.set("mapMode", mapMode); pickEngine(); }
@@ -2047,7 +2071,16 @@
     try {
       if (!wantOffline) {
         try { return await useEngine("google"); }
-        catch (err) { toast(err.message === "auth" ? "Chiave Google rifiutata: uso la mappa offline" : navigator.onLine ? "Google Maps non risponde: uso la mappa offline" : "Sei offline: uso la mappa offline"); }
+        catch (err) {
+          if (wantEngine !== "google") return;   // intanto si è scelta la mappa offline
+          toast(err.message === "auth" ? "Chiave Google rifiutata: uso la mappa offline" : navigator.onLine ? "Google Maps non risponde: uso la mappa offline" : "Sei offline: uso la mappa offline");
+        }
+      }
+      // senza rete e senza niente scaricato ci sarebbero solo le puntine sul vuoto
+      if (!navigator.onLine && !(await OfflineMap.status()).giappone) {
+        if (!$("#mapslot")) return;
+        wantEngine = null;
+        return mapFallback("Senza rete serve una mappa scaricata, e su questo telefono non ce n'è ancora nessuna. Con il Wi-Fi scaricala da Mappe offline (il tasto ⬇ sulla mappa, o Utility → Mappe offline): da lì in poi funzionerà anche senza rete.");
       }
       await useEngine("offline");
     } catch (err) {
@@ -2055,7 +2088,10 @@
       mapFallback(navigator.onLine ? "Non riesco a caricare la mappa. Riprova tra poco." : "Senza rete la mappa offline non è ancora pronta su questo telefono. Appena hai il Wi-Fi apri la Mappa una volta (o scarica le zone con ⬇): da lì in poi funzionerà sempre.");
     }
   }
-  addEventListener("offline", () => { if (location.hash.startsWith("#mappa") && eng?.kind === "google") pickEngine(); });
+  // senza niente scaricato resta Google, con i pezzi di mappa che ha già caricato (meglio del vuoto)
+  addEventListener("offline", async () => { if (location.hash.startsWith("#mappa") && eng?.kind === "google" && (await OfflineMap.status()).giappone) pickEngine(); });
+  addEventListener("online", () => engines.offline?.hint?.());
+  addEventListener("offline", () => engines.offline?.hint?.());
 
   function mapFallback(msg) {
     view.classList.remove("full"); document.body.classList.remove("on-map");
@@ -2161,7 +2197,7 @@
         const card = b.closest(".zrow"), bar = $(".progress", card); bar.hidden = false; b.disabled = true; b.textContent = "0%";
         try {
           await OfflineMap.download(z, f => { $("i", bar).style.width = Math.round(f * 100) + "%"; b.textContent = Math.round(f * 100) + "%"; });
-          OfflineMap.reset(); await keepData(); toast(`${z.nome}: pronta offline ✓`); openOfflineMaps();
+          OfflineMap.reset(); engines.offline?.hint?.(); await keepData(); toast(`${z.nome}: pronta offline ✓`); openOfflineMaps();
         } catch { toast("Download non riuscito: riprova col Wi-Fi"); b.disabled = false; b.innerHTML = `${icon("Download")} Riprova`; busy[z.id] = false; }
       });
       $("#zall", el)?.addEventListener("click", async e => {
@@ -2170,7 +2206,7 @@
         try {
           for (const [i, z] of todo.entries()) await OfflineMap.download(z, f => { b.textContent = `${z.nome}: ${Math.round(f * 100)}% (${i + 1}/${todo.length})`; });
           if (!fotoOk) await savePhotos(f => { b.textContent = `Foto: ${Math.round(f * 100)}%`; });
-          OfflineMap.reset(); await keepData(); toast("Tutte le mappe sono offline ✓"); openOfflineMaps();
+          OfflineMap.reset(); engines.offline?.hint?.(); await keepData(); toast("Tutte le mappe sono offline ✓"); openOfflineMaps();
         } catch { toast("Download interrotto: riprova col Wi-Fi"); openOfflineMaps(); }
       });
       $("#fdl", el)?.addEventListener("click", async e => {
