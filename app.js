@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 187;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 188;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -1678,19 +1678,34 @@
   let mapMode = LS.get("mapMode", "auto");          // "auto" | "offline"
   let mapsPromise, eng = null;                      // motore attivo
   const engines = {}, engineInit = {};              // google / offline, creati una volta sola
+  // gmOk: Google caricato · gmAuth: chiave rifiutata (fino alla prossima apertura dell'app non funzionerà)
+  // gmScript: lo script, anche se ancora in arrivo (riprovando non se ne aggiunge un secondo: Google si romperebbe)
+  let gmOk = false, gmAuth = false, gmScript = null, gmFail = null;
   function loadMaps() {
+    if (gmAuth) return Promise.reject(new Error("auth"));
+    if (gmOk) return Promise.resolve();
     if (mapsPromise) return mapsPromise;
     mapsPromise = new Promise((res, rej) => {
-      window.gm_authFailure = () => rej(new Error("auth"));
-      window.__gmReady = () => res();
-      const s = document.createElement("script");
-      s.src = `https://maps.googleapis.com/maps/api/js?key=${T.mapsKey}&loading=async&callback=__gmReady&language=it&region=JP&v=weekly`;
-      s.async = true; s.onerror = () => { mapsPromise = null; rej(new Error("net")); };
-      document.head.appendChild(s);
+      gmFail = err => { mapsPromise = null; rej(err); };
+      window.__gmReady = () => { gmOk = true; res(); };
+      // Google rifiuta la chiave dopo aver già disegnato la mappa (con la sua pagina d'errore): si passa all'offline
+      window.gm_authFailure = () => { gmAuth = true; gmFail?.(new Error("auth")); googleRefused(); };
+      if (!gmScript) {
+        const s = gmScript = document.createElement("script");
+        s.src = `https://maps.googleapis.com/maps/api/js?key=${T.mapsKey}&loading=async&callback=__gmReady&language=it&region=JP&v=weekly`;
+        s.async = true; s.onerror = () => { s.remove(); gmScript = null; gmFail?.(new Error("net")); };
+        document.head.appendChild(s);
+      }
       // rete lenta: dopo 8 secondi si passa alla mappa offline, e la prossima volta si riprova Google
-      setTimeout(() => { if (!window.google?.maps?.Map) { mapsPromise = null; rej(new Error("timeout")); } }, 8000);
+      setTimeout(() => { if (!gmOk) gmFail?.(new Error("timeout")); }, 8000);
     });
     return mapsPromise;
+  }
+  function googleRefused() {
+    const g = engines.google; if (!g) return;
+    try { g.destroy(); } catch {}
+    g.el.remove(); delete engines.google;
+    if (eng === g) { eng = null; if ($("#mapslot")) pickEngine(); }
   }
   // a piedi e in treno: via numeri di strade e autostrade, uscite, sensi unici e blocchi "1丁目";
   // restano stazioni (con i nomi), linee dei treni, fermate dei bus, parchi, quartieri e aeroporti
@@ -1792,7 +1807,8 @@
     const r = el.getBoundingClientRect(), top = ($(".map-ui")?.getBoundingClientRect().bottom || 0) + 12;
     const car = $("#mcar"), bottom = (car && !car.hidden ? car.getBoundingClientRect().top : ($("#tabs")?.getBoundingClientRect().top || innerHeight)) - 12;
     const dy = r.top < top ? r.top - top : r.bottom > bottom ? r.bottom - bottom : 0;
-    if (dy) panBy(Math.round(dy));
+    const dx = r.left < 8 ? r.left - 8 : r.right > innerWidth - 8 ? r.right - innerWidth + 8 : 0;   // puntina vicino al bordo
+    if (dx || dy) panBy(Math.round(dx), Math.round(dy));
   }
 
   // ——— motore Google ———
@@ -1814,7 +1830,7 @@
     };
     const openIw = (id, anchor) => {
       iw.setContent(iwHtml(id)); iw.open({ map, anchor });
-      google.maps.event.addListenerOnce(iw, "domready", () => setTimeout(() => keepInView(el.querySelector(".gm-style-iw-c"), dy => map.panBy(0, dy)), 60));
+      google.maps.event.addListenerOnce(iw, "domready", () => setTimeout(() => keepInView(el.querySelector(".gm-style-iw-c"), (dx, dy) => map.panBy(dx, dy)), 60));
     };
     const zoomInto = g => {
       const b = new google.maps.LatLngBounds(); g.ids.forEach(id => b.extend({ lat: byId[id].lat, lng: byId[id].lng }));
@@ -1833,9 +1849,11 @@
           center: { lat: 35.3, lng: 137.5 }, zoom: 6, disableDefaultUI: true, gestureHandling: "greedy",   // zoom con due dita
           clickableIcons: false, styles: isDark() ? MAP_DARK : MAP_LIGHT, keyboardShortcuts: false,
         });
-        iw = new InfoWindow({ headerDisabled: true });
+        // lo spostamento lo fa keepInView (Google sposterebbe solo dentro la mappa, sotto filtri e barra, e i due si sommerebbero)
+        iw = new InfoWindow({ headerDisabled: true, disableAutoPan: true });
         map.addListener("click", () => iw.close());
         map.addListener("idle", () => { if (map.getZoom() !== lastZ) recluster(); });
+        if (gmAuth) throw new Error("auth");
         route = new google.maps.Polyline({ map, strokeOpacity: 0, icons: [{ icon: { path: "M 0,-1 0,1", strokeOpacity: 1, strokeColor: "#d4442f", scale: 3 }, offset: "0", repeat: "12px" }] });
       },
       show(vis, nums) {
@@ -1851,7 +1869,7 @@
         for (const [id, m] of Object.entries(mk)) { const n = nums[id] || 0; m.setIcon(icon(pinUrl("p", byId[id], n), n)); m.setZIndex(n ? 100 - n : 1); }
         curVis = vis; curNums = nums; recluster();
         for (const h of hotelsWithPos()) {
-          hk[h.id] ||= new google.maps.Marker({ map, title: h.titolo, icon: icon(pinUrl("hotel")), zIndex: 150 });
+          hk[h.id] ||= new google.maps.Marker({ map, title: h.titolo, icon: icon(pinUrl("hotel")), zIndex: 50 });   // sopra le puntine, sotto i numeri del giorno
           hk[h.id].setPosition({ lat: h.lat, lng: h.lng });
         }
         iw?.close();
@@ -1887,8 +1905,8 @@
     };
     const openPop = id => {
       const q = byId[id]; if (!q) return; popup.setLngLat([q.lng, q.lat]).setHTML(iwHtml(id)).addTo(map);
-      setTimeout(() => keepInView(popup.getElement(), dy => {
-        const target = map.unproject([el.clientWidth / 2, el.clientHeight / 2 + dy]);
+      setTimeout(() => keepInView(popup.getElement(), (dx, dy) => {
+        const target = map.unproject([el.clientWidth / 2 + dx, el.clientHeight / 2 + dy]);
         map.easeTo({ center: target, duration: 250 });
         setTimeout(() => { const n = map.getCenter(); if (Math.abs(n.lat - target.lat) + Math.abs(n.lng - target.lng) > 1e-6) map.jumpTo({ center: target }); }, 450);   // se l'animazione non è arrivata
       }), 40);
@@ -1932,7 +1950,7 @@
           e.src = pinUrl("p", byId[id], n); e.width = w; e.height = h; e.style.zIndex = n ? 100 - n : 1;
         }
         curVis = vis; curNums = nums; recluster();
-        for (const h of hotelsWithPos()) { if (hk[h.id]) hk[h.id].setLngLat([h.lng, h.lat]); else { const e = markerEl(pinUrl("hotel")); e.style.zIndex = 150; hk[h.id] = new maplibregl.Marker({ element: e, anchor: "bottom" }).setLngLat([h.lng, h.lat]).addTo(map); } }   // prima la posizione, poi sulla mappa
+        for (const h of hotelsWithPos()) { if (hk[h.id]) hk[h.id].setLngLat([h.lng, h.lat]); else { const e = markerEl(pinUrl("hotel")); e.style.zIndex = 50; hk[h.id] = new maplibregl.Marker({ element: e, anchor: "bottom" }).setLngLat([h.lng, h.lat]).addTo(map); } }   // prima la posizione, poi sulla mappa
         popup?.remove();
       },
       route(pts) { routePts = pts; if (map.isStyleLoaded()) addRoute(); },
@@ -2024,7 +2042,10 @@
   async function pickEngine() {
     const wantOffline = mapMode === "offline" || !navigator.onLine;
     try {
-      if (!wantOffline) { try { return await useEngine("google"); } catch (err) { if (err.message === "auth") toast("Chiave Google rifiutata: uso la mappa offline"); } }
+      if (!wantOffline) {
+        try { return await useEngine("google"); }
+        catch (err) { toast(err.message === "auth" ? "Chiave Google rifiutata: uso la mappa offline" : navigator.onLine ? "Google Maps non risponde: uso la mappa offline" : "Sei offline: uso la mappa offline"); }
+      }
       await useEngine("offline");
     } catch (err) {
       console.warn("Mappa:", err);
