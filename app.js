@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 185;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 186;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2955,8 +2955,11 @@
     const isNew = !p.id;
     let st = { c: p.c || "cibo", z: p.z || "", lat: p.lat, lng: p.lng, where: p.lat ? (p.addr || `${(+p.lat).toFixed(5)}, ${(+p.lng).toFixed(5)}`) : "", pren: !!p.pren,
       gid: "", sel: isPhotoUrl(p.img?.u) ? "cur" : -1, picked: isPhotoUrl(p.img?.u) };   // sel: "cur" = foto già salvata, numero = proposta, -1 = nessuna
-    let cands = [], phTok = 0, phT;
+    let cands = [], phTok = 0, phT, sTok = 0, jpTok = 0, live = null;
     const thumbOf = c => c.src === "g" ? c.thumb : c.u.replace(/\/\d+px-/, "/330px-");
+    // risposte che arrivano tardi (ricerca, foto, posizione, nome giapponese) valgono solo per questa scheda ancora aperta,
+    // non per un'altra scheda "Nuovo luogo" aperta dopo
+    const alive = () => !!live?.isConnected && sheetOpen();
     // posizione, categoria, zona e foto scelta a mano contano come modifiche da non perdere chiudendo (quella proposta in automatico no)
     const mark = el => { const m = $("#l-st", el); if (m) m.dataset.unsaved = JSON.stringify([st.c, st.z, st.lat, st.lng, st.picked ? st.sel : null]); };
     const drawPh = el => {
@@ -2965,20 +2968,25 @@
       const btn = (k, src) => `<button type="button" class="lphb${st.sel === k ? " on" : ""}" data-ph="${k}"><img src="${esc(src)}" alt="" decoding="async"></button>`;
       box.innerHTML = (isPhotoUrl(p.img?.u) ? btn("cur", photoUrl(p.id, 330) || p.img.u) : "")
         + cands.map((c, k) => btn(k, thumbOf(c))).join("")
-        + `<button type="button" class="lphb none${st.sel === -1 ? " on" : ""}" data-ph="-1">Nessuna</button>`;
+        + `<button type="button" class="lphb none${st.sel === -1 && (st.picked || !st.loading) ? " on" : ""}" data-ph="-1">Nessuna</button>`;
       $("#l-phn", el).textContent = st.loading ? "Cerco le foto…" : cands.length ? (cands[0].src === "g" ? "Foto da Google Maps e Wikimedia: tocca quella che preferisci." : "Foto da Wikimedia: tocca quella che preferisci.")
         : st.lat ? "Nessuna foto trovata: resta il colore della categoria." : "Scegli dove si trova e cerco una foto.";
     };
     const findPh = el => {
       clearTimeout(phT);
+      if (st.lat == null && !st.gid) return;
+      const my = ++phTok;
+      // le foto del posto di prima spariscono subito (non si salva per sbaglio la foto di un altro posto);
+      // una scelta a mano resta solo se la stessa foto c'è anche tra le nuove
+      if (typeof st.sel === "number" && st.sel >= 0) { if (st.picked) { st.was = thumbOf(cands[st.sel]); st.picked = false; } st.sel = -1; }
+      cands = []; st.loading = true; drawPh(el);
       phT = setTimeout(async () => {
-        if (st.lat == null && !st.gid) return;
-        const my = ++phTok, name = $("#l-n", el)?.value.trim() || "";
-        st.loading = true; drawPh(el);
+        const name = $("#l-n", el)?.value.trim() || "";
         const [g, w] = await Promise.all([googlePhotos({ gid: st.gid, name, lat: +st.lat, lng: +st.lng }), wikiPhotos(name, +st.lat, +st.lng)]);
-        if (my !== phTok || !el.isConnected) return;
+        if (my !== phTok || !alive()) return;
         cands = [...g, ...w.filter(x => !x.near), ...w.filter(x => x.near)].slice(0, 10);
         st.loading = false;
+        if (st.was) { const k = cands.findIndex(c => thumbOf(c) === st.was); if (k >= 0) { st.sel = k; st.picked = true; } st.was = null; }
         // scelta automatica: la prima foto sicura (del locale o della sua pagina Wikipedia), non quelle "dei dintorni"
         if (!st.picked) { const k = cands.findIndex(c => !c.near); st.sel = k; }
         drawPh(el);
@@ -3023,39 +3031,51 @@
       ${isNew ? "" : `<button class="btn" id="l-del" style="width:100%;margin-bottom:10px;color:var(--shu)">${icon("Trash2")} Elimina luogo</button>`}
       <div class="btns"><button class="btn" ${fromPlace ? 'id="l-cancel"' : "data-close"}>Annulla</button><button class="btn primary" id="l-save">Salva</button></div>
     `, el => {
+      live = $("#l-st", el);
       draw(el); drawPh(el);
       if (!isNew && !st.picked && st.lat != null) findPh(el);   // luogo già salvato senza foto: propone qualcosa
-      $("#l-ph", el).onclick = e => { const b = e.target.closest("[data-ph]"); if (!b) return; st.sel = b.dataset.ph === "cur" ? "cur" : +b.dataset.ph; st.picked = true; buzz(); drawPh(el); };
+      $("#l-ph", el).onclick = e => { const b = e.target.closest("[data-ph]"); if (!b) return; st.sel = b.dataset.ph === "cur" ? "cur" : +b.dataset.ph; st.picked = true; st.was = null; buzz(); drawPh(el); };
       $("#l-n", el).addEventListener("change", () => { if (!st.gid) findPh(el); });
       const res = $("#l-res", el), qi = $("#l-q", el);
       let found = [];
       const doSearch = async () => {
         const text = qi.value.trim(); if (!text) return;
+        const my = ++sTok;   // una ricerca lenta finita dopo una più nuova non ne sovrascrive i risultati
         const c = parseCoords(text); if (c) { res.innerHTML = ""; return setPos(el, c.lat, c.lng, `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`); }
         if (/goo\.gl|maps\.app/.test(text)) { res.innerHTML = `<p class="small muted">Link corto: aprilo e copia l'indirizzo completo dalla barra.</p>`; return; }
         if (!navigator.onLine) { res.innerHTML = `<p class="small muted">Senza rete non posso cercare: usa «Sono qui» quando sei sul posto.</p>`; return; }
         res.innerHTML = `<p class="small muted">Cerco…</p>`;
-        try { found = await searchPlaces(text); } catch { found = []; }
-        res.innerHTML = found.length ? found.map((r, k) => `<button data-lr="${k}">${icon("MapPin")}<span><b>${esc(r.n)}</b><small>${esc(r.addr || "")}</small></span></button>`).join("") : `<p class="small muted">Nessun risultato: prova con un altro nome o in inglese.</p>`;
+        let got = [], fail = false;
+        try { got = await searchPlaces(text); } catch { fail = true; }
+        if (my !== sTok || !alive()) return;
+        found = got;
+        res.innerHTML = found.length ? found.map((r, k) => `<button data-lr="${k}">${icon("MapPin")}<span><b>${esc(r.n)}</b><small>${esc(r.addr || "")}</small></span></button>`).join("")
+          : fail ? `<p class="small muted">Non riesco a cercare: la rete non risponde. Usa «Sono qui» quando sei sul posto, o «Incolla link Maps».</p>`
+          : `<p class="small muted">Nessun risultato: prova con un altro nome o in inglese.</p>`;
       };
       let qt; qi.oninput = () => { clearTimeout(qt); qt = setTimeout(doSearch, 600); };
       qi.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); clearTimeout(qt); doSearch(); qi.blur(); } };
       res.onclick = async e => {
         const b = e.target.closest("[data-lr]"); if (!b) return;
-        const r = found[+b.dataset.lr]; res.innerHTML = ""; qi.value = "";
-        if (!$("#l-n", el).value.trim()) $("#l-n", el).value = r.n;
+        const r = found[+b.dataset.lr]; res.innerHTML = ""; qi.value = ""; sTok++;
+        // nome e nome giapponese si compilano se vuoti, o se li aveva compilati il risultato scelto prima
+        const nI = $("#l-n", el), jI = $("#l-jp", el);
+        if (!nI.value.trim() || nI.value === st.autoN) nI.value = st.autoN = r.n;
+        if (jI.value && jI.value === st.autoJp) jI.value = "";
         setPos(el, r.lat, r.lng, [r.n, r.addr].filter(Boolean).join(" · "), r.gid || "");
-        const jp = r.jp || (r.gid ? await jpName(r.gid) : "");
-        if (jp && !$("#l-jp", el).value.trim()) $("#l-jp", el).value = jp;
+        const my = ++jpTok, jp = r.jp || (r.gid ? await jpName(r.gid) : "");
+        if (my !== jpTok || !alive()) return;
+        if (jp && !jI.value.trim()) jI.value = st.autoJp = jp;
       };
       $("#l-gps", el).onclick = () => {
         if (!navigator.geolocation) return toast("Posizione non disponibile");
         toast("Leggo la posizione…");
-        navigator.geolocation.getCurrentPosition(pos => setPos(el, pos.coords.latitude, pos.coords.longitude, "La tua posizione attuale"),
+        navigator.geolocation.getCurrentPosition(pos => alive() && setPos(el, pos.coords.latitude, pos.coords.longitude, "La tua posizione attuale"),
           geoFail, { enableHighAccuracy: true, timeout: 15000 });
       };
       $("#l-link", el).onclick = async () => {
         let t = ""; try { t = await navigator.clipboard.readText(); } catch {}
+        if (!alive()) return;
         const c = parseCoords(t || "");
         if (c) return setPos(el, c.lat, c.lng, "Dal link di Google Maps");
         toast(/goo\.gl|maps\.app/.test(t) ? "Link corto: aprilo e copia l'indirizzo completo dalla barra" : "Copia prima un link di Google Maps");
@@ -3067,24 +3087,29 @@
         const n = v("l-n");
         if (!n) return toast("Scrivi il nome del luogo");
         if (!st.lat) return toast("Scegli dove si trova");
+        const b = e.currentTarget; if (b.disabled) return;
+        const busy = () => { b.disabled = true; b.textContent = "Salvo…"; };
+        // foto proposta ancora in arrivo: si aspetta un attimo, così il luogo non resta senza foto
+        if (st.loading && !st.picked) { busy(); for (let t = 0; st.loading && t < 60; t++) await new Promise(r => setTimeout(r, 100)); if (!alive()) return; }
         const eur = parseNum(v("l-eur"));
         const item = { id: p.id || "u" + uid(), n, jp: v("l-jp"), d: v("l-d"), c: st.c, z: st.z || guessZone(st.lat, st.lng), lat: +(+st.lat).toFixed(6), lng: +(+st.lng).toFixed(6), addr: st.where, chi: p.chi || me || "", dur: v("l-dur"), pren: $("#l-pren", el).checked, eur: eur > 0 ? eur : null, ts: p.ts || Date.now() };
         if (!item.pren && booked.delete(item.id)) savePlan();   // tolto "da prenotare": anche la spunta prenotato, per tutti
         // foto scelta: quelle di Google si salvano come indirizzo diretto dell'immagine (così funzionano anche offline)
-        let img = null;
+        let img = null, noPh = false;
         if (st.sel === "cur") img = p.img;
         else if (st.sel >= 0 && cands[st.sel]) {
           const c = cands[st.sel];
           if (c.src === "w") img = { u: c.u, f: c.f || "", h: c.h };
           else {
-            const b = e.currentTarget; b.disabled = true; b.textContent = "Salvo…";
-            try { const u = (await (await fetch(c.ph.getURI({ maxWidth: 960 }) + "&skipHttpRedirect=true")).json()).photoUri; if (isPhotoUrl(u)) img = { u, g: c.gid, a: c.a }; } catch {}
-            if (!sheetOpen() || !$("#l-save", el)) return;   // scheda chiusa nel frattempo: niente salvataggio
+            busy();
+            try { const u = (await (await fetch(c.ph.getURI({ maxWidth: 960 }) + "&skipHttpRedirect=true", AbortSignal.timeout ? { signal: AbortSignal.timeout(10000) } : {})).json()).photoUri; if (isPhotoUrl(u)) img = { u, g: c.gid, a: c.a }; } catch {}
+            if (!alive()) return;   // scheda chiusa nel frattempo: niente salvataggio
+            if (!img) noPh = true;
           }
         }
         item.img = img;
         const saved = putItem("luoghi", item);
-        toast(isNew ? "Luogo aggiunto ✓" : "Salvato ✓");
+        toast((isNew ? "Luogo aggiunto ✓" : "Salvato ✓") + (noPh ? " (la foto non è arrivata: riprova da Modifica)" : ""));
         if (day) {
           const dd = getDay(day), ora = $("#l-ora", el)?.value; if (!dd.i.includes(saved.id)) dd.i.push(saved.id);
           if (ora) (dd.t ||= {})[saved.id] = ora;
