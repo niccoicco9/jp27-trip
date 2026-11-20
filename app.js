@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 195;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 196;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -627,7 +627,7 @@
   const matches = (text, q) => { const h = fold(text).replace(/\s+/g, ""); return fold(q).split(/\s+/).filter(Boolean).every(w => h.includes(w)); };
 
   // posizione negata (permesso tolto): dire dove riattivarla, se no il pulsante sembra rotto
-  const geoFail = err => toast(err?.code === 1 ? "Posizione non permessa: attivala in Impostazioni › Privacy e sicurezza › Localizzazione › Siti web di Safari" : "Non riesco a leggere la posizione");
+  const geoFail = err => toast(err?.code === 1 ? "Posizione non permessa: attivala in Impostazioni › Privacy e sicurezza › Localizzazione › Siti web di Safari" : err?.code === 3 ? "La posizione non arriva: riprova all'aperto" : "Non riesco a leggere la posizione");
 
   // ——— link Google Maps ———
   // la parte tra parentesi resta (es. 「ハリー・ポッター カフェ（赤坂）」: senza il quartiere Google può scegliere un altro posto);
@@ -2151,8 +2151,10 @@
 
   function locateMe() {
     if (!navigator.geolocation) return toast("Posizione non disponibile");
-    navigator.geolocation.getCurrentPosition(pos => eng?.you([pos.coords.longitude, pos.coords.latitude]),
-      geoFail, { enableHighAccuracy: true, timeout: 10000 });
+    // GPS lento (al chiuso, appena accesi): senza un segnale il tocco sembrava non fare niente per secondi
+    const slow = setTimeout(() => toast("Cerco la tua posizione…"), 900);
+    navigator.geolocation.getCurrentPosition(pos => { clearTimeout(slow); eng?.you([pos.coords.longitude, pos.coords.latitude]); },
+      err => { clearTimeout(slow); geoFail(err); }, { enableHighAccuracy: true, timeout: 10000 });
   }
 
   // ——— foto offline: le miniature di tutti i luoghi (le salva il service worker) ———
@@ -3172,11 +3174,16 @@
         const text = qi.value.trim(); if (!text) return;
         const my = ++sTok;   // una ricerca lenta finita dopo una più nuova non ne sovrascrive i risultati
         const c = parseCoords(text); if (c) { res.innerHTML = ""; return setPos(el, c.lat, c.lng, `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`); }
-        if (/goo\.gl|maps\.app/.test(text)) { res.innerHTML = `<p class="small muted">Link corto: aprilo e copia l'indirizzo completo dalla barra.</p>`; return; }
+        if (/goo\.gl|maps\.app/.test(text)) {
+          // condiviso da Google Maps: col link corto arrivano spesso anche nome e indirizzo, e si cerca quelli
+          const words = text.replace(/https?:\/\/\S+/g, " ").split(/\n+/).map(x => x.trim()).filter(Boolean).join(", ");
+          if (words.length < 3) { res.innerHTML = `<p class="small muted">Link corto: aprilo e copia l'indirizzo completo dalla barra.</p>`; return; }
+          qi.value = words; return doSearch();
+        }
         if (!navigator.onLine) { res.innerHTML = `<p class="small muted">Senza rete non posso cercare: usa «Sono qui» quando sei sul posto.</p>`; return; }
         res.innerHTML = `<p class="small muted">Cerco…</p>`;
         let got = [], fail = false;
-        try { got = await searchPlaces(text); } catch { fail = true; }
+        try { got = await searchPlaces(text); if (!got.length && /,/.test(text)) got = await searchPlaces(text.split(",")[0]); } catch { fail = true; }   // nome + indirizzo intero (condiviso da Google Maps): se non trova, solo il nome
         if (my !== sTok || !alive()) return;
         found = got;
         res.innerHTML = found.length ? found.map((r, k) => `<button data-lr="${k}">${icon("MapPin")}<span><b>${esc(r.n)}</b><small>${esc(r.addr || "")}</small></span></button>`).join("")
@@ -3208,6 +3215,7 @@
         if (!alive()) return;
         const c = parseCoords(t || "");
         if (c) return setPos(el, c.lat, c.lng, "Dal link di Google Maps");
+        if (/goo\.gl|maps\.app/.test(t) && t.replace(/https?:\/\/\S+/g, "").trim().length >= 3) { qi.value = t.replace(/https?:\/\/\S+/g, " ").split(/\n+/).map(x => x.trim()).filter(Boolean).join(", "); return doSearch(); }   // con nome e indirizzo: si cercano
         toast(/goo\.gl|maps\.app/.test(t) ? "Link corto: aprilo e copia l'indirizzo completo dalla barra" : "Copia prima un link di Google Maps");
       };
       $$("[data-lc]", el).forEach(b => b.onclick = () => { st.c = b.dataset.lc; draw(el); });
