@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 182;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 183;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -275,7 +275,7 @@
   const fmtInt = n => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   // euro sempre col punto delle migliaia, come gli yen ("it-IT" da solo scrive 7654,32 ma 12.345,67)
   const fmtEur = v => { const [i, d] = Math.abs(v).toFixed(2).split("."); return (v < 0 && +(i + d) ? "-" : "") + fmtInt(+i) + "," + d; };
-  const fmtKm = km => km < .05 ? "qui" : km < 1 ? `${Math.round(km * 1000 / 10) * 10} m` : `${km.toFixed(km < 10 ? 1 : 0).replace(".", ",")} km`;
+  const fmtKm = km => km < .05 ? "qui" : km < .995 ? `${Math.round(km * 100) * 10} m` : `${km.toFixed(km < 9.95 ? 1 : 0).replace(".", ",")} km`;   // .995: niente "1000 m"
   const dayIndex = iso => DAYS.indexOf(iso);
   const getDay = iso => (plan[iso] ||= { l: "", n: "", i: [] });
   const dayOf = id => DAYS.filter(d => plan[d]?.i?.includes(id));
@@ -313,7 +313,7 @@
     for (const x of lists.luoghi) {
       if (x.edit) {   // testi cambiati da voi su un luogo di Wanderlog
         const b = byId[x.edit]; if (!b || b.mine) continue;
-        if (str(x.n).trim()) b.n = str(x.n).slice(0, 80);
+        if (str(x.n).trim()) b.n = str(x.n).trim().slice(0, 80);
         for (const f of ["jp", "d", "dur"]) if (typeof x[f] === "string") b[f] = x[f].slice(0, f === "d" ? 1000 : 80);
         if ("eur" in x) b.eur = +x.eur > 0 ? +x.eur : undefined;
         if (typeof x.pren === "boolean") b.pren = x.pren;
@@ -322,8 +322,14 @@
       }
       // luogo di Wanderlog eliminato da voi: resta solo tra gli scartati (si può ripristinare), per tutti e quattro
       if (x.hide) { const b = byId[x.hide]; if (b && !b.mine) { b.out = true; b.gone = true; } continue; }
-      if (!x.n || !isFinite(x.lat) || !isFinite(x.lng)) continue;
-      const p = { jp: "", d: "", c: "esperienza", ...x, z: zona[x.z] ? x.z : "altre", mine: true };
+      // luogo vostro: valori sistemati anche se arrivano rovinati o da una versione vecchia (posizione come testo, zona o
+      // categoria che non esistono, costo "abc"…); senza nome o senza una posizione vera (niente puntina a 0,0) si scarta
+      const num = v => typeof v === "number" ? v : typeof v === "string" && v.trim() ? +v.trim().replace(",", ".") : NaN;
+      const n = str(x.n).trim(), lat = num(x.lat), lng = num(x.lng);
+      if (!n || !(Math.abs(lat) <= 90 && Math.abs(lng) <= 180) || (!lat && !lng) || byId[x.id]) continue;   // byId: mai sopra un luogo di Wanderlog
+      const p = { ...x, n: n.slice(0, 80), jp: str(x.jp), d: str(x.d), dur: str(x.dur), addr: str(x.addr), chi: str(x.chi), lat, lng,
+        c: Object.hasOwn(CAT, x.c) ? x.c : "esperienza", z: Object.hasOwn(zona, x.z) ? x.z : guessZone(lat, lng), pren: x.pren === true, eur: +x.eur > 0 ? +x.eur : null, ts: +x.ts || 0, mine: true };
+      delete p.out; delete p.gone; delete p.edBy;
       LUOGHI.push(p); byId[p.id] = p;
       if (isPhotoUrl(x.img?.u)) { FOTO[p.id] = { u: x.img.u, f: str(x.img.f), h: /^(it|en|ja|commons)$/.test(x.img.h) ? x.img.h : "commons", g: str(x.img.g), a: str(x.img.a).slice(0, 60) }; customFoto.add(p.id); }
     }
@@ -1238,7 +1244,7 @@
     const dd = getDay(s.d);
     if (!dd.i.includes(s.id)) {
       const a = dd.i.indexOf(s.prev), b = dd.i.indexOf(s.next);
-      dd.i.splice(a >= 0 ? a + 1 : b >= 0 ? b : Math.min(s.k, dd.i.length), 0, s.id);
+      dd.i.splice(a >= 0 ? a + 1 : b >= 0 ? b : Math.max(0, Math.min(+s.k || 0, dd.i.length)), 0, s.id);   // posizione rovinata (negativa, testo): mai da fondo
     }
     if (s.tm && !dd.t?.[s.id]) (dd.t ||= {})[s.id] = s.tm;
     if (s.done) { const f = new Set([...(dd.f || []), s.id]); dd.f = dd.i.filter(x => f.has(x)); }
@@ -1565,7 +1571,7 @@
   }
   function renderLuoghi() {
     view.innerHTML = `
-      <div class="between"><h2>Luoghi</h2><button class="btn small primary" id="addl" data-top>${icon("Plus")} Aggiungi</button></div><p class="lead">${LUOGHI.filter(p => !p.out && !p.mine).length} posti dalla vostra lista Wanderlog${LUOGHI.length > BASE_N ? ` · ${LUOGHI.length - BASE_N} aggiunti da voi` : ""}</p>
+      <div class="between"><h2>Luoghi</h2><button class="btn small primary" id="addl" data-top>${icon("Plus")} Aggiungi</button></div><p class="lead">${LUOGHI.filter(p => !p.out && !p.mine).length} posti dalla vostra lista Wanderlog${LUOGHI.length > BASE_N ? ` · ${LUOGHI.length - BASE_N} ${LUOGHI.length - BASE_N === 1 ? "aggiunto" : "aggiunti"} da voi` : ""}</p>
 
       <div class="searchbox">${icon("Search")}<input type="search" id="lq" placeholder="Cerca templi, quartieri, cibo…" value="${esc(lf.q)}" autocomplete="off"></div>
       <div class="chips">
@@ -1821,7 +1827,7 @@
         const b = new google.maps.LatLngBounds(); pts.forEach(([lng, lat]) => b.extend({ lat, lng }));
         map.fitBounds(b, { top: mapPadTop(), bottom: mapPadBottom(), left: 40, right: 60 });
       },
-      focus(id, popup) { const p = byId[id]; map.panTo({ lat: p.lat, lng: p.lng }); if (map.getZoom() < 16) map.setZoom(16); recluster(); if (popup) openIw(id, mk[id]); },
+      focus(id, popup) { const p = byId[id]; if (!p) return; map.panTo({ lat: p.lat, lng: p.lng }); if (map.getZoom() < 16) map.setZoom(16); recluster(); if (popup) openIw(id, mk[id]); },
       you(ll) { you ||= new google.maps.Marker({ map, zIndex: 999, icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: "#2e7bf6", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 3 } }); you.setPosition({ lat: ll[1], lng: ll[0] }); map.panTo({ lat: ll[1], lng: ll[0] }); map.setZoom(15); },
       theme() { map?.setOptions({ styles: isDark() ? MAP_DARK : MAP_LIGHT }); },
       destroy() { Object.values(mk).concat(Object.values(hk), cl, you ? [you] : []).forEach(m => m.setMap(null)); route?.setMap(null); google.maps.event.clearInstanceListeners(map); map = null; },
@@ -1844,7 +1850,7 @@
       }
     };
     const openPop = id => {
-      const q = byId[id]; popup.setLngLat([q.lng, q.lat]).setHTML(iwHtml(id)).addTo(map);
+      const q = byId[id]; if (!q) return; popup.setLngLat([q.lng, q.lat]).setHTML(iwHtml(id)).addTo(map);
       setTimeout(() => keepInView(popup.getElement(), dy => {
         const target = map.unproject([el.clientWidth / 2, el.clientHeight / 2 + dy]);
         map.easeTo({ center: target, duration: 250 });
@@ -1903,7 +1909,7 @@
         const pad = h > 420 && w > 200 ? { top: mapPadTop(), bottom: mapPadBottom(), left: 40, right: 60 } : 20;
         try { map.fitBounds(b, { padding: pad, duration: 0, maxZoom: 15 }); } catch { map.jumpTo({ center: b.getCenter(), zoom: 9 }); }
       },
-      focus(id, pop) { const p = byId[id]; map.easeTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 15.5) }); if (pop) setTimeout(() => openPop(id), 350); },
+      focus(id, pop) { const p = byId[id]; if (!p) return; map.easeTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 15.5) }); if (pop) setTimeout(() => openPop(id), 350); },
       you(ll) {
         // il segnaposto va creato già con la posizione: senza, la libreria va in errore a ogni movimento e la mappa si blocca
         if (!you) { const d = document.createElement("div"); d.className = "ml-you"; you = new maplibregl.Marker({ element: d }).setLngLat(ll).addTo(map); }
@@ -1951,6 +1957,7 @@
     $("#mmode") && ($("#mmode").innerHTML = eng.kind === "offline" ? `${icon("CloudOff")} Offline` : `${icon("Map")} Google`);
     $("#mmode")?.classList.toggle("on", eng.kind === "offline");
     // aperta da "Sulla mappa": niente inquadratura di tutto il Giappone (con Google arrivava dopo e copriva lo zoom sul luogo)
+    if (mapFocus && !byId[mapFocus]) mapFocus = null;   // luogo eliminato intanto (da un altro telefono)
     applyMapFilter(!mapFocus);
     if (mapFocus) { const id = mapFocus; mapFocus = null; eng.focus(id, true); }
   }
@@ -2816,9 +2823,15 @@
     return best && Math.sqrt(bd) * 111 < 40 ? best.z : "altre";
   }
   // coordinate da un link di Google Maps (quello lungo) o scritte a mano "35.68, 139.76"
+  // scritte a mano anche con la virgola decimale ("35,6586; 139,7454") o al contrario (prima la longitudine); fuori scala → niente
   function parseCoords(t) {
-    const m = /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/.exec(t) || /@(-?\d+\.\d+),(-?\d+\.\d+)/.exec(t) || /(?:q|query|ll|destination)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/.exec(t) || /^\s*(-?\d{1,2}\.\d+)\s*,\s*(-?\d{2,3}\.\d+)\s*$/.exec(t);
-    return m ? { lat: +m[1], lng: +m[2] } : null;
+    t = str(t);
+    const m = /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/.exec(t) || /@(-?\d+\.\d+),(-?\d+\.\d+)/.exec(t) || /[?&](?:q|query|ll|destination)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/.exec(t)
+      || /^\s*(-?\d{1,3}[.,]\d+)\s*[,;\s]\s*(-?\d{1,3}[.,]\d+)\s*$/.exec(t);
+    if (!m) return null;
+    let lat = +m[1].replace(",", "."), lng = +m[2].replace(",", ".");
+    if (Math.abs(lat) > 90 && Math.abs(lng) <= 90) [lat, lng] = [lng, lat];
+    return Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && (lat || lng) ? { lat, lng } : null;
   }
   // ricerca: prima Google (se attivo il servizio Places), altrimenti OpenStreetMap
   async function searchPlaces(text) {
@@ -2984,6 +2997,7 @@
       const doSearch = async () => {
         const text = qi.value.trim(); if (!text) return;
         const c = parseCoords(text); if (c) { res.innerHTML = ""; return setPos(el, c.lat, c.lng, `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`); }
+        if (/goo\.gl|maps\.app/.test(text)) { res.innerHTML = `<p class="small muted">Link corto: aprilo e copia l'indirizzo completo dalla barra.</p>`; return; }
         if (!navigator.onLine) { res.innerHTML = `<p class="small muted">Senza rete non posso cercare: usa «Sono qui» quando sei sul posto.</p>`; return; }
         res.innerHTML = `<p class="small muted">Cerco…</p>`;
         try { found = await searchPlaces(text); } catch { found = []; }
