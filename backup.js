@@ -38,7 +38,7 @@ export const counts = b => ({ giorni: Object.values(b.plan || {}).filter(tappeDi
 
 // ——— tabelle ———
 // info: { days: ["2027-02-21", …], luoghi: { id: luogo di Wanderlog com'era (n, jp, z, c, lat, lng, d, dur, eur, pren, chiuso, note, out) },
-//         zone: { id: nome }, catLuoghi: { k: nome } } — il servizio notturno passa solo { n, z, pren, out }: le altre colonne restano vuote
+//         zone: { id: nome }, catLuoghi: { k: nome }, prenota: data.js › PRENOTA, daPrenotare: data.js › DA_PRENOTARE } — il servizio notturno passa solo { n, z, pren, out }: le altre colonne restano vuote
 export function tables(b, info) {
   const zona = z => info.zone?.[z] || z || "", cat = {}, names = {};
   for (const [id, p] of Object.entries(info.luoghi || {})) names[id] = p;
@@ -112,6 +112,25 @@ export function tables(b, info) {
     luoghi.push([p.n || p.id, p.jp || "", zona(p.z), info.catLuoghi?.[p.c] || cat[p.c] || p.c || "", p.stato, (inDays[p.id] || []).join(", "), p.pren ? "sì" : "", booked.has(p.id) ? "sì" : "",
       p.dur || "", +p.eur > 0 ? { eur: +p.eur } : "", p.chiuso || "", p.addr || "", p.lat != null ? `${p.lat}, ${p.lng}` : "", p.d || "", p.note || "", p.chi || ""]);
 
+  // da prenotare: come la lista della home (luoghi da prenotare in anticipo + bus e treni di data.js › DA_PRENOTARE),
+  // in ordine di urgenza, quelli già fatti in fondo. Finestra di vendita da data.js › PRENOTA riportata al giorno in programma
+  const add = (d, n) => new Date(Date.parse(d + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
+  const win = (id, v) => {
+    const w = info.prenota?.[id]; if (!w || !/^\d{4}-\d{2}-\d{2}$/.test(w.da) || !/^\d{4}-\d{2}-\d{2}$/.test(w.entro)) return null;
+    let { da, entro } = w;
+    if (v && w.prima > 0) { const span = Math.round((Date.parse(entro) - Date.parse(da)) / 864e5); da = add(v, -w.prima); entro = add(da, span); }
+    if (v) { const last = add(v, -1); if (entro > last) entro = last; if (da > entro) da = entro; }
+    return { ...w, da, entro };
+  };
+  const giorni = id => days.filter(d => Array.isArray(b.plan[d]?.i) && b.plan[d].i.includes(id));
+  const daPren = [...all.filter(p => p.pren && !p.out).map(p => ({ id: p.id, n: p.n || p.id, z: p.z, gg: giorni(p.id) })),
+    ...(info.daPrenotare || []).map(p => ({ id: p.id, n: p.n, z: p.z, gg: p.giorno ? [p.giorno] : [], link: p.link }))]
+    .map(p => ({ ...p, w: win(p.id, p.gg[0]), ok: booked.has(p.id) }))
+    .sort((a, c) => a.ok - c.ok || (a.w?.entro || "9999").localeCompare(c.w?.entro || "9999") || (a.gg[0] || "9999").localeCompare(c.gg[0] || "9999") || zk(a) - zk(c));
+  const prenota = [["Cosa", "Zona", "In programma", "Da quando", "Entro", "Si compra anche sul posto", "Prenotato", "Come", "Link"]];
+  for (const p of daPren) prenota.push([p.n, zona(p.z), p.gg.map(d => d.slice(8) + "/" + d.slice(5, 7)).join(", "), p.w ? day(p.w.da) : "", p.w ? day(p.w.entro) : "",
+    p.w?.cassa ? "sì" : "", p.ok ? "sì" : "", p.w?.come || "", p.link || ""]);
+
   const pTit = Object.fromEntries((b.lists.prenotazioni || []).filter(p => p && typeof p === "object").map(p => [p.id, p.titolo]));
   const docs = [["Documento", "Prenotazione", "Pagine"]];
   for (const a of b.lists.allegati || []) docs.push([a.nome || "Documento", pTit[a.pren] || "", +a.pagine || 0]);
@@ -121,7 +140,7 @@ export function tables(b, info) {
     ["Giorni con tappe", c.giorni], ["Tappe", c.tappe], ["Spese", c.spese], ["Spese eliminate (nel cestino)", allSp.filter(s => s.del).length], ["Prenotazioni", c.prenotazioni], ["Luoghi (senza gli scartati)", all.filter(p => !p.out).length], ["di cui aggiunti da voi", c.luoghi], ["", ""],
     ...contiRows(allSp, info), ["", ""],
     ["Per ripristinare", "nell'app: Utility › Backup › Ripristina, scegliendo il file .json di questo backup"]];
-  return [{ name: "Info", rows: info0 }, { name: "Programma", rows: prog }, { name: "Spese", rows: spese }, { name: "Spese eliminate", rows: cestino }, { name: "Storia spese", rows: storia }, { name: "Prenotazioni", rows: pren }, { name: "Luoghi", rows: luoghi }, { name: "Documenti", rows: docs }];
+  return [{ name: "Info", rows: info0 }, { name: "Programma", rows: prog }, { name: "Spese", rows: spese }, { name: "Spese eliminate", rows: cestino }, { name: "Storia spese", rows: storia }, { name: "Prenotazioni", rows: pren }, { name: "Luoghi", rows: luoghi }, { name: "Documenti", rows: docs }, { name: "Da prenotare", rows: prenota }];
 }
 
 // conti come nella pagina Spese: totale del gruppo (senza rimborsi) e chi deve quanto a chi, senza le spese nel cestino.

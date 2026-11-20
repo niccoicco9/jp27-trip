@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 191;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 192;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -3595,6 +3595,7 @@
   // ——— backup: file Excel da leggere + file .json per ripristinare tutto (modulo backup.js, caricato solo qui) ———
   const backupInfo = () => ({
     days: DAYS, viaggiatori: T.viaggiatori, coppie: COPPIE, zone: Object.fromEntries(ZONE.map(z => [z.id, z.nome])), catLuoghi: Object.fromEntries(Object.entries(CAT).map(([k, c]) => [k, c[2]])),
+    prenota: window.PRENOTA || {}, daPrenotare: window.DA_PRENOTARE || [],
     // luoghi di Wanderlog com'erano all'origine: le modifiche fatte da voi sono nel backup e le applica backup.js
     luoghi: Object.fromEntries(LUOGHI.slice(0, BASE_N).map(p => [p.id, { ...BASE_ORIG.get(p.id), z: p.z, c: p.c, lat: p.lat, lng: p.lng, chiuso: p.chiuso, note: p.note, out: BASE_OUT.has(p.id) }])),
   });
