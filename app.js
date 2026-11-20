@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 183;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 184;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -1468,11 +1468,13 @@
   })();
   // ridisegna senza muovere quello che si sta guardando: se intanto arriva una prenotazione o una spesa più in alto
   // (da un altro telefono) la card sotto gli occhi resta dov'era, invece di scivolare giù
+  let keeping = false;   // ridisegno sul posto: le liste lunghe si disegnano intere, sennò la pagina risale
   function keepScroll(fn) {
     const y = SC.scrollTop, hb = $(".top")?.getBoundingClientRect().bottom || 0;
     const a = y > 0 ? $$("#view [data-pren].pcard, #view [data-spesa]").find(e => e.getBoundingClientRect().bottom > hb) : null;
     const key = a && (a.dataset.pren ? `[data-pren="${CSS.escape(a.dataset.pren)}"].pcard` : `[data-spesa="${CSS.escape(a.dataset.spesa)}"]`), off = a?.getBoundingClientRect().top;
-    fn(); SC.scrollTop = y;
+    keeping = true; try { fn(); } finally { keeping = false; }
+    SC.scrollTop = y;
     const b = key && $("#view " + key); if (b) SC.scrollTop += b.getBoundingClientRect().top - off;
   }
 
@@ -1557,7 +1559,7 @@
   let progTok = 0, progRest = null;
   function putProgressive(el, html) {
     const tok = ++progTok, cut = html.split(/(?=<h3>|<div class="place)/);
-    if (cut.length <= 30) { el.innerHTML = html; lazyScan(); return; }
+    if (cut.length <= 30 || keeping) { el.innerHTML = html; lazyScan(); return; }
     el.innerHTML = cut.slice(0, 26).join(""); lazyScan();
     const rest = () => { progRest = null; if (tok !== progTok) return; el.insertAdjacentHTML("beforeend", cut.slice(26).join("")); lazyScan(); };
     progRest = rest; setTimeout(() => progRest === rest && rest(), 40);
@@ -1569,7 +1571,11 @@
     return `<div class="gcard${p.id === freshId ? " fresh" : ""}" data-place="${p.id}">${u ? `<div class="ph" data-bg="${u}"></div>` : `<div class="ph none" style="background:linear-gradient(135deg, ${zona[p.z].colore}, ${col})">${icon(ic)}</div>`}
       <div class="gin"><b>${esc(p.n)}</b>${p.jp ? `<small class="jp">${esc(p.jp)}</small>` : ""}<div class="gtags">${ds[0] ? `<span>${icon("CalendarDays")} ${short(ds[0])}</span>` : ""}${p.pren ? `<span${booked.has(p.id) ? ' class="ok"' : ""}>${booked.has(p.id) ? "済 prenotato" : `${icon("Ticket")} da prenotare`}</span>` : ""}${p.dur ? `<span>${icon("Clock")} ${esc(p.dur)}</span>` : ""}</div></div></div>`;
   }
+  let nearWait = false;   // posizione chiesta e non ancora arrivata
   function renderLuoghi() {
+    // ridisegno sul posto (es. chiusa la scheda dopo una modifica): le file di foto restano dove le avevi sfogliate
+    const galX = Object.fromEntries($$("#view .gal[data-gz]").map(g => [g.dataset.gz, g.scrollLeft]));
+    if (LUOGHI.length <= BASE_N) lf.mine = false;   // il filtro "Aggiunti da voi" sparisce: non deve restare acceso di nascosto
     view.innerHTML = `
       <div class="between"><h2>Luoghi</h2><button class="btn small primary" id="addl" data-top>${icon("Plus")} Aggiungi</button></div><p class="lead">${LUOGHI.filter(p => !p.out && !p.mine).length} posti dalla vostra lista Wanderlog${LUOGHI.length > BASE_N ? ` · ${LUOGHI.length - BASE_N} ${LUOGHI.length - BASE_N === 1 ? "aggiunto" : "aggiunti"} da voi` : ""}</p>
 
@@ -1595,18 +1601,34 @@
         const keep = p => (lf.out || !p.out) && (!lf.pren || p.pren) && (!lf.mine || p.mine);
         const zs = lf.z === "all" ? ZONE.map(z => z.id) : [lf.z];
         let html = "", n = 0;
-        const group = (ps, title, col) => { if (!ps.length) return; n += ps.length; html += `<h3 class="galh">${col ? `<span class="dot" style="background:${col}"></span>` : ""}${esc(title)}<small>${ps.length}</small></h3><div class="gal">${ps.map(galCard).join("")}</div>`; };
+        const group = (ps, title, col) => { if (!ps.length) return; n += ps.length; html += `<h3 class="galh">${col ? `<span class="dot" style="background:${col}"></span>` : ""}${esc(title)}<small>${ps.length}</small></h3><div class="gal" data-gz="${esc(title)}">${ps.map(galCard).join("")}</div>`; };
         for (const z of zs) group(LUOGHI.filter(p => !p.out && p.z === z && keep(p)).sort((a, b) => (dayOf(a.id)[0] || "9").localeCompare(dayOf(b.id)[0] || "9") || (photoUrl(b.id) ? 1 : 0) - (photoUrl(a.id) ? 1 : 0)), zona[z].nome, zona[z].colore);
         if (lf.out) group(LUOGHI.filter(p => p.out && (lf.z === "all" || p.z === lf.z) && keep(p)), "Scartati ed eliminati");
         $("#lcount").textContent = `${n} ${n === 1 ? "posto" : "posti"}`;
-        $("#llist").innerHTML = html || `<p class="empty">Nessun risultato</p>`; lazyScan(); return;
+        $("#llist").innerHTML = html || `<p class="empty">Nessun risultato</p>`;
+        $$("#llist .gal[data-gz]").forEach(g => { if (galX[g.dataset.gz]) g.scrollLeft = galX[g.dataset.gz]; });
+        lazyScan(); return;
       }
       const list = LUOGHI.filter(p => (lf.out || !p.out) && (lf.z === "all" || p.z === lf.z) && (!lf.pren || p.pren) && (!lf.mine || p.mine) && (!qq || matches(p.n + " " + p.jp + " " + p.d + " " + (CAT[p.c]?.[2] || "") + " " + zona[p.z].nome, qq)))
         .sort((a, b) => (a.out ? 1 : 0) - (b.out ? 1 : 0) || (lf.near ? kmBetween(lf.near, a) - kmBetween(lf.near, b) : zoneOrder[a.z] - zoneOrder[b.z]));
       let last = null, html = "";
+      // niente risultati con zona o filtri accesi: prima di "Aggiungilo" (che creerebbe un doppione) si dice dove sono
+      let hits = [];
+      const empty = () => {
+        if (!qq) return `<p class="empty">Nessun risultato</p>`;
+        hits = LUOGHI.filter(p => matches(p.n + " " + p.jp + " " + p.d + " " + (CAT[p.c]?.[2] || "") + " " + zona[p.z].nome, qq)); const all = hits.length;
+        return all ? `<div class="empty">Nessun luogo per «${esc(lf.q.trim())}» con questi filtri, ma ${all === 1 ? "ce n'è 1" : `ce ne sono ${all}`} togliendoli.<br><button class="btn small primary" id="clrf" style="margin-top:10px">${icon("Search")} Cerca dappertutto</button></div>`
+          : `<div class="empty">Nessun luogo trovato per «${esc(lf.q.trim())}».<br><button class="btn small primary" id="addq" style="margin-top:10px">${icon("Plus")} Aggiungilo</button></div>`;
+      };
+      const wire = () => {
+        $("#addq")?.addEventListener("click", () => editLuogo({ n: lf.q.trim() }));
+        $("#clrf")?.addEventListener("click", () => { Object.assign(lf, { z: "all", pren: false, mine: false, out: lf.out || hits.every(p => p.out) }); keepScroll(renderLuoghi); });
+      };
       if (lf.near) {
-        putProgressive($("#llist"), list.slice(0, 40).map(p => placeRow(p).replace('<div class="meta">', `<div class="meta"><span class="pill">${icon("Navigation")} ${fmtKm(kmBetween(lf.near, p))}</span>`)).join("") || `<p class="empty">Nessun risultato</p>`);
-        return;
+        const near = list.slice(0, 40);
+        $("#lcount").textContent = list.length > 40 ? `I 40 più vicini su ${list.length}` : `${list.length} ${list.length === 1 ? "posto" : "posti"}, dal più vicino`;
+        putProgressive($("#llist"), near.map(p => placeRow(p).replace('<div class="meta">', `<div class="meta"><span class="pill">${icon("Navigation")} ${fmtKm(kmBetween(lf.near, p))}</span>`)).join("") || empty());
+        wire(); return;
       }
       for (const p of list) {
         const key = p.out ? "out" : p.z;
@@ -1614,8 +1636,8 @@
         last = key; html += placeRow(p, { noZone: lf.z !== "all" || true });
       }
       $("#lcount").textContent = `${list.length} ${list.length === 1 ? "posto" : "posti"}`;
-      putProgressive($("#llist"), html || (qq ? `<div class="empty">Nessun luogo trovato per «${esc(lf.q.trim())}».<br><button class="btn small primary" id="addq" style="margin-top:10px">${icon("Plus")} Aggiungilo</button></div>` : `<p class="empty">Nessun risultato</p>`));
-      $("#addq")?.addEventListener("click", () => editLuogo({ n: lf.q.trim() }));
+      putProgressive($("#llist"), html || empty());
+      wire();
     };
     $$("[data-lv]").forEach(b => b.onclick = () => { lf.view = b.dataset.lv; LS.set("lview", lf.view); buzz(); draw(); });
     draw();
@@ -1630,8 +1652,15 @@
       if (lf.near) { lf.near = null; b.classList.remove("on"); return draw(); }
       if (!navigator.geolocation) return toast("Posizione non disponibile");
       toast("Cerco la tua posizione…");
-      navigator.geolocation.getCurrentPosition(pos => { lf.near = { lat: pos.coords.latitude, lng: pos.coords.longitude }; dataVer++; if (!b.isConnected) return; b.classList.add("on"); draw(); },
-        geoFail, { enableHighAccuracy: true, timeout: 12000, maximumAge: 10000 });
+      if (nearWait) return;   // già chiesta: un secondo tocco non ne fa partire un'altra
+      nearWait = true;
+      navigator.geolocation.getCurrentPosition(pos => {
+        nearWait = false;
+        lf.near = { lat: pos.coords.latitude, lng: pos.coords.longitude }; dataVer++;
+        if (b.isConnected) { b.classList.add("on"); draw(); }
+        // lasciata la pagina e tornati prima che arrivasse: quella nuova si ridisegna con il filtro acceso
+        else if ((location.hash || "#oggi") === "#luoghi" && !sheetOpen()) keepScroll(renderLuoghi);
+      }, err => { nearWait = false; geoFail(err); }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 10000 });
     };
   }
 
