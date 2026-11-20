@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 196;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 197;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -627,7 +627,7 @@
   const matches = (text, q) => { const h = fold(text).replace(/\s+/g, ""); return fold(q).split(/\s+/).filter(Boolean).every(w => h.includes(w)); };
 
   // posizione negata (permesso tolto): dire dove riattivarla, se no il pulsante sembra rotto
-  const geoFail = err => toast(err?.code === 1 ? "Posizione non permessa: attivala in Impostazioni › Privacy e sicurezza › Localizzazione › Siti web di Safari" : err?.code === 3 ? "La posizione non arriva: riprova all'aperto" : "Non riesco a leggere la posizione");
+  const geoFail = err => toast(err?.code === 1 ? "Posizione non permessa: attivala in Impostazioni › Privacy e sicurezza › Localizzazione › Siti web di Safari, poi chiudi e riapri l'app" : err?.code === 3 ? "La posizione non arriva: riprova all'aperto" : "Non riesco a leggere la posizione");
 
   // ——— link Google Maps ———
   // la parte tra parentesi resta (es. 「ハリー・ポッター カフェ（赤坂）」: senza il quartiere Google può scegliere un altro posto);
