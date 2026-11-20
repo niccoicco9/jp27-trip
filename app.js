@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 181;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 182;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -1184,7 +1184,7 @@
   // vicino a te: luoghi della lista entro 1,5 km (anche di altri giorni), su richiesta
   let nearPos = null;
   function nearCard(today) {
-    if (!nearPos || Date.now() - nearPos.at > 30 * 60e3) return `<div class="card row"><span class="pic" style="background:#1f9488">${icon("LocateFixed")}</span><div class="grow"><b>Vicino a te</b><div class="small muted">I posti della vostra lista qui intorno</div></div><button class="btn small" id="nearbtn">Mostra</button></div>`;
+    if (!nearPos || Date.now() - nearPos.at > 30 * 60e3) return `<div class="card row"><span class="pic" style="--c:#1f9488">${icon("LocateFixed")}</span><div class="grow"><b>Vicino a te</b><div class="small muted">I posti della vostra lista qui intorno</div></div><button class="btn small" id="nearbtn">Mostra</button></div>`;
     const doneToday = new Set(plan[today]?.f || []);
     const list = LUOGHI.filter(p => !p.out && !doneToday.has(p.id)).map(p => [p, kmBetween(nearPos, p)]).filter(([, km]) => km <= 1.5).sort((a, b) => a[1] - b[1]).slice(0, 5);
     return `<div class="card nearl"><div class="between"><h3 style="margin:0">Vicino a te</h3><button class="btn small" id="nearbtn">${icon("RotateCcw")} Aggiorna</button></div>
@@ -2057,19 +2057,19 @@
     const kept = await keepData();
     const nFoto = Object.keys(FOTO).length, fotoOk = (await photosSaved()) >= nFoto * .9;
     const busy = {};
-    const row = z => `<div class="card zrow" data-zone="${z.id}"><div class="row"><span class="pic" style="background:${z.base ? "#6b5a45" : "#1f9488"}">${icon(z.base ? "Map" : "Mountain")}</span>
+    const row = z => `<div class="card zrow" data-zone="${z.id}"><div class="row"><span class="pic" style="--c:${z.base ? "#6b5a45" : "#1f9488"}">${icon(z.base ? "Map" : "Mountain")}</span>
       <div class="grow"><b>${esc(z.nome)}</b><div class="small muted">${z.mb.toLocaleString("it-IT")} MB${z.base ? " · si scarica con la prima zona" : ""}</div></div>
       ${st[z.id] ? `<span class="pill ok">${icon("Check")} offline</span><button class="iconbtn danger" data-zdel="${z.id}" aria-label="Elimina">${icon("Trash2")}</button>` : `<button class="btn small primary" data-zdl="${z.id}">${icon("Download")} Scarica</button>`}</div>
       <div class="progress" hidden style="margin-top:10px"><i style="width:0"></i></div></div>`;
-    openSheet(`<div class="ttl"><span class="pic" style="background:#1f9488">${icon("CloudOff")}</span><h2>Mappe offline</h2></div>
+    openSheet(`<div class="ttl"><span class="pic" style="--c:#1f9488">${icon("CloudOff")}</span><h2>Mappe offline</h2></div>
       <p class="lead">Scaricale ora col Wi-Fi: in Giappone la mappa funzionerà anche senza rete, con la vostra posizione GPS. Per navigare con i treni serve comunque la rete (Google Maps).</p>
       ${OfflineMap.ZONE.some(z => !st[z.id]) || !fotoOk ? `<button class="btn primary" id="zall" style="width:100%;margin-bottom:14px">${icon("Download")} Scarica tutte (${Math.round(OfflineMap.ZONE.filter(z => !st[z.id]).reduce((a, z) => a + z.mb, 0) + (fotoOk ? 0 : 3))} MB)</button>` : `<p class="small" style="color:var(--ok);margin-top:0">${icon("Check")} Tutte le zone sono disponibili offline</p>`}
       ${OfflineMap.ZONE.map(row).join("")}
-      <div class="card zrow" id="zfoto"><div class="row"><span class="pic" style="background:#7b4fa0">${icon("Palette")}</span>
+      <div class="card zrow" id="zfoto"><div class="row"><span class="pic" style="--c:#7b4fa0">${icon("Palette")}</span>
         <div class="grow"><b>Foto dei luoghi</b><div class="small muted">${nFoto} miniature · circa 3 MB</div></div>
         ${fotoOk ? `<span class="pill ok">${icon("Check")} offline</span>` : `<button class="btn small primary" id="fdl">${icon("Download")} Scarica</button>`}</div>
         <div class="progress" hidden style="margin-top:10px"><i style="width:0"></i></div></div>
-      <div class="card zrow" id="zkeep"><div class="row"><span class="pic" style="background:${kept ? "var(--ok)" : "#b8860b"}">${icon("ShieldCheck")}</span>
+      <div class="card zrow" id="zkeep"><div class="row"><span class="pic" style="--c:${kept ? "var(--ok)" : "#b8860b"}">${icon("ShieldCheck")}</span>
         <div class="grow"><b>${kept ? "Protette da iPhone" : "Non ancora protette"}</b><div class="small muted">${kept ? "Mappe, foto e documenti restano anche se lo spazio finisce."
           : standalone ? "Se lo spazio finisce, iPhone potrebbe cancellarle." : "Aprila dalla schermata Home: solo così iPhone le conserva."}${used >= 1 ? ` Occupano circa ${used} MB.` : ""}</div></div>
         ${kept ? `<span class="pill ok">${icon("Check")} attiva</span>` : `<button class="btn small" id="zprot">Proteggi</button>`}</div></div>`, el => {
@@ -2544,7 +2544,7 @@
     const stato = pg ? `<span class="pill ${pg[2]} pstato">${pg[1]}</span>` : "";
     const cost = sp ? `<div class="pcost"><b>${spImp(sp)}</b><span class="small muted">${esc(sp.pagatoDa)} ha pagato${per.length > 1 ? ` · <b>${eurF(sp.eur / per.length)}</b> a testa${per.length < T.viaggiatori.length ? ` (${esc(splitLabel(per))})` : ""}` : ` per ${esc(per[0])}`}</span></div>` : "";
     return `<div class="card pcard${p.id === freshId ? " fresh" : ""}" data-pren="${p.id}">
-      <div class="row"><span class="pic" style="background:${col}">${icon(ic)}</span>
+      <div class="row"><span class="pic" style="--c:${col}">${icon(ic)}</span>
         <div class="grow"><b>${esc(p.titolo || tn)}</b><div class="muted small">${when}</div>${stato}${route}${p.indirizzo || p.jp ? `<div class="small muted">${esc(p.indirizzo || p.jp)}</div>` : ""}</div></div>
       ${p.codice ? `<div class="small" style="margin-top:8px">${icon("KeyRound")} Codice: <b class="copiabile">${esc(p.codice)}</b></div>` : ""}
       ${cost}
@@ -2574,7 +2574,7 @@
         ${dupNights.length ? `<p class="small" style="margin:6px 0 0;color:var(--warn-fg)">Due hotel ${dupNights.length === 1 ? "la notte del" : "le notti del"} ${dupNights.map(short).join(", ")}: ${[...new Set(dupNights.flatMap(d => hotelsFor(d).map(h => h.titolo)))].map(esc).join(" e ")}</p>` : ""}
       </div>
       <div class="section-h"><h3>Aggiungi</h3></div>
-      <div class="addgrid">${Object.entries(PTYPE).map(([k, [ic, col, tn]]) => `<button data-addp="${k}"><span class="pic" style="background:${col}">${icon(ic)}</span>${tn}</button>`).join("")}</div>
+      <div class="addgrid">${Object.entries(PTYPE).map(([k, [ic, col, tn]]) => `<button data-addp="${k}"><span class="pic" style="--c:${col}">${icon(ic)}</span>${tn}</button>`).join("")}</div>
       ${all.length ? all.map((p, k) => (k === 0 || p.dal !== all[k - 1].dal ? `<h3>${p.dal ? cap1(fmtDay(p.dal)) : "Senza data"}</h3>` : "") + pcard(p)).join("") : notArrived() ? `<p class="empty">Le prenotazioni non sono ancora arrivate su questo telefono: serve la rete una volta. Poi ci sono anche offline.</p>` : `<p class="empty">Ancora nessuna prenotazione. Comincia dagli hotel e dai voli.</p>`}`;
     $$("[data-addp]").forEach(b => b.onclick = () => editPren({ tipo: b.dataset.addp }));
     bindPcards();
@@ -2592,7 +2592,7 @@
       : `<label class="fl"><span>${label}</span><input id="${id}" value="${esc(val || "")}" ${attrs}${ph ? ` placeholder="${esc(ph)}"` : ""}></label>`;
     const titolo = t === "hotel" ? "Nuovo hotel" : t === "volo" ? "Nuovo volo" : t === "treno" ? "Nuovo treno" : t === "biglietto" ? "Nuovo biglietto" : "Nuova prenotazione";
     openSheet(`
-      <div class="ttl"><span class="pic" style="background:${col}">${icon(ic)}</span><h2>${isNew ? titolo : "Modifica " + tn.toLowerCase()}</h2></div>
+      <div class="ttl"><span class="pic" style="--c:${col}">${icon(ic)}</span><h2>${isNew ? titolo : "Modifica " + tn.toLowerCase()}</h2></div>
       ${f("p-tit", t === "hotel" ? "Nome dell'hotel" : t === "volo" ? "Volo" : t === "treno" ? "Treno" : "Cosa", p.titolo, 'autocomplete="off"', t === "hotel" ? "es. Hotel Gracery Shinjuku" : t === "volo" ? "es. AZ 784" : t === "treno" ? "es. Nozomi 21, Tokyo → Kyoto" : t === "biglietto" ? "es. teamLab Planets" : "es. Cena kaiseki")}
       <div class="grid2">
         <label class="fl"><span>${t === "hotel" ? "Check-in" : "Giorno"}</span><select id="p-dal">${dayOpts(p.dal)}</select></label>
@@ -2872,7 +2872,7 @@
   function editBase(p) {
     const ed = lists.luoghi.find(x => x.edit === p.id), o = BASE_ORIG.get(p.id) || {};
     openSheet(`
-      <div class="ttl"><span class="pic" style="background:var(--shu)">${icon("Pencil")}</span><h2>Modifica luogo</h2></div>
+      <div class="ttl"><span class="pic" style="--c:var(--shu)">${icon("Pencil")}</span><h2>Modifica luogo</h2></div>
       <p class="lead">Le modifiche si vedono per tutti e quattro. Posizione e foto restano quelle di Wanderlog.</p>
       <label class="fl"><span>Nome</span><input id="b-n" value="${esc(p.n || "")}" autocomplete="off"></label>
       <label class="fl"><span>Nome in giapponese (per il tassista)</span><input id="b-jp" value="${esc(p.jp || "")}" placeholder="Facoltativo" autocomplete="off"></label>
@@ -2952,7 +2952,7 @@
       draw(el); findPh(el);
     };
     openSheet(`
-      <div class="ttl"><span class="pic" style="background:var(--shu)">${icon("MapPin")}</span><h2>${isNew ? "Nuovo luogo" : "Modifica luogo"}</h2></div>
+      <div class="ttl"><span class="pic" style="--c:var(--shu)">${icon("MapPin")}</span><h2>${isNew ? "Nuovo luogo" : "Modifica luogo"}</h2></div>
       ${isNew ? `<p class="lead">Cercalo per nome, oppure usa la tua posizione: sarà visibile a tutti e quattro.</p>` : ""}
       <div class="fl"><span>Dove si trova</span>
         <div class="searchbox">${icon("Search")}<input type="search" id="l-q" placeholder="es. Ichiran Shibuya, Nishiki Market…" value="${esc(isNew ? p.n || "" : "")}" autocomplete="off" enterkeyhint="search"></div>
@@ -3213,7 +3213,7 @@
         const c = catOf(s.cat), cl = c.n;
         const head = (s.data || "") !== lastD ? `<h3>${s.data ? cap1(fmtDay(s.data, { weekday: "long", day: "numeric", month: "long" })) : "Senza data"}</h3>` : ""; lastD = s.data || "";
         return `${head}<div class="card spesa${s.id === freshId ? " fresh" : ""}" data-spesa="${s.id}"><div class="row">
-          <span class="pic" style="background:${c.col}">${c.html}</span>
+          <span class="pic" style="--c:${c.col}">${c.html}</span>
           <div class="grow"><b>${esc(s.desc || cl)}</b><div class="small muted">${s.cat === "rimborso" ? `${esc(s.pagatoDa)} → ${esc(splitLabel(s.perChi))}` : `pagato da ${esc(s.pagatoDa)} · per ${esc(splitLabel(s.perChi))}`}${s.storia?.some(x => x.a === "mod") ? ` · <span class="spmod">${s.cat === "rimborso" ? "modificato" : "modificata"}</span>` : ""}</div></div>
           <div style="text-align:right"><b>${s.valuta === "JPY" ? fmtInt(s.importo) + " ¥" : eurF(s.importo)}</b>${s.valuta === "JPY" ? `<div class="small muted">${eurF(s.eur)}</div>` : ""}</div>
         </div></div>`;
@@ -3221,7 +3221,7 @@
       ${trash.length ? `<details class="perperson cestino" id="sp-trash"${trashOpen ? " open" : ""}><summary>${icon("Trash2")} Eliminate (${trash.length})</summary>
         <p class="small muted" style="margin:0 0 10px">Non contano nei conti. Se una è stata tolta per sbaglio, ripristinala: torna per tutti e quattro.</p>
         ${trash.map(s => { const c = catOf(s.cat); return `<div class="card spdel"><div class="row">
-          <span class="pic" style="background:${c.col}">${c.html}</span>
+          <span class="pic" style="--c:${c.col}">${c.html}</span>
           <div class="grow"><b>${esc(s.desc || c.n)}</b><div class="small muted">${s.cat === "rimborso" ? `${esc(s.pagatoDa)} → ${esc(splitLabel(s.perChi))}` : `pagata da ${esc(s.pagatoDa)}`}${s.data ? " · " + short(s.data) : ""}</div><div class="small spmod">${s.cat === "rimborso" ? "eliminato" : "eliminata"} da ${esc(s.del.by)}${s.del.t ? " · " + quando(s.del.t) : ""}${s.del.backup ? " (ripristino di un backup)" : ""}</div></div>
           <div style="text-align:right"><b>${spImp(s)}</b><div><button class="btn small" data-sprip="${s.id}" style="margin-top:6px">${icon("RotateCcw")} Ripristina</button></div></div>
         </div></div>`; }).join("")}
@@ -3273,7 +3273,7 @@
       const eur = st.valuta === "JPY" ? (s.valuta === "JPY" && s.importo === imp && s.eur ? s.eur : imp / rate()) : imp;
       $("#s-conv", el).textContent = imp ? (st.valuta === "JPY" ? `≈ ${eurF(eur)}` : `≈ ${fmtInt(imp * rate())} ¥`) + (st.perChi.length ? ` · ${eurF(eur / st.perChi.length)} a testa` : "") : "";
     };
-    openSheet(`<div class="ttl"><span class="pic" style="background:${s.cat === "rimborso" ? "var(--ok)" : "#7b4fa0"}">${icon(s.cat === "rimborso" ? "HandCoins" : "Receipt")}</span><h2>${s.cat === "rimborso" ? (isNew ? "Rimborso" : "Modifica rimborso") : isNew ? "Nuova spesa" : "Modifica spesa"}</h2></div>
+    openSheet(`<div class="ttl"><span class="pic" style="--c:${s.cat === "rimborso" ? "var(--ok)" : "#7b4fa0"}">${icon(s.cat === "rimborso" ? "HandCoins" : "Receipt")}</span><h2>${s.cat === "rimborso" ? (isNew ? "Rimborso" : "Modifica rimborso") : isNew ? "Nuova spesa" : "Modifica spesa"}</h2></div>
       ${s.pren && lists.prenotazioni.some(x => x.id === s.pren) ? `<p class="small muted" style="margin:-4px 0 10px">${icon("BedDouble")} È il costo della prenotazione <b>${esc(lists.prenotazioni.find(x => x.id === s.pren).titolo)}</b>: cambiarlo qui lo cambia anche lì. <a href="#" id="s-pren" style="white-space:nowrap">Apri la prenotazione ›</a></p>` : ""}
       <label class="fl"><span>Descrizione</span><input id="s-desc" value="${esc(s.desc || "")}" placeholder="es. Cena izakaya" autocomplete="off" maxlength="80"></label>
       <div class="grid2" style="grid-template-columns:1fr auto;align-items:end">
@@ -3374,8 +3374,8 @@
       </div>
       ${zs.length ? `<div class="card"><h3 style="margin-top:0">Il percorso</h3><div class="rtrip">${zs.map(x => `<span style="--c:${zona[x.z].colore}"><b>${esc(zona[x.z].nome)}</b><small>${x.n} ${x.n === 1 ? "giorno" : "giorni"}</small></span>`).join(`<i>${icon("ChevronRight")}</i>`)}</div></div>` : ""}
       ${sp.length ? `<div class="card"><h3 style="margin-top:0">Le spese</h3>
-        ${topCat ? `<div class="row rline"><span class="pic" style="background:${catOf(topCat[0]).col}">${catOf(topCat[0]).html}</span><div class="grow"><small class="muted">Categoria regina</small><b>${esc(catOf(topCat[0]).n)} · ${eurF(topCat[1])}</b></div></div>` : ""}
-        ${big ? `<div class="row rline"><span class="pic" style="background:${catOf(big.cat).col}">${catOf(big.cat).html}</span><div class="grow"><small class="muted">La spesa più grande</small><b>${esc(big.desc || catOf(big.cat).n)} · ${eurF(big.eur)}</b></div></div>` : ""}
+        ${topCat ? `<div class="row rline"><span class="pic" style="--c:${catOf(topCat[0]).col}">${catOf(topCat[0]).html}</span><div class="grow"><small class="muted">Categoria regina</small><b>${esc(catOf(topCat[0]).n)} · ${eurF(topCat[1])}</b></div></div>` : ""}
+        ${big ? `<div class="row rline"><span class="pic" style="--c:${catOf(big.cat).col}">${catOf(big.cat).html}</span><div class="grow"><small class="muted">La spesa più grande</small><b>${esc(big.desc || catOf(big.cat).n)} · ${eurF(big.eur)}</b></div></div>` : ""}
         ${topWho ? `<div class="row rline">${avatar(topWho[0], 40)}<div class="grow"><small class="muted">Ha anticipato di più</small><b>${esc(topWho[0])} · ${eurF(topWho[1])}</b></div></div>` : ""}</div>` : ""}
       ${pics.length ? `<h3>${anyDone ? "Dove siamo stati" : "Dove andremo"}</h3><div class="rpics">${pics.map(id => `<div class="ph" data-bg="${photoUrl(id, 330)}" data-place="${id}"></div>`).join("")}</div>` : ""}
       ${navigator.share ? `<button class="btn primary" id="rshare" style="width:100%;margin-top:16px">${icon("Share2")} Condividi il riassunto</button>` : ""}`;
@@ -3452,7 +3452,7 @@
     let B; try { B = await import("./backup.js"); } catch { return toast("Backup non disponibile: riapri l'app con la rete"); }
     const now = () => B.snapshot({ plan, booked, lists, by: me, app: APP_VERSION }), c = B.counts(now());
     const prev = LS.get("preRestore", null);
-    openSheet(`<div class="ttl"><span class="pic" style="background:#2e6fb0">${icon("Download")}</span><h2>Backup</h2></div>
+    openSheet(`<div class="ttl"><span class="pic" style="--c:#2e6fb0">${icon("Download")}</span><h2>Backup</h2></div>
       <p class="lead">Una copia di programma, spese, prenotazioni e luoghi: un file Excel da leggere (si apre anche in Fogli Google) e un file per ripristinare tutto. Salvali su Drive, File o mandateli via mail.</p>
       <div class="card small">${backupTxt(c)}</div>
       <button class="btn primary" id="bk-save" style="width:100%">${icon("Download")} Salva il backup</button>
@@ -3492,7 +3492,7 @@
   function notifCard() {
     if (!T.notifyUrl) return;
     const st = LS.get("push", null), box = document.createElement("div"); box.className = "card"; box.id = "notif";
-    const msg = t => `<div class="row"><span class="pic" style="background:#d4442f">${icon("Sparkles")}</span><div class="grow"><b>Notifiche</b><div class="muted small">${t}</div></div></div>`;
+    const msg = t => `<div class="row"><span class="pic" style="--c:#d4442f">${icon("Sparkles")}</span><div class="grow"><b>Notifiche</b><div class="muted small">${t}</div></div></div>`;
     if (!pushOK()) box.innerHTML = msg(isIOS && !standalone ? "Per riceverle aggiungi l'app alla schermata Home (Condividi › Aggiungi alla schermata Home) e aprila da lì." : "Questo browser non le supporta.");
     else if (!code) box.innerHTML = msg("Serve prima il codice del viaggio (Accesso, qui sopra).");
     else if (Notification.permission === "denied") box.innerHTML = msg(isIOS ? "Bloccate. Per riattivarle: Impostazioni di iPhone › Notifiche › Giappone 2027." : "Bloccate. Riattivale dalle impostazioni del browser per questo sito.");
