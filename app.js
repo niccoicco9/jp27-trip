@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 194;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 195;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -906,7 +906,7 @@
     if (p.pren) m.push(booked.has(p.id) ? `<span class="pill ok">${icon("Check")} prenotato</span>` : `<span class="pill warn">${icon("Ticket")} da prenotare</span>`);
     if (p.chiuso && !(opts.day && closedOn(p, opts.day))) m.push(`<span class="pill ghost">chiuso ${esc(p.chiuso)}</span>`);
     const ds = dayOf(p.id);
-    if (ds.length && !opts.noDays) m.push(`<span class="pill">${icon("CalendarDays")} ${ds.map(short).join(", ")}</span>`);
+    if (ds.length && !opts.noDays) m.push(`<span class="pill">${icon("CalendarDays")} ${ds.length > 3 ? `${ds.slice(0, 2).map(short).join(", ")} e altri ${ds.length - 2}` : ds.map(short).join(", ")}</span>`);   // in tanti giorni: i primi due, il resto nella scheda
     if (p.out) m.push(`<span class="pill ghost">${p.gone ? "eliminato" : "scartato"}</span>`);
     if (p.mine && !opts.compact) m.push(`<span class="pill ghost">${icon("UserRound")} ${esc(p.chi || "aggiunto")}</span>`);
     return m.join("");
@@ -1579,7 +1579,7 @@
   function galCard(p) {
     const ds = dayOf(p.id), [ic, col] = cat(p), u = photoUrl(p.id, 960);
     return `<div class="gcard${p.id === freshId ? " fresh" : ""}" data-place="${p.id}">${u ? `<div class="ph" data-bg="${u}"></div>` : `<div class="ph none" style="background:linear-gradient(135deg, ${zona[p.z].colore}, ${col})">${icon(ic)}</div>`}
-      <div class="gin"><b>${esc(p.n)}</b>${p.jp ? `<small class="jp">${esc(p.jp)}</small>` : ""}<div class="gtags">${ds[0] ? `<span>${icon("CalendarDays")} ${short(ds[0])}</span>` : ""}${p.pren ? `<span${booked.has(p.id) ? ' class="ok"' : ""}>${booked.has(p.id) ? "済 prenotato" : `${icon("Ticket")} da prenotare`}</span>` : ""}${p.dur ? `<span>${icon("Clock")} ${esc(p.dur)}</span>` : ""}</div></div></div>`;
+      <div class="gin"><b>${esc(p.n)}</b>${p.jp ? `<small class="jp">${esc(p.jp)}</small>` : ""}<div class="gtags">${ds[0] ? `<span>${icon("CalendarDays")} ${short(ds[0])}</span>` : ""}${p.pren ? `<span${booked.has(p.id) ? ' class="ok"' : ""}>${booked.has(p.id) ? "済 prenotato" : `${icon("Ticket")} da prenotare`}</span>` : ""}${p.dur ? `<span>${icon("Clock")} ${esc(p.dur.length > 24 ? p.dur.slice(0, 22).trimEnd() + "…" : p.dur)}</span>` : ""}</div></div></div>`;   // durata lunga: per intero nella scheda
   }
   let nearWait = false;   // posizione chiesta e non ancora arrivata
   function renderLuoghi() {
@@ -1906,7 +1906,7 @@
         const ic = clusterIcon(g.ids.length, g.col), e = document.createElement("img");
         e.src = ic.url; e.width = e.height = ic.size; e.className = "ml-pin ml-cluster"; e.alt = `${g.ids.length} luoghi`; e.style.zIndex = 200 + g.ids.length;
         e.addEventListener("click", ev => { ev.stopPropagation(); popup.remove(); zoomInto(g); });
-        cl.push(new maplibregl.Marker({ element: e, anchor: "center" }).setLngLat([g.lng, g.lat]).addTo(map));
+        cl.push(named(new maplibregl.Marker({ element: e, anchor: "center" }).setLngLat([g.lng, g.lat]).addTo(map), `${g.ids.length} luoghi: tocca per avvicinarti`));
       }
     };
     const openPop = id => {
@@ -1946,6 +1946,8 @@
         if (was && !h2.hidden && Date.now() - fitAt < 1500 && fitPts.length) { fitAt = 0; doFit(fitPts); }
       }, () => {});
     };
+    // VoiceOver: la libreria chiama ogni puntina "Map marker"; si legge il nome del luogo
+    const named = (m, t) => { m.getElement().setAttribute("aria-label", t); return m; };
     const markerEl = (url, n) => { const [w, h] = pinSize(n); const i = document.createElement("img"); i.src = url; i.width = w; i.height = h; i.className = "ml-pin"; return i; };
     const addRoute = () => {
       if (!map.getSource("route")) {
@@ -1978,9 +1980,10 @@
         for (const [id, m] of Object.entries(mk)) {
           const n = nums[id] || 0, e = m.getElement(), [w, h] = pinSize(n);
           e.src = pinUrl("p", byId[id], n); e.width = w; e.height = h; e.style.zIndex = n ? 100 - n : 1;
+          e.setAttribute("aria-label", (n ? `Tappa ${n}: ` : "") + byId[id].n);
         }
         curVis = vis; curNums = nums; recluster();
-        for (const h of hotelsWithPos()) { if (hk[h.id]) hk[h.id].setLngLat([h.lng, h.lat]); else { const e = markerEl(pinUrl("hotel")); e.style.zIndex = 50; hk[h.id] = new maplibregl.Marker({ element: e, anchor: "bottom" }).setLngLat([h.lng, h.lat]).addTo(map); } }   // prima la posizione, poi sulla mappa
+        for (const h of hotelsWithPos()) { if (hk[h.id]) hk[h.id].setLngLat([h.lng, h.lat]); else { const e = markerEl(pinUrl("hotel")); e.style.zIndex = 50; hk[h.id] = named(new maplibregl.Marker({ element: e, anchor: "bottom" }).setLngLat([h.lng, h.lat]).addTo(map), `Hotel: ${h.titolo || "hotel"}`); } }   // prima la posizione, poi sulla mappa
         popup?.remove();
       },
       route(pts) { routePts = pts; if (map.isStyleLoaded()) addRoute(); },
@@ -1988,7 +1991,7 @@
       focus(id, pop) { const p = byId[id]; if (!p) return; map.easeTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 15.5) }); if (pop) setTimeout(() => openPop(id), 350); },
       you(ll) {
         // il segnaposto va creato già con la posizione: senza, la libreria va in errore a ogni movimento e la mappa si blocca
-        if (!you) { const d = document.createElement("div"); d.className = "ml-you"; you = new maplibregl.Marker({ element: d }).setLngLat(ll).addTo(map); }
+        if (!you) { const d = document.createElement("div"); d.className = "ml-you"; you = named(new maplibregl.Marker({ element: d }).setLngLat(ll).addTo(map), "La tua posizione"); }
         else you.setLngLat(ll);
         // la mappa offline copre solo il Giappone: fuori (es. ancora in Italia) si avvisa invece di portare la mappa sul vuoto
         const [lng, lat] = ll;
@@ -2010,7 +2013,7 @@
   // la mappa è a tutto schermo: i margini dello zoom tengono conto di intestazione, filtri, barra e schede
   // in alto: sotto i filtri (misurati: cambiano con il telefono e il testo grande) più l'altezza di una puntina
   const mapPadTop = () => { const u = $(".map-ui"), s = $("#mapslot"); return u && s ? Math.round(u.getBoundingClientRect().bottom - s.getBoundingClientRect().top) + 58 : ($(".top")?.offsetHeight || 60) + 120; };
-  const mapPadBottom = () => { const n = $("#tabs"); const navSpace = n ? innerHeight - n.getBoundingClientRect().top : 110; return navSpace + ($("#mcar") && !$("#mcar").hidden ? 190 : 24); };
+  const mapPadBottom = () => { const n = $("#tabs"); const navSpace = n ? innerHeight - n.getBoundingClientRect().top : 110; return navSpace + ($("#mcar") && !$("#mcar").hidden ? Math.max(190, $("#mcar").offsetHeight + 30) : 24); };
   let wantEngine = null;   // l'ultima mappa chiesta (tasto Google/Offline, rete che cade)
   async function useEngine(kind) {
     const slot = $("#mapslot"); if (!slot) return;
@@ -2134,8 +2137,11 @@
     const c = $("#mcar"); if (!c) return;
     if (!dayIds?.length) { c.hidden = true; $("#loc")?.classList.remove("up"); return; }
     c.hidden = false; $("#loc")?.classList.add("up");
+    // "dove sono" sta sopra le schede: la loro altezza cambia con nomi lunghi e testo grande dell'iPhone
+    const fitLoc = () => $("#loc")?.style.setProperty("--car-h", c.offsetHeight + "px");
+    if (!c._ro && window.ResizeObserver) { c._ro = new ResizeObserver(fitLoc); c._ro.observe(c); }
     c.innerHTML = dayIds.map((id, k) => { const p = byId[id]; return `<div class="mcard" data-mc="${id}"><div style="position:relative">${photo(id, 330)}<span class="mnum" style="background:${zona[p.z].colore}">${k + 1}</span></div><div class="grow"><b>${esc(p.n)}</b><div class="small muted">${p.dur ? esc(p.dur) : esc(zona[p.z].nome)}</div><div class="row" style="gap:6px;margin-top:6px"><a class="btn small primary" href="${gmDir(p)}" target="_blank" rel="noopener">${icon("Navigation")}</a><button class="btn small" data-place="${id}">Dettagli</button></div></div></div>`; }).join("");
-    c.scrollLeft = 0;
+    c.scrollLeft = 0; fitLoc();
     let t; c.onscroll = () => { clearTimeout(t); t = setTimeout(() => {
       const mid = c.getBoundingClientRect().left + c.clientWidth / 2;
       const card = [...c.children].reduce((b, x) => { const r = x.getBoundingClientRect(); return Math.abs(r.left + r.width / 2 - mid) < Math.abs(b.r.left + b.r.width / 2 - mid) ? { x, r } : b; }, { x: c.children[0], r: c.children[0].getBoundingClientRect() }).x;
@@ -2180,7 +2186,7 @@
   const pct = f => Math.round(f * 100) + "%";
   function paintMaps() {
     if (!mapsOpen()) return;
-    const busy = (b, bar, f) => { if (!b) return; b.disabled = true; b.textContent = pct(f); bar.hidden = false; $("i", bar).style.width = pct(f); };
+    const busy = (b, bar, f) => { if (!b) return; b.disabled = true; b.textContent = pct(f); b.setAttribute("aria-label", `${b.closest(".zrow")?.querySelector("b")?.textContent || ""}: ${pct(f)}`); bar.hidden = false; $("i", bar).style.width = pct(f); };
     for (const [id, j] of Object.entries(zjobs)) { const card = $(`#sheet-body [data-zone="${id}"]`); if (card) busy($("[data-zdl]", card), $(".progress", card), j.f); }
     if (fotoJob) busy($("#sheet-body #fdl"), $("#sheet-body #zfoto .progress"), fotoJob.f);
     const all = $("#sheet-body #zall"); if (all && zall) { all.disabled = true; all.textContent = zall.text; }
@@ -2211,7 +2217,7 @@
     const nFoto = Object.keys(FOTO).length, fotoOk = (await photosSaved()) >= nFoto * .9;
     const row = z => `<div class="card zrow" data-zone="${z.id}"><div class="row"><span class="pic" style="--c:${z.base ? "#6b5a45" : "#1f9488"}">${icon(z.base ? "Map" : "Mountain")}</span>
       <div class="grow"><b>${esc(z.nome)}</b><div class="small muted">${z.mb.toLocaleString("it-IT")} MB${z.base ? " · si scarica con la prima zona" : ""}</div></div>
-      ${st[z.id] ? `<span class="pill ok">${icon("Check")} offline</span><button class="iconbtn danger" data-zdel="${z.id}" aria-label="Elimina">${icon("Trash2")}</button>` : `<button class="btn small primary" data-zdl="${z.id}">${icon("Download")} ${zfail.has(z.id) ? "Riprova" : "Scarica"}</button>`}</div>
+      ${st[z.id] ? `<span class="pill ok">${icon("Check")} offline</span><button class="iconbtn danger" data-zdel="${z.id}" aria-label="Elimina la mappa offline di ${esc(z.nome)}">${icon("Trash2")}</button>` : `<button class="btn small primary" data-zdl="${z.id}" aria-label="${zfail.has(z.id) ? "Riprova" : "Scarica"} ${esc(z.nome)}">${icon("Download")} ${zfail.has(z.id) ? "Riprova" : "Scarica"}</button>`}</div>
       <div class="progress" hidden style="margin-top:10px"><i style="width:0"></i></div></div>`;
     openSheet(`<div class="ttl"><span class="pic" style="--c:#1f9488">${icon("CloudOff")}</span><h2>Mappe offline</h2></div>
       <p class="lead">Scaricale ora col Wi-Fi: in Giappone la mappa funzionerà anche senza rete, con la vostra posizione GPS. Per navigare con i treni serve comunque la rete (Google Maps).</p>
