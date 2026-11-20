@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 186;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 187;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -309,13 +309,13 @@
     for (const k of customFoto) delete FOTO[k]; customFoto.clear();
     LUOGHI.length = BASE_N;
     for (const k of Object.keys(byId)) if (byId[k].mine) delete byId[k];
-    for (let i = 0; i < BASE_N; i++) { const b = LUOGHI[i]; b.out = BASE_OUT.has(b.id); delete b.gone; delete b.edBy; Object.assign(b, BASE_ORIG.get(b.id)); }
+    for (let i = 0; i < BASE_N; i++) { const b = LUOGHI[i]; b.out = BASE_OUT.has(b.id); delete b.gone; delete b.edBy; delete b.eurEd; Object.assign(b, BASE_ORIG.get(b.id)); }
     for (const x of lists.luoghi) {
       if (x.edit) {   // testi cambiati da voi su un luogo di Wanderlog
         const b = byId[x.edit]; if (!b || b.mine) continue;
         if (str(x.n).trim()) b.n = str(x.n).trim().slice(0, 80);
         for (const f of ["jp", "d", "dur"]) if (typeof x[f] === "string") b[f] = x[f].slice(0, f === "d" ? 1000 : 80);
-        if ("eur" in x) b.eur = +x.eur > 0 ? +x.eur : undefined;
+        if ("eur" in x) { b.eur = +x.eur > 0 ? +x.eur : undefined; b.eurEd = true; }
         if (typeof x.pren === "boolean") b.pren = x.pren;
         b.edBy = str(x.by) || "voi";
         continue;
@@ -509,8 +509,9 @@
     }
   }
   const ADD_WAIT = 2e4, addGone = new Map();   // avvisi delle spese nuove (vedi notifyOthers)
-  function putItem(name, item) {
-    item = { ...item, id: item.id || uid(), by: me || "?", w: uid() };
+  // keepBy: "Annulla" rimette la voce com'era, con il suo autore (non chi tocca Annulla)
+  function putItem(name, item, keepBy) {
+    item = { ...item, id: item.id || uid(), by: (keepBy && item.by) || me || "?", w: uid() };
     const arr = lists[name], k = arr.findIndex(x => x.id === item.id), base = arr[k];
     if (k < 0) markFresh(item.id);
     k >= 0 ? (arr[k] = item) : arr.push(item);
@@ -944,7 +945,7 @@
       </div>
       <dl class="info">
         ${p.dur ? `<dt>Durata</dt><dd>${esc(p.dur)}</dd>` : ""}
-        ${p.eur ? `<dt>Costo</dt><dd>~${fmtEur(p.eur)} € a persona <span class="muted">(${p.mine ? "stima vostra" : "stima Wanderlog"})</span></dd>` : ""}
+        ${p.eur ? `<dt>Costo</dt><dd>~${fmtEur(p.eur)} € a persona <span class="muted">(${p.mine || p.eurEd ? "stima vostra" : "stima Wanderlog"})</span></dd>` : ""}
         ${p.chiuso ? `<dt>Chiuso</dt><dd>${esc(p.chiuso)}</dd>` : ""}
         ${p.pren && !p.gone ? `<dt>Biglietti</dt><dd><label class="check" style="border:none;padding:0"><input type="checkbox" id="bk" ${booked.has(id) ? "checked" : ""}><span>${booked.has(id) ? "<b>Prenotato</b>" : "Da prenotare in anticipo: <b>segna quando è fatto</b>"}</span></label></dd>` : ""}
         ${p.pren && !p.gone && PREN[p.id] && !booked.has(id) ? `<dt>Quando</dt><dd><b class="bkw ${bookWhen(p)?.cls || ""}">${esc(cap1(bookWhen(p).txt))}</b><div class="small muted" style="margin-top:2px">${esc(PREN[p.id].come)}</div></dd>` : ""}
@@ -2039,8 +2040,19 @@
     $("#mretry").onclick = () => renderMappa();
   }
 
+  // luogo eliminato, spostato o aggiunto (qui o da un altro telefono) con la mappa aperta: puntine, percorso e schede
+  // si rifanno solo se è cambiato qualcosa che si vede (così una finestrella aperta non si chiude per niente)
+  let mapSig = "";
+  const mapState = () => JSON.stringify([mapFilter, mapFilter.d ? plan[mapFilter.d]?.i : 0, LUOGHI.map(p => [p.id, p.lat, p.lng, p.n, p.c, p.z, !!p.out, FOTO[p.id]?.u || ""]), hotelsWithPos().map(h => [h.id, h.lat, h.lng])]);
+  function refreshMap() {
+    if (!eng || !$("#mapslot") || mapState() === mapSig) return;
+    const y = $("#mcar")?.scrollLeft;
+    applyMapFilter(false);
+    if (y && $("#mcar")) $("#mcar").scrollLeft = y;
+  }
   function applyMapFilter(fit) {
     if (!eng) return;
+    mapSig = mapState();
     const dayIds = mapFilter.d ? (plan[mapFilter.d]?.i || []).filter(id => byId[id]) : null;
     const vis = new Set(), nums = {};
     if (dayIds) dayIds.forEach((id, k) => { vis.add(id); nums[id] = k + 1; });
@@ -2936,7 +2948,9 @@
       const v = id => $("#" + id, el).value.trim();
       $("#b-save", el).onclick = () => {
         const n = v("b-n"); if (!n) return toast("Scrivi il nome del luogo");
-        const now = { n, jp: v("b-jp"), d: v("b-d"), dur: v("b-dur"), eur: parseNum(v("b-eur")) || 0, pren: $("#b-pren", el).checked };
+        const eur = v("b-eur") ? parseNum(v("b-eur")) : 0;
+        if (!(eur >= 0)) return toast("Costo non valido: solo cifre, es. 12 o 8,50 (vuoto = nessun costo)");   // "abc" non cancella il costo in silenzio
+        const now = { n, jp: v("b-jp"), d: v("b-d"), dur: v("b-dur"), eur, pren: $("#b-pren", el).checked };
         // si salvano solo i campi diversi dall'originale di Wanderlog
         const diff = {}; for (const f of EDIT_F) { const a = now[f], b = f === "eur" ? (+o.eur || 0) : f === "pren" ? !!o.pren : (o[f] || ""); if (a !== b) diff[f] = a; }
         if (!now.pren) booked.delete(p.id), savePlan();
@@ -2946,15 +2960,18 @@
       };
       $("#b-cancel", el).onclick = async () => { if (await canLeave()) inSheet("pop", () => openPlace(p.id)); };
       $("#b-orig", el)?.addEventListener("click", () => {
-        const old = { ...ed }; delItem("luoghi", ed.id); mergeCustom(); rerender(); inSheet("pop", () => openPlace(p.id));
-        toast("Ripristinato com'era su Wanderlog", () => { putItem("luoghi", old); mergeCustom(); rerender(); if (sheetOpen() && $("#sheet-body .cover")?.dataset.pid === p.id) openPlace(p.id); });
+        // non più "da prenotare" su Wanderlog: va via anche la spunta prenotato (per tutti), Annulla la rimette
+        const old = { ...ed }, unbook = !o.pren && booked.delete(p.id);
+        delItem("luoghi", ed.id); if (unbook) savePlan(); mergeCustom(); rerender(); inSheet("pop", () => openPlace(p.id));
+        toast("Ripristinato com'era su Wanderlog", () => { putItem("luoghi", old, true); if (unbook) { booked.add(p.id); savePlan(); } mergeCustom(); rerender(); if (sheetOpen() && $("#sheet-body .cover")?.dataset.pid === p.id) openPlace(p.id); });
       });
     });
   }
   function editLuogo(p, day, fromPlace) {
     const isNew = !p.id;
     let st = { c: p.c || "cibo", z: p.z || "", lat: p.lat, lng: p.lng, where: p.lat ? (p.addr || `${(+p.lat).toFixed(5)}, ${(+p.lng).toFixed(5)}`) : "", pren: !!p.pren,
-      gid: "", sel: isPhotoUrl(p.img?.u) ? "cur" : -1, picked: isPhotoUrl(p.img?.u) };   // sel: "cur" = foto già salvata, numero = proposta, -1 = nessuna
+      gid: "", sel: isPhotoUrl(p.img?.u) ? "cur" : -1, picked: isPhotoUrl(p.img?.u),
+      zManual: !isNew && !!p.z && p.lat != null && p.z !== guessZone(+p.lat, +p.lng) };   // zona scelta a mano in una modifica di prima: resta anche cambiando posizione   // sel: "cur" = foto già salvata, numero = proposta, -1 = nessuna
     let cands = [], phTok = 0, phT, sTok = 0, jpTok = 0, live = null;
     const thumbOf = c => c.src === "g" ? c.thumb : c.u.replace(/\/\d+px-/, "/330px-");
     // risposte che arrivano tardi (ricerca, foto, posizione, nome giapponese) valgono solo per questa scheda ancora aperta,
@@ -3091,7 +3108,8 @@
         const busy = () => { b.disabled = true; b.textContent = "Salvo…"; };
         // foto proposta ancora in arrivo: si aspetta un attimo, così il luogo non resta senza foto
         if (st.loading && !st.picked) { busy(); for (let t = 0; st.loading && t < 60; t++) await new Promise(r => setTimeout(r, 100)); if (!alive()) return; }
-        const eur = parseNum(v("l-eur"));
+        const eur = v("l-eur") ? parseNum(v("l-eur")) : 0;
+        if (!(eur >= 0)) return toast("Costo non valido: solo cifre, es. 12 o 8,50 (vuoto = nessun costo)");
         const item = { id: p.id || "u" + uid(), n, jp: v("l-jp"), d: v("l-d"), c: st.c, z: st.z || guessZone(st.lat, st.lng), lat: +(+st.lat).toFixed(6), lng: +(+st.lng).toFixed(6), addr: st.where, chi: p.chi || me || "", dur: v("l-dur"), pren: $("#l-pren", el).checked, eur: eur > 0 ? eur : null, ts: p.ts || Date.now() };
         if (!item.pren && booked.delete(item.id)) savePlan();   // tolto "da prenotare": anche la spunta prenotato, per tutti
         // foto scelta: quelle di Google si salvano come indirizzo diretto dell'immagine (così funzionano anche offline)
@@ -3132,7 +3150,7 @@
     if (p.mine) delItem("luoghi", id); else putItem("luoghi", { id: "h" + id, hide: id, bk: wasBooked, pos: pos.map(s => ({ d: s.d, k: s.k, prev: s.prev || "", next: s.next || "", tm: s.tm || "", done: s.done })) });   // niente undefined: Firestore li rifiuta
     closeSheet(); rerender(); buzz();
     toast(pos.length ? `Luogo eliminato e tolto da ${pos.length === 1 ? "1 giorno" : pos.length + " giorni"}` : "Luogo eliminato", () => {
-      if (old) putItem("luoghi", old); else delItem("luoghi", "h" + id);
+      if (old) putItem("luoghi", old, true); else delItem("luoghi", "h" + id);
       pos.forEach(putStop);
       if (wasBooked) booked.add(id);
       savePlan(); rerender();
@@ -3141,11 +3159,13 @@
 
   // "Ripristina il luogo" dagli eliminati: torna nei giorni in cui era (al suo posto, con orario e spunta) e prenotato
   function restorePlace(id) {
-    const h = lists.luoghi.find(x => x.id === "h" + id), pos = (Array.isArray(h?.pos) ? h.pos : []).filter(s => s && DAYS.includes(s.d) && !(plan[s.d]?.i || []).includes(id));
+    const h = lists.luoghi.find(x => x.id === "h" + id), all = (Array.isArray(h?.pos) ? h.pos : []).filter(s => s && DAYS.includes(s.d));
+    const pos = all.filter(s => !(plan[s.d]?.i || []).includes(id));   // giorni dove torna (dove è già stato rimesso a mano non si raddoppia)
     delItem("luoghi", "h" + id);
-    pos.forEach(s => putStop({ d: s.d, id, k: +s.k || 0, prev: str(s.prev), next: str(s.next), tm: okTime(s.tm), done: s.done === true }));
+    // dove è già stato rimesso a mano tornano almeno l'orario (se non ne ha uno) e la spunta
+    all.forEach(s => putStop({ d: s.d, id, k: +s.k || 0, prev: str(s.prev), next: str(s.next), tm: okTime(s.tm), done: s.done === true }));
     if (h?.bk === true && byId[id]?.pren) booked.add(id);
-    if (pos.length || h?.bk === true) savePlan();
+    if (all.length || h?.bk === true) savePlan();
     toast(pos.length ? `Luogo ripristinato e rimesso in ${pos.length === 1 ? "1 giorno" : pos.length + " giorni"}` : "Luogo ripristinato");
     closeSheet(); rerender();
   }
@@ -3951,7 +3971,8 @@
   }
   SC.addEventListener("scroll", checkTitle, { passive: true });
   function rerender() {
-    dataVer++; const [tab] = (location.hash.slice(1) || "oggi").split("/"); if (tab === "mappa") return;
+    dataVer++; const [tab] = (location.hash.slice(1) || "oggi").split("/");
+    if (tab === "mappa") return refreshMap();   // la mappa resta (zoom e filtro): si aggiornano puntine e schede del giorno
     if (canVT() && !sheetOpen() && $(LIST_SEL)) runVT("update", () => keepScroll(render), true);
     else keepScroll(render);
   }
