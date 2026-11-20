@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 184;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 185;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -629,7 +629,9 @@
   const geoFail = err => toast(err?.code === 1 ? "Posizione non permessa: attivala in Impostazioni › Privacy e sicurezza › Localizzazione › Siti web di Safari" : "Non riesco a leggere la posizione");
 
   // ——— link Google Maps ———
-  const q = p => p.mine ? `${p.lat},${p.lng}` : p.jp.replace(/（.*?）/g, "").trim() || p.n;
+  // la parte tra parentesi resta (es. 「ハリー・ポッター カフェ（赤坂）」: senza il quartiere Google può scegliere un altro posto);
+  // nome giapponese tolto a mano: le coordinate, non il nome italiano che Google spesso non trova
+  const q = p => p.mine ? `${p.lat},${p.lng}` : String(p.jp || "").replace(/[（）()]/g, " ").replace(/\s+/g, " ").trim() || (Number.isFinite(+p.lat) && Number.isFinite(+p.lng) ? `${p.lat},${p.lng}` : p.n);
   const gmSearch = p => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q(p))}`;
   const gmDir = p => `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(q(p))}&travelmode=transit`;
   // Google Maps prende al massimo 11 punti (partenza, 9 intermedi, arrivo): oltre, il percorso si ferma all'11ª tappa
@@ -944,9 +946,9 @@
         ${p.dur ? `<dt>Durata</dt><dd>${esc(p.dur)}</dd>` : ""}
         ${p.eur ? `<dt>Costo</dt><dd>~${fmtEur(p.eur)} € a persona <span class="muted">(${p.mine ? "stima vostra" : "stima Wanderlog"})</span></dd>` : ""}
         ${p.chiuso ? `<dt>Chiuso</dt><dd>${esc(p.chiuso)}</dd>` : ""}
-        ${p.pren ? `<dt>Biglietti</dt><dd><label class="check" style="border:none;padding:0"><input type="checkbox" id="bk" ${booked.has(id) ? "checked" : ""}><span>${booked.has(id) ? "<b>Prenotato</b>" : "Da prenotare in anticipo: <b>segna quando è fatto</b>"}</span></label></dd>` : ""}
-        ${p.pren && PREN[p.id] && !booked.has(id) ? `<dt>Quando</dt><dd><b class="bkw ${bookWhen(p)?.cls || ""}">${esc(cap1(bookWhen(p).txt))}</b><div class="small muted" style="margin-top:2px">${esc(PREN[p.id].come)}</div></dd>` : ""}
-        <dt${ds.length && !p.gone ? ' class="dt-pday"' : ""}>In programma</dt><dd>${ds.length ? ds.map(d => `<div class="pday"><a href="#giorni/${d}">Giorno ${dayIndex(d) + 1} · ${fmtDay(d, { weekday: "short", day: "numeric", month: "short" })}</a>${p.gone ? "" : `<span class="pt-r">${timeIn(`class="ptime" data-ptime="${d}" value="${esc(plan[d]?.t?.[id] || "")}" aria-label="Ora in programma"`)}<button class="iconbtn pclear" data-pclear="${d}" aria-label="Togli l'ora"${plan[d]?.t?.[id] ? "" : " hidden"}>${icon("X")}</button></span>`}</div>`).join("")
+        ${p.pren && !p.gone ? `<dt>Biglietti</dt><dd><label class="check" style="border:none;padding:0"><input type="checkbox" id="bk" ${booked.has(id) ? "checked" : ""}><span>${booked.has(id) ? "<b>Prenotato</b>" : "Da prenotare in anticipo: <b>segna quando è fatto</b>"}</span></label></dd>` : ""}
+        ${p.pren && !p.gone && PREN[p.id] && !booked.has(id) ? `<dt>Quando</dt><dd><b class="bkw ${bookWhen(p)?.cls || ""}">${esc(cap1(bookWhen(p).txt))}</b><div class="small muted" style="margin-top:2px">${esc(PREN[p.id].come)}</div></dd>` : ""}
+        <dt${ds.length && !p.gone ? ' class="dt-pday"' : ""}>In programma</dt><dd>${ds.length ? ds.map(d => `<div class="pday"><span><a href="#giorni/${d}">Giorno ${dayIndex(d) + 1} · ${fmtDay(d, { weekday: "short", day: "numeric", month: "short" })}</a>${closedOn(p, d) ? ` <span class="pill warn">chiuso</span>` : ""}</span>${p.gone ? "" : `<span class="pt-r">${timeIn(`class="ptime" data-ptime="${d}" value="${esc(plan[d]?.t?.[id] || "")}" aria-label="Ora in programma"`)}<button class="iconbtn pclear" data-pclear="${d}" aria-label="Togli l'ora"${plan[d]?.t?.[id] ? "" : " hidden"}>${icon("X")}</button></span>`}</div>`).join("")
           + (p.gone ? "" : `<div class="small muted">Tocca l'ora per segnare quando andarci</div>`) : "<span class='muted'>non ancora</span>"}</dd>
       </dl>
       ${p.gone ? "" : `<h3>Aggiungi a un giorno</h3>
@@ -963,7 +965,11 @@
       $("#bk", el)?.addEventListener("change", e => { e.target.checked ? booked.add(id) : booked.delete(id); savePlan(); again(); });
       $("#editl", el)?.addEventListener("click", () => inSheet("push", () => p.mine ? editLuogo(lists.luoghi.find(x => x.id === id) || p, null, true) : editBase(p)));
       if ($("#showjp", el)) $("#showjp", el).onclick = () => showBig(p.jp, `${esc(p.n)}<br><span class="jp" style="font-size:1.3rem;color:var(--ink)">ここに行きたいです</span><br><small>"Vorrei andare qui"</small>`);
-      $("#onmap", el).onclick = () => { mapFocus = id; go("#mappa"); };
+      $("#onmap", el).onclick = () => {
+        const shown = mapFilter.d ? !!plan[mapFilter.d]?.i?.includes(id) : !p.out && (mapFilter.z === "all" || mapFilter.z === p.z);
+        if (!shown) mapFilter = { z: "all", d: "", keep: id };   // "keep": la puntina c'è anche se è scartato; un altro filtro la toglie
+        mapFocus = id; go("#mappa");
+      };
       if ($("#addday", el)) $("#addday", el).onchange = e => {
         const d = e.target.value; if (!d) return;
         getDay(d).i.push(id); savePlan(); toast(closedOn(p, d) ? `Attenzione: quel giorno è chiuso (${p.chiuso})` : `Aggiunto al giorno ${dayIndex(d) + 1}: ora puoi mettere l'orario`); again();
@@ -1834,7 +1840,7 @@
       show(vis, nums) {
         // puntine allineate ai luoghi (anche quelli aggiunti, modificati o tolti da voi)
         for (const p of LUOGHI) {
-          if (p.out || mk[p.id]) continue;
+          if ((p.out && !vis.has(p.id)) || mk[p.id]) continue;
           const m = new google.maps.Marker({ map, title: p.n });
           m.addListener("click", () => openIw(p.id, m));
           mk[p.id] = m;
@@ -1913,7 +1919,7 @@
       },
       show(vis, nums) {
         for (const p of LUOGHI) {
-          if (p.out || mk[p.id]) continue;
+          if ((p.out && !vis.has(p.id)) || mk[p.id]) continue;
           const id = p.id, m = new maplibregl.Marker({ element: markerEl(pinUrl("p", p)), anchor: "bottom" }).setLngLat([p.lng, p.lat]).addTo(map);
           m.getElement().addEventListener("click", ev => { ev.stopPropagation(); openPop(id); });
           mk[id] = m;
@@ -2038,7 +2044,7 @@
     const dayIds = mapFilter.d ? (plan[mapFilter.d]?.i || []).filter(id => byId[id]) : null;
     const vis = new Set(), nums = {};
     if (dayIds) dayIds.forEach((id, k) => { vis.add(id); nums[id] = k + 1; });
-    else LUOGHI.forEach(p => { if (!p.out && (mapFilter.z === "all" || p.z === mapFilter.z)) vis.add(p.id); });
+    else LUOGHI.forEach(p => { if ((!p.out && (mapFilter.z === "all" || p.z === mapFilter.z)) || p.id === mapFilter.keep) vis.add(p.id); });
     eng.show(vis, nums);
     const pts = dayIds ? dayIds.map(id => [byId[id].lng, byId[id].lat]) : [];
     eng.route(pts);
