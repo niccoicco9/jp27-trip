@@ -423,6 +423,10 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: color-m
 .ucard .ic svg { width: 22px; height: 22px; }
 .ucard b { font-size: .95rem; line-height: 1.2; }
 .ucard small { color: var(--muted); font-size: .78rem; margin-top: -6px; }
+/* scorciatoie (Utility e Oggi): icona colorata su fondo tenue dello stesso colore, come gli anelli di "Prima di partire" */
+:is(.ucard, .qa) .ic { --ci: var(--c); color: var(--ci); background: color-mix(in srgb, var(--ci) 13%, var(--card)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ci) 14%, transparent); }
+:root[data-theme="dark"] :is(.ucard, .qa) .ic { --ci: color-mix(in srgb, var(--c) 62%, #fff); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) :is(.ucard, .qa) .ic { --ci: color-mix(in srgb, var(--c) 62%, #fff); } }
 .back { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding-right: 12px; text-decoration: none; color: var(--muted); font-size: .88rem; font-weight: 600; }
 .prose ul, .prose ol { padding-left: 20px; margin: 8px 0; }
 .prose li { margin-bottom: 7px; }

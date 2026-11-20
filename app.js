@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 180;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 181;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -1063,7 +1063,7 @@
     view.innerHTML = `
       ${greet}
       ${hero}
-      <div class="quick">${QUICK.map(([k, ic, c, t]) => `<a class="qa" href="#utility/${k}"><span class="ic" style="background:${c}">${icon(ic)}</span>${t}</a>`).join("")}</div>
+      <div class="quick">${QUICK.map(([k, ic, c, t]) => `<a class="qa" href="#utility/${k}"><span class="ic" style="--c:${c}">${icon(ic)}</span>${t}</a>`).join("")}</div>
       ${before ? prepCard(toBook, doneBook) : ""}
       ${!before && !after ? tripCard(today) + eveningCard(today) : ""}
       ${oggiPren(today, before, after)}
@@ -2129,7 +2129,7 @@
     const back = `<a class="back" href="${from}">${icon("ChevronLeft")} ${esc(TABS.find(t => t[0] === fromTab)?.[2] || "Utility")}</a>`;
     if (!sub) {
       view.innerHTML = `<h2>Utility</h2><p class="lead">Tutto quello che serve in viaggio, anche offline.</p>
-        <div class="ugrid">${UTOP.map(k => UTIL.find(u => u[0] === k)).map(([k, ic, c, t, s]) => `<a class="ucard" href="#utility/${k}"><span class="ic" style="background:${c}">${icon(ic)}</span><b>${t}</b>${s ? `<small>${s}</small>` : ""}</a>`).join("")}</div>
+        <div class="ugrid">${UTOP.map(k => UTIL.find(u => u[0] === k)).map(([k, ic, c, t, s]) => `<a class="ucard" href="#utility/${k}"><span class="ic" style="--c:${c}">${icon(ic)}</span><b>${t}</b>${s ? `<small>${s}</small>` : ""}</a>`).join("")}</div>
         ${UGROUPS.map(([g, keys]) => `<h3 class="ugroup">${g}</h3><div class="card ulist">${UTIL.filter(u => keys.includes(u[0]) || (g === "Guide" && !UTOP.includes(u[0]) && !UGROUPS.some(([, ks]) => ks.includes(u[0])))).map(([k, ic, , t, s]) => `<a class="urow" href="#utility/${k}"><span class="uic">${icon(ic)}</span><span class="grow"><b>${t}</b>${s ? `<small>${s}</small>` : ""}</span>${icon("ChevronRight")}</a>`).join("")}</div>`).join("")}
         <h3 class="ugroup">Impostazioni</h3>
         <div class="card row"><div class="grow"><b>Accesso</b><div class="muted small">${me ? esc(me) : "Nome non scelto"} · ${code ? "dati condivisi attivi" : "codice del viaggio non inserito"}</div></div><button class="btn small${code ? "" : " primary"}" id="whoami">${icon(code ? "UserRound" : "KeyRound")} ${code ? "Cambia" : "Inserisci"}</button></div>`;
