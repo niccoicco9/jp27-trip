@@ -729,12 +729,18 @@ body.on-map .map-loading { padding-top: var(--head, 60px); }
 
 /* Oggi: preparativi e prossima tappa */
 .prep { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 0; border: none; border-top: 1px solid var(--line); background: none; color: var(--ink); text-decoration: none; text-align: left; font: inherit; }
-.prep:first-of-type { border-top: none; }
-.prep .pic { width: 36px; height: 36px; border-radius: 12px; }
-.prep .pic svg { width: 18px; height: 18px; }
+h3 + .prep { border-top: none; }
+@property --p { syntax: "<number>"; inherits: true; initial-value: 0; }
+.prep .ring { --ci: var(--c); width: 42px; height: 42px; border-radius: 50%; flex: none; display: grid; place-items: center;
+  background: conic-gradient(var(--ci) calc(var(--p) * 1%), color-mix(in srgb, var(--ci) 16%, transparent) 0); transition: --p .6s var(--ease); }
+.prep .ring > span { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; color: var(--ci); background: color-mix(in srgb, var(--ci) 11%, var(--card)); }
+.prep .ring svg { width: 18px; height: 18px; }
+.prep.full .ring > span { background: var(--ci); color: var(--card); }
+.prep.full small { color: var(--ok); }
+:root[data-theme="dark"] .prep .ring { --ci: color-mix(in srgb, var(--c) 62%, #fff); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .prep .ring { --ci: color-mix(in srgb, var(--c) 62%, #fff); } }
 .prep b { font-size: .92rem; }
 .prep small { color: var(--muted); font-weight: 700; font-size: .78rem; }
-.prep .progress { margin-top: 6px; height: 5px; }
 .prep > svg:last-child { color: var(--muted); width: 18px; height: 18px; flex: none; }
 .nextstop .row { align-items: center; gap: 12px; cursor: pointer; }
 .ns-ph { width: 64px; height: 64px; border-radius: 14px; flex: none; }

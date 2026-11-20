@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 179;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 180;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -1089,7 +1089,7 @@
     });
     $("#more")?.addEventListener("click", e => { $$("[data-more]").forEach(x => (x.hidden = false)); e.currentTarget.remove(); });
     $("[data-goto]")?.addEventListener("click", e => { $("#" + e.currentTarget.dataset.goto)?.closest(".card")?.scrollIntoView({ behavior: "smooth", block: "start" }); });
-    if (before) window.OfflineMap?.status?.().then(st => { const n = Object.values(st).filter(Boolean).length, el = $("#prep-maps"); if (el) { el.querySelector("small").textContent = `${n}/${OfflineMap.ZONE.length} zone`; el.querySelector(".progress i").style.width = n / OfflineMap.ZONE.length * 100 + "%"; } }).catch(() => {});
+    if (before) window.OfflineMap?.status?.().then(st => { const n = Object.values(st).filter(Boolean).length, el = $("#prep-maps"); if (el) { el.querySelector("small").textContent = `${n}/${OfflineMap.ZONE.length} zone`; el.querySelector(".ring").style.setProperty("--p", Math.round(n / OfflineMap.ZONE.length * 100)); el.classList.toggle("full", n === OfflineMap.ZONE.length); } }).catch(() => {});
     bindPcards();
     loadWeather(today); tick();
     if (!before && !after) bindTrip(today);
@@ -1120,8 +1120,9 @@
   }
   // prima di partire: a che punto siete con i preparativi
   function prepCard(toBook, doneBook) {
-    const bar = (n, tot) => `<div class="progress"><i style="width:${tot ? Math.min(1, n / tot) * 100 : 0}%"></i></div>`;
-    const row = (tag, attr, ic, col, label, val, n, tot, id = "") => `<${tag} class="prep" ${attr}${id ? ` id="${id}"` : ""}><span class="pic" style="background:${col}">${icon(ic)}</span><span class="grow"><span class="between"><b>${label}</b><small>${val}</small></span>${bar(n, tot)}</span>${icon("ChevronRight")}</${tag}>`;
+    // anello di avanzamento intorno all'icona: --p = percentuale fatta, --c = colore della voce
+    const pct = (n, tot) => tot ? Math.round(Math.min(1, n / tot) * 100) : 0;
+    const row = (tag, attr, ic, col, label, val, n, tot, id = "") => `<${tag} class="prep${pct(n, tot) === 100 ? " full" : ""}" ${attr}${id ? ` id="${id}"` : ""}><span class="ring" style="--c:${col};--p:${pct(n, tot)}"><span>${icon(ic)}</span></span><span class="grow between"><b>${label}</b><small>${val}</small></span>${icon("ChevronRight")}</${tag}>`;
     const tot = CHECKLIST.reduce((s, [, it]) => s + it.length, 0);
     const rows = [row("button", 'data-goto="booklist"', "Ticket", "#d4442f", "Biglietti da prenotare", `${doneBook}/${toBook.length}`, doneBook, toBook.length)];
     if (code) {
