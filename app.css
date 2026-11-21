@@ -1161,6 +1161,8 @@ body.kb-up .sheetfoot { position: static !important; }
 .fviewer { position: fixed; inset: 0; z-index: 90; background: #fff; display: flex; flex-direction: column; animation: fade .2s; color: #1c1915; }
 .fviewer.out { opacity: 0; transition: opacity .2s; }
 .fv-bar { display: flex; align-items: center; gap: 8px; padding: calc(8px + env(safe-area-inset-top)) 12px 8px; border-bottom: 1px solid rgba(60, 45, 25, .12); background: #faf7f2; }
+/* app dalla schermata Home: la fascia sfocata sotto la barra di stato (vedi .top) prendeva il nome del foglio e «Apri in Excel» */
+@media (display-mode: standalone) { .fv-bar { padding-top: calc(24px + env(safe-area-inset-top)); } }
 .fv-bar b { flex: 1; min-width: 0; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fv-btn { flex: none; width: 38px; height: 38px; border-radius: 99px; border: 0; background: rgba(60, 45, 25, .08); color: inherit; display: grid; place-items: center; }
 .fv-btn svg { width: 18px; height: 18px; }
