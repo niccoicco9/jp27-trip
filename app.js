@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 220;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 221;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -846,6 +846,8 @@
     clearTimeout(sheetT); if (sheet.hidden) sheetCard.style.animation = ""; sheet.classList.remove("closing"); $(".sheet-bg").style.opacity = ""; sheetCard.style.transition = ""; fitViewport?.();
     if (!layers.includes(sheetLayer)) pushLayer(sheetLayer);
     $("#sheet-body").innerHTML = html; sheet.hidden = false; SC.classList.add("locked");
+    // VoiceOver: il foglio si presenta col suo titolo
+    const h2 = $("#sheet-body h2"); if (h2) { h2.id ||= "sheet-title"; sheetCard.setAttribute("aria-labelledby", h2.id); } else sheetCard.removeAttribute("aria-labelledby");
     if (nav) { const b = $("#sheet-body"); b.classList.remove("push", "pop"); void b.offsetWidth; b.classList.add(nav); }
     sheetCard.scrollTop = 0; sheetCard.style.transform = "";
     lazyScan();
@@ -4564,15 +4566,15 @@
   function askWho(needCode = !code) {
     let pick = me;
     openSheet(`
-      <h2>${needCode ? "Benvenuti a bordo ✈️" : "Chi sei?"}</h2>
+      <h2>${needCode ? "Benvenuti a bordo ✈️" : "Chi sei?"}</h2>
       <p class="lead">${needCode ? "Inserisci il codice del viaggio che vi siete passati: protegge programma, prenotazioni e spese." : "Così sappiamo chi ha fatto le modifiche."}</p>
-      ${needCode ? `<input type="text" id="tcode" placeholder="Codice del viaggio" enterkeyhint="go" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(code || badCode)}" style="font-weight:700;letter-spacing:.04em">
+      ${needCode ? `<input type="text" id="tcode" placeholder="Codice del viaggio" aria-label="Codice del viaggio"${(badCode || oldCode) && !code ? ' aria-invalid="true" aria-describedby="badcode"' : ""} enterkeyhint="go" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(code || badCode)}" style="font-weight:700;letter-spacing:.04em">
         ${(badCode || oldCode) && !code ? `<p class="small" id="badcode" style="color:var(--shu);margin:8px 0 0">${icon("KeyRound")} ${badCode ? (badCode === LS.get("dataCode", "") ? "Il server non accetta più questo codice, che prima funzionava: forse è stato cambiato. Chiedi agli altri quello nuovo." : "Non è il codice giusto: controlla maiuscole, minuscole e simboli.") : "Il codice del viaggio è cambiato: usa quello nuovo che vi siete passati."}</p>` : ""}` : ""}
-      <div class="who">${T.viaggiatori.map(n => `<button data-who="${n}" class="${n === me ? "sel" : ""}"><span class="avatar" style="background:${AVATAR[n] || "#888"}">${n[0]}</span>${n}</button>`).join("")}</div>
+      <div class="who">${T.viaggiatori.map(n => `<button data-who="${n}" class="${n === me ? "sel" : ""}" aria-pressed="${n === me}"><span class="avatar" aria-hidden="true" style="background:${AVATAR[n] || "#888"}">${n[0]}</span>${n}</button>`).join("")}</div>
       ${needCode ? `<div class="btns"><button class="btn ghost" data-close>Più tardi</button><button class="btn primary" id="enter">Entra</button></div>
         <p class="muted small" style="margin-top:12px">Senza codice l'app funziona lo stesso, ma solo su questo telefono e senza spese e prenotazioni condivise.</p>` : ""}`, el => {
       $$("[data-who]", el).forEach(b => b.onclick = () => {
-        pick = b.dataset.who; $$("[data-who]", el).forEach(x => x.classList.toggle("sel", x === b));
+        pick = b.dataset.who; $$("[data-who]", el).forEach(x => { x.classList.toggle("sel", x === b); x.setAttribute("aria-pressed", x === b); });
         if (!needCode) { setMe(pick); closeSheet(); toast(`Ciao ${me}! 👋`); render(); }
       });
       // "Vai" sulla tastiera = Entra (sull'SE con la tastiera aperta Entra resta sotto)
