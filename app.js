@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 206;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 207;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -4139,7 +4139,7 @@
     view.innerHTML = `${back}<h2>Il nostro Giappone</h2><p class="lead">${before ? "Anteprima: si completa durante il viaggio, man mano che timbrate le tappe e segnate le spese." : after ? "Com'è andata, in numeri." : "Il viaggio fin qui, in numeri."}</p>
       <div class="rgrid">
         ${stat(nDays, nDays < DAYS.length ? `${nDays === 1 ? "giorno" : "giorni"} (su ${DAYS.length})` : "giorni", "#c8402f")}${stat(cities.length, "città", "#7b4fa0")}
-        ${stat(uniq.length, tappeTxt(r).replace(/^\d+ /, "") + (anyDone && planned > uniq.length ? ` (su ${planned})` : ""), "#1f9488")}${stat(km >= 1 ? Math.round(km) + " km" : "–", "a piedi (stima)", "#d9822b")}
+        ${stat(uniq.length, tappeTxt(r).replace(/^\d+ /, "") + (anyDone && planned > uniq.length ? ` (su ${planned})` : ""), "#1f9488")}${stat(km >= 1 ? fmtInt(km) + " km" : "–", "a piedi (stima)", "#d9822b")}
         ${stat(tot ? fmtInt(tot) + " €" : "–", "spesi in tutto", "#2e6fb0")}${stat(tot ? fmtInt(perHead) + " €" : "–", "a testa", "#4f8a3c")}
       </div>
       ${zs.length ? `<div class="card"><h3 style="margin-top:0">Il percorso</h3><div class="rtrip">${zs.map(x => `<span style="--c:${zona[x.z].colore}"><b>${esc(zona[x.z].nome)}</b><small>${x.n} ${x.n === 1 ? "giorno" : "giorni"}</small></span>`).join(`<i>${icon("ChevronRight")}</i>`)}</div></div>` : ""}
@@ -4635,7 +4635,7 @@
     const back = $("#view > a.back"), act = $("#view [data-top]");
     pageTitle = $("#view > h2, #view > .between > h2");
     $("#tbl").innerHTML = tab === "oggi" ? `<span class="tbdate">${fmtDay(todayJP(), { weekday: "long", day: "numeric", month: "long" }).replace(/^./, c => c.toUpperCase())}</span>`
-      : back ? `<a class="tbback" href="${back.getAttribute("href")}">${icon("ChevronLeft")}${esc(back.textContent.trim())}</a>` : "";
+      : back ? `<a class="tbback" href="${back.getAttribute("href")}">${icon("ChevronLeft")}<span>${esc(back.textContent.trim())}</span></a>` : "";
     $("#tbact").innerHTML = act ? `<button class="tbplus" aria-label="${esc(act.textContent.trim())}">${icon("Plus")}</button>` : "";
     if (act) $("#tbact button").onclick = () => { buzz(); act.click(); };
     $("#ctitle").textContent = pageTitle ? pageTitle.textContent.trim() : tab === "oggi" ? "" : (TABS.find(t => t[0] === tab)?.[2] || "");

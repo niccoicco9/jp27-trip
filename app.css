@@ -110,13 +110,17 @@ svg.i { width: 1.15em; height: 1.15em; flex: none; vertical-align: -.2em; }
    ci finiva dentro (sfocato già all'apertura). 16 px più in basso è nitido come in Safari (misurato sul simulatore iOS 27); in Safari quella fascia non c'è */
 @media (display-mode: standalone) { .top { min-height: calc(60px + env(safe-area-inset-top)); padding-top: calc(16px + env(safe-area-inset-top)); } }
 .top.compact { border-bottom-color: var(--line); }
-.tb-l { justify-self: start; min-width: 0; }
+.tb-l { justify-self: start; min-width: 0; max-width: 100%; display: flex; }
 .tb-r { justify-self: end; display: flex; align-items: center; gap: 10px; }
 .ctitle { opacity: 0; transform: translateY(5px); pointer-events: none; font-size: 1.02rem; font-weight: 800; letter-spacing: -.01em;
   max-width: 52vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity .2s, transform .2s; }
 .top.compact .ctitle, .top.always .ctitle { opacity: 1; transform: none; }
 .tbback { display: inline-flex; align-items: center; gap: 1px; padding: 8px 6px 8px 0; color: var(--shu); font-weight: 700; text-decoration: none; white-space: nowrap; }
 .tbback svg.i { width: 1.3em; height: 1.3em; }
+/* testo grande su iPhone SE: «‹ Utility» non deve finire sotto il titolo piccolo al centro, si accorcia con «…» */
+.tbback { max-width: 100%; }
+.tbback svg.i { flex: none; }
+.tbback span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .tbdate { color: var(--muted); font-weight: 700; font-size: .88rem; padding-left: 4px; white-space: nowrap; }
 .tbplus { width: 34px; height: 34px; border-radius: 99px; border: 0; background: var(--shu); color: #fff; display: grid; place-items: center; box-shadow: 0 4px 12px -4px color-mix(in srgb, var(--shu) 60%, transparent); }
 .tbplus svg.i { width: 20px; height: 20px; }
@@ -905,13 +909,17 @@ main#view { will-change: auto; }
 /* Il nostro Giappone */
 .rgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
 .rstat { background: var(--card); border-radius: 20px; padding: 16px; box-shadow: var(--shadow-s); border-top: 4px solid var(--c); container-type: inline-size; }
-.rstat b { display: block; font-size: 1.7rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--c); }
+/* numeri e nomi delle zone: il colore della zona scurito (chiaro) o schiarito (scuro), così si leggono nei due temi (≥ 4,5) */
+.rstat, .rtrip span { --ct: color-mix(in srgb, var(--c) 72%, #000); }
+:root[data-theme="dark"] :is(.rstat, .rtrip span) { --ct: color-mix(in srgb, var(--c) 62%, #fff); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) :is(.rstat, .rtrip span) { --ct: color-mix(in srgb, var(--c) 62%, #fff); } }
+.rstat b { display: block; font-size: 1.7rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--ct); }
 .rstat b.long { white-space: nowrap; font-size: min(1.7rem, 17cqw); }   /* "124.713 €" su una riga anche su iPhone SE */
 .rstat small { color: var(--muted); font-weight: 600; }
 .rtrip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .rtrip span { padding: 6px 10px; border-radius: 12px; background: color-mix(in srgb, var(--c) 14%, transparent); }
-.rtrip span b { display: block; color: var(--c); font-size: .9rem; }
-.rtrip span small { color: var(--muted); font-size: .72rem; }
+.rtrip span b { display: block; color: var(--ct); font-size: .9rem; }
+.rtrip span small { color: var(--ink-2); font-size: .72rem; }   /* su sfondo colorato --muted scende sotto 4,5 */
 .rtrip i svg.i { width: 14px; height: 14px; color: var(--muted); }
 .rline { padding: 8px 0; border-top: 1px solid var(--line); }
 .rline:first-of-type { border-top: 0; }
