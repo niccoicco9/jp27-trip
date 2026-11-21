@@ -906,26 +906,6 @@ main#view { will-change: auto; }
 .offpill { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 50px); transform: translateX(-50%); z-index: 45; display: inline-flex; align-items: center; gap: 7px;
   padding: 7px 14px; border-radius: 99px; background: var(--ink); color: var(--bg); font-size: .8rem; font-weight: 700; box-shadow: var(--shadow-l); animation: rise .3s var(--ease); white-space: nowrap; }
 .offpill svg.i { width: 15px; height: 15px; }
-/* Il nostro Giappone */
-.rgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
-.rstat { background: var(--card); border-radius: 20px; padding: 16px; box-shadow: var(--shadow-s); border-top: 4px solid var(--c); container-type: inline-size; }
-/* numeri e nomi delle zone: il colore della zona scurito (chiaro) o schiarito (scuro), così si leggono nei due temi (≥ 4,5) */
-.rstat, .rtrip span { --ct: color-mix(in srgb, var(--c) 72%, #000); }
-:root[data-theme="dark"] :is(.rstat, .rtrip span) { --ct: color-mix(in srgb, var(--c) 62%, #fff); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) :is(.rstat, .rtrip span) { --ct: color-mix(in srgb, var(--c) 62%, #fff); } }
-.rstat b { display: block; font-size: 1.7rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--ct); }
-.rstat b.long { white-space: nowrap; font-size: min(1.7rem, 17cqw); }   /* "124.713 €" su una riga anche su iPhone SE */
-.rstat small { color: var(--muted); font-weight: 600; }
-.rtrip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.rtrip span { padding: 6px 10px; border-radius: 12px; background: color-mix(in srgb, var(--c) 14%, transparent); }
-.rtrip span b { display: block; color: var(--ct); font-size: .9rem; }
-.rtrip span small { color: var(--ink-2); font-size: .72rem; }   /* su sfondo colorato --muted scende sotto 4,5 */
-.rtrip i svg.i { width: 14px; height: 14px; color: var(--muted); }
-.rline { padding: 8px 0; border-top: 1px solid var(--line); }
-.rline:first-of-type { border-top: 0; }
-.rline small { display: block; }
-.rpics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.rpics .ph { aspect-ratio: 1; border-radius: 14px; cursor: pointer; }
 .contact > svg.i:last-child { color: var(--muted); width: 18px; height: 18px; flex: none; }
 /* il credito della foto non finisce sotto la X della scheda */
 .cover .credit { right: auto; left: 10px; }
@@ -1015,7 +995,7 @@ html[data-vt="update"]::view-transition-group(*) { animation-duration: .45s; }
    24 sopra i titoli di sezione e 12 sotto, 8 tra pulsanti e tessere affiancati */
 :root { --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-6: 24px; }
 /* blocchi della pagina */
-.card, .hero, .quick, .daycover, .daynote, .rgrid, .addgrid, .dayact { margin-bottom: var(--sp-4); }
+.card, .hero, .quick, .daycover, .daynote, .addgrid, .dayact { margin-bottom: var(--sp-4); }
 .greet { margin: -6px 0 var(--sp-4); }
 .daystrip { padding-bottom: var(--sp-4); }
 .tl { margin-top: 0; }
@@ -1034,7 +1014,7 @@ h3, .ugroup, .ugroup:first-of-type, .galh, .section-h { margin-top: var(--sp-6);
 .progress.bar-head, .nights { margin-top: var(--sp-2); margin-bottom: var(--sp-1); }
 .catchart { margin-top: var(--sp-3); }
 /* griglie di pulsanti e tessere affiancati */
-.quick, .ugrid, .rgrid, .addgrid, .dayact, .whos, .weather, .conv, .rpics { gap: var(--sp-2); }
+.quick, .ugrid, .addgrid, .dayact, .whos, .weather, .conv { gap: var(--sp-2); }
 .hscroll, .gal { gap: var(--sp-3); }
 /* form: 12 tra i campi (in verticale e in orizzontale), 6 tra etichetta e campo, 16 prima dei pulsanti finali */
 .fl { margin-bottom: var(--sp-3); }
