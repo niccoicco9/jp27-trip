@@ -3,7 +3,7 @@
 
   // ——— storage (protetto: in privato o con dati bloccati può fallire) ———
   let dataVer = 0;   // cresce a ogni modifica salvata: le pagine tenute in memoria più vecchie si ricostruiscono
-  const UI_KEYS = new Set(["selDay", "selDayOn", "lview", "mapMode", "notifyQ", "skipCode", "lastPage", "lastBackup", "preRestore", "outbox", "syncBase", "docUp"]);   // solo preferenze di navigazione: non cambiano le pagine
+  const UI_KEYS = new Set(["selDay", "selDayOn", "lview", "mapMode", "notifyQ", "skipCode", "lastPage", "lastBackup", "preRestore", "outbox", "syncBase", "docUp", "fogliPos"]);   // solo preferenze di navigazione: non cambiano le pagine
   const LS = {
     get(k, d) { try { const v = localStorage.getItem("jp27:" + k); return v ? JSON.parse(v) : d; } catch { return d; } },
     // quiet: dati uguali per le pagine (solo versioni del server): niente ricostruzione
@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 202;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 203;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -92,7 +92,13 @@
         else delete out.storia;
         return out;
       }
-      if (name === "allegati") { const n = Math.round(+x.pagine); return str(x.pren) && n >= 1 && n <= 30 ? { ...x, pagine: n, nome: str(x.nome).slice(0, 60) || "Documento", t: +x.t || 0 } : null; }
+      if (name === "allegati") { const n = Math.round(+x.pagine); if (!(str(x.pren) && n >= 1 && n <= 30)) return null;
+        // fogli (I miei fogli): link al file Excel solo https, giorni solo date vere
+        const out = { ...x, pagine: n, nome: str(x.nome).slice(0, 60) || "Documento", t: +x.t || 0 };
+        if (!/^https:\/\/\S+$/.test(str(x.link))) delete out.link;
+        for (const k of ["dal", "al"]) if (!isoDay(x[k])) delete out[k];
+        return out;
+      }
       if (name === "categorie") return str(x.n) ? { ...x, n: str(x.n).slice(0, 24), e: oneEmo(x.e), col: /^#[0-9a-f]{6}$/i.test(x.col) ? x.col : "#8a6d4b" } : null;
       if (name === "prenotazioni") {
         // testi: un numero o un oggetto arrivato da una versione vecchia diventa testo (o niente), così ordinare per ora non si rompe
@@ -1077,6 +1083,7 @@
     view.innerHTML = `
       ${greet}
       ${hero}
+      ${fogliRow()}
       <div class="quick">${QUICK.map(([k, ic, c, t]) => `<a class="qa" href="#utility/${k}"><span class="ic" style="--c:${c}">${icon(ic)}</span>${t}</a>`).join("")}</div>
       ${before ? prepCard(toBook, doneBook) : ""}
       ${!before && !after ? tripCard(today) + eveningCard(today) : ""}
@@ -2307,18 +2314,19 @@
     ["budget", "Wallet", "#b8860b", "Budget", "Costi da Wanderlog"],
     ["checklist", "Luggage", "#c89b3c", "Checklist", "Valigia e documenti"],
     ["ricordi", "Sparkles", "#d4442f", "Il nostro Giappone", "Il viaggio in numeri"],
+    ["fogli", "FileText", "#1d7a46", "I miei fogli", "Itinerari fatti in Excel"],   // solo per chi li usa (FOGLI_DI)
     ...Object.entries(GUIDE).map(([k, g]) => [k, g.icon, g.col, g.titolo, { trasporti: "Suica, Shinkansen, JR Pass", galateo: "Cosa fare e non fare", soldi: "Contanti, ATM, tax free", stagione: "Clima ed eventi", pratico: "Prese, eSIM, farmaci", installa: "Aggiungila alla Home" }[k] || ""]),
   ];
   // in alto le 4 cose di ogni giorno (riquadri grandi), sotto il resto in elenchi sobri stile Impostazioni di iPhone
   const UTOP = ["prenotazioni", "spese", "frasi", "yen"];
-  const UGROUPS = [["In viaggio", ["sos", "mappe", "ricordi"]], ["Prima di partire", ["checklist", "budget", "pratico", "installa"]], ["Guide", ["trasporti", "soldi", "galateo", "stagione"]]];
+  const UGROUPS = [["In viaggio", ["fogli", "sos", "mappe", "ricordi"]], ["Prima di partire", ["checklist", "budget", "pratico", "installa"]], ["Guide", ["trasporti", "soldi", "galateo", "stagione"]]];
   function renderUtility(sub) {
     const from = isSub(subFrom) ? "#utility" : subFrom, fromTab = from.slice(1).split("/")[0];
     const back = `<a class="back" href="${from}">${icon("ChevronLeft")} ${esc(TABS.find(t => t[0] === fromTab)?.[2] || "Utility")}</a>`;
     if (!sub) {
       view.innerHTML = `<h2>Utility</h2><p class="lead">Tutto quello che serve in viaggio, anche offline.</p>
         <div class="ugrid">${UTOP.map(k => UTIL.find(u => u[0] === k)).map(([k, ic, c, t, s]) => `<a class="ucard" href="#utility/${k}"><span class="ic" style="--c:${c}">${icon(ic)}</span><b>${t}</b>${s ? `<small>${s}</small>` : ""}</a>`).join("")}</div>
-        ${UGROUPS.map(([g, keys]) => `<h3 class="ugroup">${g}</h3><div class="card ulist">${UTIL.filter(u => keys.includes(u[0]) || (g === "Guide" && !UTOP.includes(u[0]) && !UGROUPS.some(([, ks]) => ks.includes(u[0])))).map(([k, ic, , t, s]) => `<a class="urow" href="#utility/${k}"><span class="uic">${icon(ic)}</span><span class="grow"><b>${t}</b>${s ? `<small>${s}</small>` : ""}</span>${icon("ChevronRight")}</a>`).join("")}</div>`).join("")}
+        ${UGROUPS.map(([g, keys]) => `<h3 class="ugroup">${g}</h3><div class="card ulist">${UTIL.filter(u => (u[0] !== "fogli" || myFogli()) && (keys.includes(u[0]) || (g === "Guide" && !UTOP.includes(u[0]) && !UGROUPS.some(([, ks]) => ks.includes(u[0]))))).map(([k, ic, , t, s]) => `<a class="urow" href="#utility/${k}"><span class="uic">${icon(ic)}</span><span class="grow"><b>${t}</b>${s ? `<small>${s}</small>` : ""}</span>${icon("ChevronRight")}</a>`).join("")}</div>`).join("")}
         <h3 class="ugroup">Impostazioni</h3>
         <div class="card row"><div class="grow"><b>Accesso</b><div class="muted small">${me ? esc(me) : "Nome non scelto"} · ${code ? "dati condivisi attivi" : "codice del viaggio non inserito"}</div></div><button class="btn small${code ? "" : " primary"}" id="whoami">${icon(code ? "UserRound" : "KeyRound")} ${code ? "Cambia" : "Inserisci"}</button></div>`;
       $("#whoami").onclick = () => askWho();   // senza argomenti: chiede il codice solo se manca
@@ -2352,6 +2360,7 @@
     if (sub === "mappe") { history.replaceState(null, "", "#utility"); lastHash = "#utility"; subPushed = false; renderUtility(); setTimeout(openOfflineMaps, 50); return; }
     if (sub === "spese") return renderSpese(back);
     if (sub === "checklist") return renderChecklist(back);
+    if (sub === "fogli") return renderFogli(back);
     go("#utility");
   }
 
@@ -2453,6 +2462,7 @@
     try {
       const c = await caches.open(DOCS), keep = new Set(); let got = 0;
       for (const a of lists.allegati) for (let k = 0; k < a.pagine; k++) {
+        if (isFoglio(a) && a.pren !== fogliKey()) break;   // i fogli di un altro: su questo telefono non servono
         keep.add(docKey(a.id, k)); if (!k) keep.add(docKey(a.id, "t"));
         if (!(await c.match(docKey(a.id, k)))) { if (await docBlob(a, k)) got++; else missing++; }
       }
@@ -2567,7 +2577,7 @@
   let pdfWarm = false;
   function warmPdf() { if (pdfWarm || !navigator.onLine) return; pdfWarm = true; for (const u of [PDFJS, PDFW]) fetch(u).catch(() => { pdfWarm = false; }); }
   const PDF_MAX = 20;
-  async function pdfPages(file, step) {
+  async function pdfPages(file, step, conv = async cv => [await toJpeg(cv)]) {
     const lib = await loadPdf(), pdf = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
     const n = Math.min(pdf.numPages, PDF_MAX), out = [];
     out.total = pdf.numPages;
@@ -2578,7 +2588,7 @@
       const cv = document.createElement("canvas"); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
       const x = cv.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, cv.width, cv.height);
       await pg.render({ canvasContext: x, viewport: vp }).promise;
-      out.push(await toJpeg(cv)); cv.width = cv.height = 0;
+      out.push(...await conv(cv)); cv.width = cv.height = 0;
     }
     pdf.destroy?.();
     return out;
@@ -2587,11 +2597,16 @@
   const docName = s => Array.from(String(s || "").replace(/\.[^.]*$/, "").trim()).slice(0, 60).join("").trim() || "Documento";
   // { a } = allegato, { err } = perché non si è potuto, { a, cut } = PDF con più di PDF_MAX pagine (tenute le prime);
   // alive(): false se intanto la scheda di una prenotazione nuova è stata chiusa senza salvarla (non si allega più niente)
-  async function addDoc(pid, file, step, alive = () => true) {
+  async function addDoc(pid, file, step, alive = () => true, sheet = false) {
     const pdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
     if (!pdf && file.type && !file.type.startsWith("image/")) return { err: "si possono allegare solo foto e PDF" };
     let pages;
-    try { step("Preparo il documento…"); if (pdf) pages = await pdfPages(file, step); else { const im = await readImage(file); try { pages = [await toJpeg(im, 2800)]; } finally { im.close?.(); } } }
+    try {
+      step("Preparo il documento…");
+      if (pdf) pages = await pdfPages(file, step, sheet ? cv => sliceJpegs(cv) : undefined);
+      else { const im = await readImage(file); try { pages = sheet ? await sliceJpegs(im) : [await toJpeg(im, 2800)]; } finally { im.close?.(); } }
+      if (sheet && pages.length > SHEET_MAX) return { err: "il foglio è troppo lungo: dividilo in due file" };
+    }
     catch (err) {
       console.warn("Documento:", err);
       return { err: pdf && err?.name === "PasswordException" ? "il PDF è protetto da password (fanne uno screenshot)" : !navigator.onLine && pdf && !window.pdfjsLib ? "per leggere un PDF la prima volta serve la rete" : pdf ? "non riesco a leggere questo PDF" : "non riesco a leggere questa immagine" };
@@ -2659,7 +2674,7 @@
     for (const a of lists.allegati) {
       // tolti da un ripristino di backup (bk): restano 30 giorni, poi li toglie chiunque
       const bkOld = a.bk && now - a.bk >= BK_KEEP;
-      if (live.has(a.pren) || editingPren.has(a.pren) || (a.bk && !bkOld) || (a.by !== (me || "?") && !docGone[a.pren] && !bkOld)) continue;
+      if (isFoglio(a) || live.has(a.pren) || editingPren.has(a.pren) || (a.bk && !bkOld) || (a.by !== (me || "?") && !docGone[a.pren] && !bkOld)) continue;
       seen[a.id] = docOrphan[a.id] || now;
       if (now - seen[a.id] >= ORPHAN_WAIT) { delDoc(a); delete seen[a.id]; }
     }
@@ -2668,6 +2683,182 @@
     Object.assign(docOrphan, seen); LS.set("docOrphan", docOrphan); LS.set("docGone", docGone);
   }
   setInterval(sweepDocs, 30e3);
+
+  // ——— I MIEI FOGLI: gli itinerari fatti in Excel, salvati come immagini (PDF o screenshot) ———
+  // Sono documenti come quelli delle prenotazioni (stesse pagine su Firestore e copia offline), con pren "fogli:<nome>":
+  // compaiono solo a chi li usa (FOGLI_DI), in Home e in Utility › I miei fogli. Un foglio lungo si taglia a strisce
+  // larghe fino a 1600 px (così il testo resta leggibile) e nel visore le strisce si leggono di seguito, come in Excel.
+  const FOGLI_DI = ["Antonella"], SHEET_MAX = 30;
+  const myFogli = () => FOGLI_DI.includes(me);
+  const fogliKey = () => "fogli:" + (me || "?");
+  const isFoglio = a => String(a.pren).startsWith("fogli:");
+  const fogli = () => lists.allegati.filter(a => a.pren === fogliKey()).sort((a, b) => a.t - b.t);
+  async function sliceJpegs(src, maxW = 1600, sliceH = 2000) {
+    const W = src.width, H = src.height, r = Math.min(1, maxW / W), tw = Math.max(1, Math.round(W * r)), step = Math.max(1, Math.round(sliceH / r)), out = [];
+    if (Math.ceil(H / step) > SHEET_MAX) return new Array(SHEET_MAX + 1);   // troppo lungo: non si prepara niente
+    for (let y = 0; y < H; y += step) {
+      const h = Math.min(step, H - y), cv = document.createElement("canvas");
+      cv.width = tw; cv.height = Math.max(1, Math.round(h * r));
+      const x = cv.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, cv.width, cv.height); x.drawImage(src, 0, y, W, h, 0, 0, cv.width, cv.height);
+      out.push(await toJpeg(cv, 2800)); cv.width = cv.height = 0;
+    }
+    return out;
+  }
+  // foglio del giorno (solo in viaggio): quello con i giorni scelti, se no quello con il nome della zona di oggi (es. "Tokyo")
+  function foglioOggi(fs) {
+    const today = todayJP(); if (today < T.inizio || today > T.fine) return null;
+    const z = dayZone(today), nome = z && z !== "altre" ? zona[z].nome.toLowerCase() : "";
+    return fs.find(a => a.dal && a.al && a.dal <= today && today <= a.al) || (nome && fs.find(a => a.nome.toLowerCase().includes(nome))) || null;
+  }
+  const fmtShort = d => fmtDay(d, { day: "numeric", month: "short" });
+  const fogliGiorni = a => a.dal && a.al ? (a.dal === a.al ? fmtShort(a.dal) : `${fmtShort(a.dal)} – ${fmtShort(a.al)}`) : "";
+  function fogliRow() {
+    if (!myFogli()) return "";
+    const fs = fogli();
+    if (!fs.length) return `<a class="card row fogli-new" href="#utility/fogli"><span class="ic">${icon("FileText")}</span><div class="grow"><b>I tuoi fogli Excel</b><div class="muted small">Aggiungili qui e li apri con un tocco, anche offline</div></div>${icon("ChevronRight")}</a>`;
+    const oggi = foglioOggi(fs), list = oggi ? [oggi, ...fs.filter(a => a !== oggi)] : fs;
+    return `<div class="fogli-h"><div class="section-h"><h3>I miei fogli</h3><a class="small" href="#utility/fogli">Gestisci</a></div>
+      <div class="hscroll">${list.map(a => `<button class="foglio${a === oggi ? " on" : ""}" data-foglio="${a.id}"><span class="fth" data-dth="${a.id}">${icon("FileText")}</span><b>${esc(a.nome)}</b><small>${a === oggi ? "Oggi" : esc(fogliGiorni(a)) || "&nbsp;"}</small></button>`).join("")}</div></div>`;
+  }
+  // "Apri in Excel": i file su OneDrive/SharePoint si aprono direttamente nell'app Excel (schema ms-excel di Office)
+  const xlUrl = u => /^https:\/\/([^/]*\.)?(sharepoint\.com|onedrive\.live\.com|1drv\.ms|live\.com)\//i.test(u) ? "ms-excel:ofv|u|" + u : u;
+  const fogliPos = LS.get("fogliPos", {});
+  async function openFoglio(a) {
+    if (docOpening || $(".fviewer, .viewer")) return;
+    docOpening = true; let waitShown = false;
+    const wait = setTimeout(() => { waitShown = true; toast("Scarico il foglio…"); }, 500), urls = [];
+    try {
+      for (let k = 0; k < a.pagine; k++) {
+        const u = await docURL(a, k);
+        if (!u) { urls.forEach(URL.revokeObjectURL); clearTimeout(wait); toast(navigator.onLine ? "Foglio non ancora caricato: arriva da solo appena il telefono dove l'hai aggiunto apre l'app con la rete" : "Foglio non ancora scaricato su questo telefono: serve la rete una volta"); return; }
+        urls.push(u);
+      }
+    } finally { clearTimeout(wait); docOpening = false; }
+    if (waitShown) $("#toast").hidden = true;
+    buzz();
+    const v = document.createElement("div"); v.className = "fviewer";
+    v.innerHTML = `<div class="fv-bar"><button class="fv-btn fv-x" aria-label="Chiudi">${icon("X")}</button><b>${esc(a.nome)}</b>
+      ${a.link ? `<a class="fv-btn fv-web" href="${esc(a.link)}" target="_blank" rel="noopener" aria-label="Apri il link">${icon("ExternalLink")}</a><a class="btn small primary fv-xl" href="${esc(xlUrl(a.link))}">Apri in Excel</a>` : ""}</div>
+      <div class="fv-sc"><div class="fv-in">${urls.map(u => `<img src="${u}" alt="" draggable="false">`).join("")}</div></div>`;
+    document.body.appendChild(v);
+    const sc = $(".fv-sc", v), inn = $(".fv-in", v);
+    let z = 1;
+    // zoom con due dita (o doppio tocco) intorno al punto toccato: il foglio diventa più largo e si scorre anche di lato
+    const setZ = (nz, cx, cy) => {
+      nz = Math.min(4, Math.max(1, nz)); if (nz === z) return;
+      const sx = (sc.scrollLeft + cx) / z, sy = (sc.scrollTop + cy) / z;
+      z = nz; inn.style.width = z * 100 + "%";
+      sc.scrollLeft = sx * z - cx; sc.scrollTop = sy * z - cy;
+    };
+    const rel = (x, y) => { const r = sc.getBoundingClientRect(); return [x - r.left, y - r.top]; };
+    let pinch = null, lastTap = 0, tap0 = null;
+    sc.addEventListener("touchstart", e => {
+      const t = e.touches;
+      if (t.length === 2) { pinch = { d: Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY), z }; tap0 = null; return; }
+      tap0 = t.length === 1 ? { x: t[0].clientX, y: t[0].clientY, t: Date.now() } : null;
+    }, { passive: true });
+    sc.addEventListener("touchmove", e => {
+      const t = e.touches;
+      if (tap0 && t.length === 1 && Math.hypot(t[0].clientX - tap0.x, t[0].clientY - tap0.y) > 8) tap0 = null;
+      if (!pinch || t.length !== 2) return;
+      e.preventDefault();
+      const d = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+      setZ(pinch.z * d / pinch.d, ...rel((t[0].clientX + t[1].clientX) / 2, (t[0].clientY + t[1].clientY) / 2));
+    }, { passive: false });
+    sc.addEventListener("touchend", e => {
+      if (e.touches.length < 2) pinch = null;
+      if (e.touches.length || !tap0 || Date.now() - tap0.t > 300) return;
+      const now = Date.now();
+      if (now - lastTap < 300) { setZ(z > 1.2 ? 1 : 2.5, ...rel(tap0.x, tap0.y)); lastTap = 0; } else lastTap = now;
+      tap0 = null;
+    });
+    sc.addEventListener("dblclick", e => setZ(z > 1.2 ? 1 : 2.5, ...rel(e.clientX, e.clientY)));   // sul computer
+    // si riapre dove l'avevi lasciato
+    const pos = fogliPos[a.id];
+    if (pos > 0) Promise.all([...inn.querySelectorAll("img")].map(i => i.decode().catch(() => {}))).then(() => { sc.scrollTop = pos * sc.scrollHeight; });
+    const close = () => {
+      if (v.classList.contains("out")) return;
+      fogliPos[a.id] = sc.scrollHeight ? Math.round(sc.scrollTop / sc.scrollHeight * 1e4) / 1e4 : 0;
+      for (const k of Object.keys(fogliPos)) if (!lists.allegati.some(x => x.id === k)) delete fogliPos[k];
+      LS.set("fogliPos", fogliPos);
+      v.classList.add("out"); document.removeEventListener("keydown", key); dropLayer(layer);
+      setTimeout(() => { v.remove(); urls.forEach(URL.revokeObjectURL); }, 200);
+    };
+    const layer = () => close();
+    pushLayer(layer);
+    const key = e => { if (e.key === "Escape") close(); };
+    document.addEventListener("keydown", key);
+    $(".fv-x", v).onclick = close;
+  }
+  document.addEventListener("click", e => {
+    const b = e.target.closest("[data-foglio]"); if (!b) return;
+    e.preventDefault();
+    const a = lists.allegati.find(x => x.id === b.dataset.foglio);
+    if (!a) return toast("Foglio eliminato intanto");
+    openFoglio(a);
+  });
+  // Utility › I miei fogli: aggiungere, rinominare, scegliere i giorni e il link di Excel, sostituire, eliminare
+  function renderFogli(back) {
+    if (!myFogli()) return go("#utility");
+    const fs = fogli(), dayOpt = (sel, empty) => `<option value="">${empty}</option>` + DAYS.map(d => `<option value="${d}"${d === sel ? " selected" : ""}>${fmtDay(d, { weekday: "short", day: "numeric", month: "short" })}</option>`).join("");
+    view.innerHTML = `${back}<h2>I miei fogli</h2><p class="lead">I tuoi itinerari fatti in Excel, sempre a un tocco dalla Home, anche senza rete. Li vedi solo tu.</p>
+      <div class="card">
+        <button class="btn primary" id="f-add" style="width:100%">${icon("Plus")} Aggiungi un foglio</button>
+        <input type="file" id="f-file" accept="image/*,application/pdf" multiple hidden>
+        <p class="muted small" style="margin:10px 0 0">Da Excel sul telefono: <b>Condividi → Esporta → PDF</b>. Meglio con «Adatta a 1 pagina di larghezza», così le colonne non si spezzano. Va bene anche uno screenshot.</p>
+      </div>
+      ${fs.map(a => `<div class="card fedit" data-fid="${a.id}">
+        <div class="row"><button class="foglio mini" data-foglio="${a.id}" aria-label="Apri ${esc(a.nome)}"><span class="fth" data-dth="${a.id}">${icon("FileText")}</span></button>
+          <div class="grow"><label class="small muted" for="fn-${a.id}">Nome</label><input id="fn-${a.id}" data-f="nome" value="${esc(a.nome)}" maxlength="60" autocomplete="off"></div></div>
+        <div class="fdays"><div><label class="small muted">Dal</label><select data-f="dal">${dayOpt(a.dal, "—")}</select></div><div><label class="small muted">Al</label><select data-f="al">${dayOpt(a.al, "—")}</select></div></div>
+        <label class="small muted" for="fl-${a.id}">Link del file su OneDrive (per «Apri in Excel»)</label>
+        <input id="fl-${a.id}" data-f="link" type="url" inputmode="url" value="${esc(a.link || "")}" placeholder="https://1drv.ms/…" autocomplete="off" autocapitalize="off">
+        <div class="row fbtns"><button class="btn small" data-fopen="${a.id}">${icon("FileText")} Apri</button><button class="btn small" data-frep="${a.id}">${icon("RotateCcw")} Sostituisci</button><button class="btn small ghost fdel" data-fdel="${a.id}" aria-label="Elimina">${icon("Trash2")}</button></div>
+      </div>`).join("")}
+      ${fs.length ? `<p class="muted small">In Home, durante il viaggio, il foglio di oggi è il primo: quello con i giorni scelti, oppure quello con il nome della città (es. «Tokyo»).</p>` : ""}`;
+    const file = $("#f-file"); let replacing = null;
+    const add = async files => {
+      const btn = $("#f-add"), errs = []; let ok = 0;
+      btn.disabled = true;
+      for (const f of files) {
+        const r = await addDoc(fogliKey(), f, t => { btn.textContent = t; }, () => true, true);
+        if (r.err) { errs.push(`${f.name}: ${r.err}`); continue; }
+        ok++;
+        if (replacing) {   // stesso nome, giorni e link del foglio vecchio, che poi si toglie
+          const old = lists.allegati.find(x => x.id === replacing);
+          if (old) { putItem("allegati", { ...r.a, nome: old.nome, t: old.t, ...(old.link ? { link: old.link } : {}), ...(old.dal ? { dal: old.dal, al: old.al } : {}) }); if (fogliPos[old.id]) { fogliPos[r.a.id] = fogliPos[old.id]; delete fogliPos[old.id]; LS.set("fogliPos", fogliPos); } delDoc(old); }
+          replacing = null;
+        }
+      }
+      toast(errs.length ? errs.join(" · ") : ok > 1 ? `${ok} fogli aggiunti ✓` : "Foglio pronto ✓");
+      rerender();
+    };
+    $("#f-add").onclick = () => { replacing = null; file.multiple = true; file.click(); };
+    file.onchange = () => { const fl = [...file.files]; file.value = ""; if (fl.length) add(replacing ? fl.slice(0, 1) : fl); };
+    $$(".fedit", view).forEach(card => {
+      const id = card.dataset.fid;
+      const save = () => {
+        const a = lists.allegati.find(x => x.id === id); if (!a) return;
+        const val = k => $(`[data-f="${k}"]`, card).value.trim();
+        let dal = val("dal"), al = val("al"), link = val("link");
+        if (dal && !al) al = dal; if (al && !dal) dal = al; if (dal > al) [dal, al] = [al, dal];
+        if (link && !/^https:\/\/\S+$/.test(link)) { toast("Il link deve iniziare con https://"); link = a.link || ""; $(`[data-f="link"]`, card).value = link; }
+        const { link: _l, dal: _d, al: _a, ...rest } = a;
+        const next = { ...rest, nome: val("nome").slice(0, 60) || a.nome, ...(link ? { link } : {}), ...(dal ? { dal, al } : {}) };
+        if (sig(next) === sig({ ...a, w: next.w, by: next.by })) return;
+        putItem("allegati", next);
+        $(`[data-f="dal"]`, card).value = dal; $(`[data-f="al"]`, card).value = al;
+      };
+      $$("[data-f]", card).forEach(i => i.onchange = save);
+      $("[data-fopen]", card).onclick = () => { const a = lists.allegati.find(x => x.id === id); if (a) openFoglio(a); };
+      $("[data-frep]", card).onclick = () => { replacing = id; file.multiple = false; file.click(); };
+      $("[data-fdel]", card).onclick = async () => {
+        const a = lists.allegati.find(x => x.id === id); if (!a) return;
+        if (!(await ask({ title: "Eliminare il foglio?", text: `«${a.nome}» sparisce dall'app. Il file in Excel resta com'è.`, ok: "Elimina", danger: true }))) return;
+        delDoc(a); rerender();
+      };
+    });
+  }
 
   // ——— PRENOTAZIONI (hotel, voli, treni, biglietti) ———
   const PTYPE = {
