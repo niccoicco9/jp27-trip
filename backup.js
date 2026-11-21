@@ -144,7 +144,7 @@ export function tables(b, info) {
 
   const pTit = Object.fromEntries((b.lists.prenotazioni || []).filter(p => p && typeof p === "object").map(p => [p.id, p.titolo]));
   const docs = [["Documento", "Prenotazione", "Pagine"]];
-  for (const a of b.lists.allegati || []) docs.push([a.nome || "Documento", pTit[a.pren] || "", +a.pagine || 0]);
+  for (const a of b.lists.allegati || []) docs.push([a.nome || "Documento", pTit[a.pren] || (/^fogli:/.test(a.pren) ? "I miei fogli di " + String(a.pren).slice(6) : ""), +a.pagine || 0]);
 
   const c = counts(b), when = new Date(b.creato);
   const info0 = [["Backup del viaggio", ""], ["Creato il", when.toLocaleString("it-IT", { timeZone: "Europe/Rome" })], ["Da", b.da || ""], ["Versione app", b.app || ""],

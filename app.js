@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 208;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 209;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2741,7 +2741,11 @@
     const kid = (el, n) => kids(el, n)[0] || null;
     const wb = await X("xl/workbook.xml"); if (!wb) throw new Error("xlsx");
     const rels = Object.fromEntries(all(await X("xl/_rels/workbook.xml.rels"), "Relationship").map(r => [r.getAttribute("Id"), r.getAttribute("Target")]));
-    const sst = all(await X("xl/sharedStrings.xml"), "si").map(si => all(si, "t").map(t => t.textContent).join(""));
+    // testo di una cella: i pezzi <t> (anche quelli in grassetto, dentro <r>) ma non la lettura fonetica giapponese (<rPh>)
+    // che Excel aggiunge sopra i kanji; gli a capo di Windows scritti come _x000D_ tornano caratteri
+    const xtext = el => [...kids(el, "t"), ...kids(el, "r").map(r => kid(r, "t"))].filter(Boolean).map(t => t.textContent).join("")
+      .replace(/_x([0-9a-f]{4})_/gi, (_, h) => String.fromCharCode(parseInt(h, 16))).replace(/\r\n?/g, "\n");
+    const sst = all(await X("xl/sharedStrings.xml"), "si").map(xtext);
     const th = {}; for (const el of all(await X("xl/theme/theme1.xml"), "clrScheme")[0]?.children || []) { const c = el.firstElementChild; th[el.localName] = c && (c.getAttribute("lastClr") || c.getAttribute("val")); }
     const THEME = ["lt1", "dk1", "lt2", "dk2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6", "hlink", "folHlink"].map((k, i) => th[k] || (i % 2 ? "000000" : "FFFFFF"));
     const IDX = { 8: "000000", 9: "FFFFFF", 10: "FF0000", 11: "00FF00", 12: "0000FF", 13: "FFFF00", 22: "C0C0C0", 23: "808080" };
@@ -2763,53 +2767,86 @@
       return "#" + rgb.toLowerCase();
     };
     const st = (await X("xl/styles.xml"))?.documentElement;
-    const fonts = kids(kid(st, "fonts"), "font").map(f => ({ b: !!kid(f, "b") && kid(f, "b").getAttribute("val") !== "0", i: !!kid(f, "i"), sz: +(kid(f, "sz")?.getAttribute("val") || 11), c: color(kid(f, "color")) }));
+    const on = el => !!el && !["0", "false"].includes(el.getAttribute("val"));
+    const fonts = kids(kid(st, "fonts"), "font").map(f => ({ b: on(kid(f, "b")), i: on(kid(f, "i")), sz: +(kid(f, "sz")?.getAttribute("val") || 11), c: color(kid(f, "color")) }));
     const fills = kids(kid(st, "fills"), "fill").map(f => { const p = kid(f, "patternFill"); return p && p.getAttribute("patternType") === "solid" ? color(kid(p, "fgColor")) : null; });
     const W = { thin: 1, hair: 1, dotted: 1, dashed: 1, medium: 2, mediumDashed: 2, thick: 3, double: 3 };
     const borders = kids(kid(st, "borders"), "border").map(b => Object.fromEntries(["left", "right", "top", "bottom"].map(s => [s, kid(b, s)]).filter(([, e]) => e?.getAttribute("style")).map(([s, e]) => [s, `${W[e.getAttribute("style")] || 1}px solid ${color(kid(e, "color")) || "#000"}`])));
     const xfs = kids(kid(st, "cellXfs"), "xf").map(x => { const al = kid(x, "alignment"); return { f: fonts[+x.getAttribute("fontId") || 0] || {}, fill: fills[+x.getAttribute("fillId") || 0], bd: borders[+x.getAttribute("borderId") || 0] || {}, nf: +x.getAttribute("numFmtId") || 0, h: al?.getAttribute("horizontal"), v: al?.getAttribute("vertical"), wrap: al?.getAttribute("wrapText") === "1" }; });
-    const ref = r => { const m = /^([A-Z]+)(\d+)$/.exec(r); let n = 0; for (const ch of m[1]) n = n * 26 + ch.charCodeAt(0) - 64; return [n, +m[2]]; };
+    const ref = r => { const m = /^\$?([A-Z]+)\$?(\d+)$/.exec(r || ""); if (!m) return [0, 0]; let n = 0; for (const ch of m[1]) n = n * 26 + ch.charCodeAt(0) - 64; return [n, +m[2]]; };
+    // formati dei numeri: orari, date, percentuali, valute (quelli di Excel per numero, quelli scritti a mano dal testo)
+    const codes = Object.assign({ 1: "0", 2: "0.00", 3: "#,##0", 4: "#,##0.00" }, Object.fromEntries(all(kid(st, "numFmts"), "numFmt").map(n => [+n.getAttribute("numFmtId"), n.getAttribute("formatCode") || ""])));
+    const kind = nf => {
+      if ([14, 15, 16, 17, 22, 27, 28, 29, 30, 31, 34, 35, 36, 50, 51, 52, 53, 54, 57, 58].includes(nf)) return "date";
+      if ([18, 19, 20, 21, 32, 33, 45, 46, 47].includes(nf)) return "time";
+      if (nf === 9 || nf === 10) return "pct";
+      if (/\[[hms]+\]/i.test(codes[nf] || "")) return "time";   // durate come [h]:mm
+      const c = (codes[nf] || "").replace(/"[^"]*"|\[[^\]]*\]|\\./g, "").toLowerCase();
+      return /[dy]/.test(c) ? "date" : /[hs]/.test(c) ? "time" : /%/.test(c) ? "pct" : "num";
+    };
+    const GG = ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"];
+    const hhmm = (f, tot) => { const m = Math.round(f * 1440); return String(tot ? Math.floor(m / 60) : Math.floor(m / 60) % 24).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0"); };
+    const fmtNum = (f, nf) => {
+      const k = kind(nf), fc = codes[nf] || "";
+      if (k === "time") return hhmm(f, /\[h/i.test(fc));
+      if (k === "date" && f > 0 && f < 2958466) {   // fino al 31/12/9999; fuori, il numero com'è
+        const d = new Date(Date.UTC(1899, 11, 30) + Math.round(f * 864e5)), iso = d.toISOString().slice(0, 10), [y, mo, dd] = iso.split("-");
+        const c = fc.replace(/"[^"]*"|\[[^\]]*\]/g, "").toLowerCase(), long = /mmmm/.test(c) || nf === 15 || nf === 16;
+        let t = long ? `${/dddd/.test(c) ? GG[d.getUTCDay()] + " " : ""}${+dd} ${MESI[+mo - 1]}${/y/.test(c) || nf === 15 ? " " + y : ""}` : `${dd}/${mo}${nf === 16 || (c && !/y/.test(c)) ? "" : "/" + y}`;
+        if (nf === 22 || (/h/.test(c) && f % 1)) t += " " + hhmm(f % 1);
+        return { t, iso };
+      }
+      if (k === "pct") return Math.round(f * 100) + "%";
+      const dec = /0[.,](0+)/.exec(fc)?.[1].length, n = dec != null || /#,##/.test(fc) ? f.toFixed(dec || 0).replace(".", ",").replace(/^-?\d+/, w => /#,##/.test(fc) ? w.replace(/\B(?=(\d{3})+$)/g, ".") : w) : String(Math.round(f * 100) / 100).replace(".", ",");
+      return /€/.test(fc) ? n + " €" : /[¥円]/.test(fc) ? "¥" + n : /\$/.test(fc.replace(/\[\$[^\]]*\]/g, "")) ? "$" + n : n;
+    };
     const year = +T.inizio.slice(0, 4), sheets = [];
     for (const s of all(wb, "sheet")) {
       const rid = s.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id") || s.getAttribute("r:id"), tgt = rels[rid];
-      if (!tgt || s.getAttribute("state") === "hidden") continue;
+      if (!tgt || (s.getAttribute("state") || "visible") !== "visible") continue;   // nascosto o «molto nascosto»
       const sh = (await X(tgt.startsWith("/") ? tgt.slice(1) : "xl/" + tgt.replace(/^\.\//, "")))?.documentElement; if (!sh) continue;
       const cols = {}; for (const c of all(kid(sh, "cols"), "col")) for (let i = +c.getAttribute("min"); i <= +c.getAttribute("max") && i < 60; i++) cols[i] = c.getAttribute("hidden") === "1" ? 0 : +c.getAttribute("width");
       const merges = new Map(), covered = new Set();
       for (const m of all(sh, "mergeCell")) {
-        const [a, b] = m.getAttribute("ref").split(":"); if (!b) continue; const [c1, r1] = ref(a), [c2, r2] = ref(b);
+        const [a, b] = (m.getAttribute("ref") || "").split(":"); if (!b) continue; const [c1, r1] = ref(a), [c2, r2] = ref(b);
+        if (!c1 || !c2 || c2 < c1 || r2 < r1 || (r2 - r1 + 1) * (c2 - c1 + 1) > 1e5) continue;
         merges.set(r1 + ":" + c1, [r2 - r1 + 1, c2 - c1 + 1]);
         for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) if (r !== r1 || c !== c1) covered.add(r + ":" + c);
       }
       const defh = +(kid(sh, "sheetFormatPr")?.getAttribute("defaultRowHeight") || 15), rows = new Map(), days = {}, colors = [];
-      let maxc = Math.max(0, ...Object.keys(cols).map(Number)), maxr = 0;
+      let maxc = Math.max(0, ...Object.keys(cols).map(Number)), maxr = 0, rn = 0;
+      // giorni del viaggio scritti nel foglio: vince l'intestazione (testo corto come «LUNEDÌ 22 FEBBRAIO» o una cella data)
+      // su una nota che nomina la data («prenotare entro il 23 febbraio»); a pari merito la prima riga
+      const dayPri = {}, addDay = (d, p) => { if (isoDay(d) && d >= T.inizio && d <= T.fine && (!(d in days) || p < dayPri[d])) { days[d] = rn; dayPri[d] = p; } };
       for (const r of all(kid(sh, "sheetData"), "row")) {
-        const rn = +r.getAttribute("r"), cells = new Map(); if (r.getAttribute("hidden") === "1") continue;
+        rn = +r.getAttribute("r") || rn + 1;   // senza numero (alcuni programmi lo omettono): quella dopo
+        const cells = new Map(); if (r.getAttribute("hidden") === "1" || rn > 5000) continue;
+        let cn = 0;
         for (const c of kids(r, "c")) {
-          const [cn] = ref(c.getAttribute("r")), xf = xfs[+c.getAttribute("s") || 0] || {}, v = kid(c, "v"), t = c.getAttribute("t");
-          let txt = "";
-          if (t === "inlineStr") txt = all(c, "t").map(x => x.textContent).join("");
+          cn = ref(c.getAttribute("r"))[0] || cn + 1;
+          const xf = xfs[+c.getAttribute("s") || 0] || {}, v = kid(c, "v"), t = c.getAttribute("t");
+          let txt = "", iso = "";
+          if (t === "inlineStr") txt = xtext(kid(c, "is"));
           else if (v) {
             if (t === "s") txt = sst[+v.textContent] ?? "";
             else if (t === "str" || t === "b" || t === "e") txt = v.textContent;
+            else if (t === "d") { iso = v.textContent.slice(0, 10); txt = isoDay(iso) ? iso.split("-").reverse().join("/") : v.textContent; }
             else {
-              const f = +v.textContent;
-              // orari (frazioni di giorno) come 07:30; il resto come numero
-              if ([18, 19, 20, 21, 45, 46].includes(xf.nf) || (f > 0 && f < 1 && ![9, 10].includes(xf.nf))) { const m = Math.round((f % 1) * 1440); txt = String(Math.floor(m / 60) % 24).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0"); }
-              else if (xf.nf === 9 || xf.nf === 10) txt = Math.round(f * 100) + "%";
-              else txt = String(Math.round(f * 100) / 100).replace(".", ",");
+              const f = +v.textContent, n = Number.isFinite(f) ? fmtNum(f, xf.nf) : v.textContent;
+              if (typeof n === "object") { txt = n.t; iso = n.iso; } else txt = n;
             }
           }
           if (!txt && !xf.fill && !Object.keys(xf.bd || {}).length) continue;
           cells.set(cn, [txt, xf]); maxc = Math.max(maxc, cn);
           if (xf.fill && colors.length < 3 && !colors.includes(xf.fill) && !/^#f{6}$/i.test(xf.fill)) colors.push(xf.fill);
+          if (iso) addDay(iso, 0);
           const dm = txt && DAY_RX.exec(txt);
-          if (dm) { const d = `${year}-${String(MESI.indexOf(dm[2].toLowerCase()) + 1).padStart(2, "0")}-${dm[1].padStart(2, "0")}`; if (isoDay(d) && !(d in days)) days[d] = rn; }
+          if (dm) addDay(`${year}-${String(MESI.indexOf(dm[2].toLowerCase()) + 1).padStart(2, "0")}-${dm[1].padStart(2, "0")}`, txt.trim().length > 32 ? 1 : 0);
         }
         rows.set(rn, { ht: r.getAttribute("ht") ? +r.getAttribute("ht") : defh, cells }); if (cells.size) maxr = Math.max(maxr, rn);
       }
       for (const k of merges.keys()) { const [r, c] = k.split(":").map(Number); maxr = Math.max(maxr, r); maxc = Math.max(maxc, c + merges.get(k)[1] - 1); }
-      maxc = Math.min(maxc, 40);
+      maxc = Math.min(maxc, 40); maxr = Math.min(maxr, 5000);
       sheets.push({ name: s.getAttribute("name") || "Foglio", cols, rows, merges, covered, maxc, maxr, defh, days, colors });
     }
     if (!sheets.length) throw new Error("vuoto");
@@ -2824,7 +2861,8 @@
       h += `<tr style="height:${(row.ht * 4 / 3).toFixed(1)}px"${day ? ` data-day="${day}"` : ""}>`;
       for (let c = 1; c <= sh.maxc; c++) {
         if (sh.covered.has(r + ":" + c)) continue;
-        const [txt, xf] = row.cells.get(c) || ["", null], mg = sh.merges.get(r + ":" + c), css = [];
+        const [txt, xf] = row.cells.get(c) || ["", null], css = [];
+        let mg = sh.merges.get(r + ":" + c); if (mg) mg = [mg[0], Math.min(mg[1], sh.maxc - c + 1)];   // unita oltre l'ultima colonna mostrata
         if (xf) {
           const f = xf.f || {};
           if (f.b) css.push("font-weight:700"); if (f.i) css.push("font-style:italic");
@@ -2846,11 +2884,12 @@
     return h + "</table>";
   }
   // nome del foglio da mostrare: «Nara_Osaka» → «Nara · Osaka», «TOKYO» → «Tokyo»
-  const sheetLabel = n => String(n).replace(/_/g, " · ").replace(/\b([A-ZÀ-Ý]{2,})\b/g, w => w[0] + w.slice(1).toLowerCase()).trim().slice(0, 40) || "Foglio";
+  const sheetLabel = n => String(n).replace(/_/g, " · ").replace(/(?<!\p{L})\p{Lu}{2,}(?!\p{L})/gu, w => w[0] + w.slice(1).toLowerCase()).trim().slice(0, 40) || "Foglio";
 
   // — Home e scelta del foglio di oggi —
   // una voce per foglio: { a, sh (indice del foglio nel file Excel, -1 per un'immagine), nome, d (date), c (colori) }
-  const fogliVoci = () => fogli().flatMap(a => a.xlsx ? (a.fogli || []).map((f, sh) => ({ a, sh, nome: sheetLabel(f.n), d: f.d || [], c: f.c || [] })) : [{ a, sh: -1, nome: a.nome, d: [], c: [] }]);
+  // (un file Excel senza l'elenco dei fogli, arrivato rovinato: un pulsante solo, col nome del file)
+  const fogliVoci = () => fogli().flatMap(a => a.xlsx && a.fogli?.length ? a.fogli.map((f, sh) => ({ a, sh, nome: sheetLabel(f.n), d: f.d || [], c: f.c || [] })) : [{ a, sh: a.xlsx ? 0 : -1, nome: a.nome, d: [], c: [] }]);
   const fmtShort = d => fmtDay(d, { day: "numeric", month: "short" });
   const vGiorni = v => { const d = [...v.d].sort(); return d.length ? (d.length === 1 ? fmtShort(d[0]) : `${fmtShort(d[0])} – ${fmtShort(d[d.length - 1])}`) : v.a.dal && v.a.al ? (v.a.dal === v.a.al ? fmtShort(v.a.dal) : `${fmtShort(v.a.dal)} – ${fmtShort(v.a.al)}`) : ""; };
   // foglio di oggi (solo in viaggio): quello con la data di oggi scritta dentro, se no quello con il nome della zona di oggi
@@ -3055,7 +3094,7 @@
       ${fs.map(a => `<div class="card fedit" data-fid="${a.id}">
         <div class="row"><button class="foglio mini" data-foglio="${a.id}" data-sh="0" aria-label="Apri ${esc(a.nome)}">${a.xlsx ? xlThumb(a.fogli?.[0]?.c || []) : `<span class="fth" data-dth="${a.id}">${icon("FileText")}</span>`}</button>
           <div class="grow"><label class="small muted" for="fn-${a.id}">Nome</label><input id="fn-${a.id}" data-f="nome" value="${esc(a.nome)}" maxlength="60" autocomplete="off"></div></div>
-        ${a.xlsx ? `<p class="small muted fsheets">${(a.fogli || []).length === 1 ? "1 foglio" : (a.fogli || []).length + " fogli"}: ${(a.fogli || []).map(f => esc(sheetLabel(f.n))).join(", ")}</p>`
+        ${a.xlsx ? `<p class="small muted fsheets">${!a.fogli?.length ? "File Excel" : `${a.fogli.length === 1 ? "1 foglio" : a.fogli.length + " fogli"}: ${a.fogli.map(f => esc(sheetLabel(f.n))).join(", ")}`}</p>`
           : `<div class="fdays"><div><label class="small muted">Dal</label><select data-f="dal">${dayOpt(a.dal, "—")}</select></div><div><label class="small muted">Al</label><select data-f="al">${dayOpt(a.al, "—")}</select></div></div>`}
         <div class="row fbtns"><button class="btn small" data-fopen="${a.id}">${icon("FileText")} Apri</button><button class="btn small" data-frep="${a.id}">${icon("RotateCcw")} Sostituisci</button><button class="btn small ghost fdel" data-fdel="${a.id}" aria-label="Elimina">${icon("Trash2")}</button></div>
       </div>`).join("")}`;
