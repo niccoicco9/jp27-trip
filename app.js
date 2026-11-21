@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 215;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 216;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -125,6 +125,7 @@
   let booked = new Set(LS.get("booked", []));
   let checks = new Set(LS.get("checks", []));
   let me = LS.get("me", "");
+  if (!T.viaggiatori.includes(me)) me = "";   // nome rovinato o non più nel viaggio ("Niccolo", 123): si richiede
   let lastEdit = LS.get("lastEdit", null);   // { by, at }
   let sync = null, syncStatus = "off", pendingRemote = false, syncErr = "", serverAt = 0, onlineSince = 0;
   let reordering = null;   // una tappa si sta spostando col dito (vedi startReorder): la pagina non si ridisegna sotto
@@ -309,7 +310,13 @@
   // Spese e prenotazioni: una voce per documento, in cache locale per l'avvio offline.
   const lists = { spese: cleanList("spese", LS.get("spese", [])), prenotazioni: cleanList("prenotazioni", LS.get("prenotazioni", [])), luoghi: cleanList("luoghi", LS.get("luoghi", [])), categorie: cleanList("categorie", LS.get("categorie", [])), allegati: cleanList("allegati", LS.get("allegati", [])) };
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-  let code = LS.get("code", "");
+  // codice incollato da WhatsApp/Note: via i caratteri invisibili (spazio a larghezza zero, BOM…), spazi strani → normali.
+  // Maiuscole e simboli restano: il codice li distingue
+  const cleanCode = c => typeof c === "string" ? c.normalize("NFC").replace(/[\u200B-\u200D\u2060\uFEFF]/g, "").replace(/\s/g, " ").trim() : "";
+  // nomi che Firestore non accetta per un documento: con questi la sincronizzazione resterebbe in errore per sempre
+  const validCode = c => !!c && !c.includes("/") && c !== "." && c !== ".." && !/^__.*__$/.test(c) && new TextEncoder().encode(c).length <= 1500;
+  let code = cleanCode(LS.get("code", ""));
+  if (!validCode(code)) code = "";
   let pushT;
 
   // luoghi aggiunti da voi (condivisi): si uniscono a quelli di Wanderlog
@@ -4495,8 +4502,9 @@
         if (!needCode) { setMe(pick); closeSheet(); toast(`Ciao ${me}! 👋`); render(); }
       });
       $("#enter", el)?.addEventListener("click", () => {
-        const c = $("#tcode", el).value.trim();   // il codice distingue maiuscole e minuscole
+        const c = cleanCode($("#tcode", el).value);   // il codice distingue maiuscole e minuscole
         if (!c) return toast("Scrivi il codice del viaggio");
+        if (!validCode(c)) return toast("Codice del viaggio non valido");
         if (!pick) return toast("Scegli chi sei");
         badCode = ""; oldCode = false; try { sessionStorage.removeItem("jp27:badCode"); } catch {}
         setMe(pick);
