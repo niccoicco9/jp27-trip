@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 199;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 200;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2973,13 +2973,22 @@
     const z = Object.entries(c).sort((a, b) => b[1] - a[1])[0][0];
     return ps.some(p => p.z === z && kmBetween(p, pt) < HOTEL_KM);
   }
+  // indirizzo copiato da Google Maps ("1 Chome-15-8 Hyakunincho, Shinjuku City, Tokyo 169-0073, Giappone"): OpenStreetMap
+  // non lo trova con il paese, il codice postale, "Chome" e "City"; si prova anche con le parti in ordine inverso
+  function cleanAddr(a) {
+    const parts = String(a || "").replace(/〒?\s*\d{3}-?\d{4}/g, "").replace(/(\d+)\s*Chome-/gi, "$1-").replace(/\s+(City|Ward|Prefecture)\b/gi, "")
+      .split(",").map(x => x.trim()).filter(x => x && !/^(Giappone|Japan|Japon|Japón|日本)$/i.test(x));
+    return [parts.join(", "), parts.slice().reverse().join(", ")].filter((x, i, l) => x && l.indexOf(x) === i);
+  }
   const geoTried = new Set(), geoKey = h => h.id + "|" + h.jp + "|" + h.indirizzo + "|" + h.titolo + "|" + h.dal + "|" + h.al;
   async function geocodeHotel(h) {
     if (!navigator.onLine) return;
     geoTried.add(geoKey(h));
     let found = null, failed = false;
     // col solo nome si trova spesso un hotel della stessa catena in un'altra città: si tiene il primo risultato vicino alle tappe
-    for (const q of [h.jp, h.indirizzo && h.indirizzo + ", Japan", h.titolo + ", Japan"].filter(Boolean)) {
+    const qs = [h.jp, h.indirizzo && h.indirizzo + ", Japan", ...cleanAddr(h.indirizzo), h.titolo + ", Japan"].filter((x, i, l) => x && l.indexOf(x) === i);
+    for (const [i, q] of qs.entries()) {
+      if (i) await new Promise(r => setTimeout(r, 1100));   // OpenStreetMap chiede al massimo una ricerca al secondo
       try {
         const r = await (await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=jp&q=${encodeURIComponent(q)}`)).json();
         found = r.map(x => ({ lat: +x.lat, lng: +x.lon })).find(pt => isFinite(pt.lat) && isFinite(pt.lng) && hotelFits(h, pt));
@@ -2991,6 +3000,7 @@
     if (!cur || geoKey(cur) !== geoKey(h)) return;
     if (found) putItem("prenotazioni", { ...cur, lat: found.lat, lng: found.lng });
     else if (cur.lat && !failed) { const { lat, lng, ...rest } = cur; putItem("prenotazioni", rest); }   // meglio nessuna puntina che una nel posto sbagliato
+    refreshMap();   // con la mappa aperta la puntina compare (o sparisce) subito
   }
   // hotel senza puntina (indirizzo cambiato senza rete) o con la puntina lontana dalle sue tappe (trovata prima di questo
   // controllo, o programma cambiato): si riprova, una volta per indirizzo e date, uno alla volta
