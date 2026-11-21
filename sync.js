@@ -7,7 +7,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   initializeFirestore, persistentLocalCache, doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, serverTimestamp,
-  FieldPath, arrayUnion, arrayRemove, deleteField, disableNetwork, enableNetwork, terminate, clearIndexedDbPersistence, getDoc, Bytes,
+  FieldPath, arrayUnion, arrayRemove, deleteField, disableNetwork, enableNetwork, terminate, clearIndexedDbPersistence, getDoc, getDocFromServer, Bytes,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 export const LISTS = ["spese", "prenotazioni", "luoghi", "categorie", "allegati"];
@@ -19,7 +19,9 @@ export function start(config, code, h, { memory = false } = {}) {
   try { db = initializeFirestore(app, memory ? {} : { localCache: persistentLocalCache() }); }
   catch { memory = true; db = initializeFirestore(initializeApp(config, "mem" + Date.now()), {}); }
   const main = doc(db, "viaggi", code);
-  const fail = err => h.status("error", err);
+  // lettura rifiutata per i permessi: non vuol dire per forza codice sbagliato (una sola raccolta, regole in
+  // aggiornamento). Lo decide l'app chiedendo al server il documento principale (check)
+  const fail = err => err?.code === "permission-denied" ? h.denied(err) : h.status("error", err);
   let first = true;
 
   const unsubs = [];
@@ -92,6 +94,8 @@ export function start(config, code, h, { memory = false } = {}) {
   return {
     patch,
     wake,
+    // "ok" = il server dà il documento principale (il codice va bene), "denied" = lo nega, "net" = non risponde
+    check: () => getDocFromServer(main).then(() => "ok", e => e?.code === "permission-denied" ? "denied" : "net"),
     // ripara: butta la copia locale di Firestore (non le modifiche già inviate) e si riparte dal server
     stop: () => { stopped = true; unsubs.forEach(u => u()); return terminate(db).catch(() => {}); },
     reset: () => { stopped = true; return terminate(db).then(() => clearIndexedDbPersistence(db)); },

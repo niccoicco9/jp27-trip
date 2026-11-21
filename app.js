@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 218;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 219;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -461,7 +461,7 @@
   const saveOutbox = () => { if (outboxSaving) return; outboxSaving = true; queueMicrotask(() => { outboxSaving = false; LS.set("outbox", outbox); }); };
   function sendQueued(key) {
     const o = outbox[key];
-    if (!o || !sync) return;
+    if (!o || !sync || !code) return;   // senza codice (rifiutato, in attesa di quello giusto) la voce resta
     if ((o.c ?? code) !== code) { delete outbox[key]; saveOutbox(); return; }   // di un altro viaggio
     const s = sync;
     (o.op === "put" ? s.put(o.name, o.item, o.rm) : s.del(o.name, o.id)).then(ok => {
@@ -614,18 +614,46 @@
       old.stop?.().finally(() => startSync());
       return;
     }
-    if (err?.code === "permission-denied" && code) {   // codice sbagliato o regole non pubblicate
-      toast("Codice del viaggio non valido");
-      badCode = code; try { sessionStorage.setItem("jp27:badCode", code); } catch {}
-      code = ""; LS.set("code", ""); setTimeout(() => askWho(true), 400);
-      // dati condivisi mai visti: con il codice giusto si richiede se aggiungere quello fatto qui
-      if (!localStorage.getItem("jp27:syncBase")) { try { localStorage.removeItem("jp27:joinBase"); } catch {} confirmed = { plan: clone(plan), booked: [...booked] }; }
-    }
     const ds = $("#dsync"); if (ds) ds.textContent = s === "online" ? "Sincronizzato" : "In attesa di rete";   // Giorni aperto: lo stato cambia senza ridisegnare
     const el = $("#syncdot");
     el.hidden = false; el.className = "sync-dot" + (s === "online" ? " on" : s === "offline" ? "" : " err");
     el.title = s === "online" ? "Dati condivisi: sincronizzati" : s === "offline" ? "Offline: le modifiche partiranno appena torna la rete" : "Errore di sincronizzazione: le modifiche restano su questo telefono. Chiudi e riapri l'app per riprovare";
     el.setAttribute("aria-label", el.title);
+  }
+  // Lettura rifiutata dal server. Codice sbagliato, ma anche solo una raccolta che le regole non permettono, regole
+  // in aggiornamento… Prima il codice si toglieva a ogni rifiuto, anche durante il viaggio. Ora si chiede al server il
+  // documento principale: se lo dà il codice va bene (si riparte dopo un po'); se lo nega è il codice, ma uno che qui
+  // ha già funzionato si toglie solo se lo nega ancora dopo un minuto e mezzo (rifiuto passeggero)
+  let denying = null, deniedN = 0, syncDead = false;
+  function onDenied(err) {
+    setSync("error", err);
+    if (denying || !sync || !code) return;
+    const s = sync, c = code, known = LS.get("dataCode", "") === c;
+    denying = (async () => {
+      for (const wait of known ? [0, 20e3, 70e3] : [0]) {
+        await new Promise(r => setTimeout(r, wait));
+        let r = await s.check();
+        while (r === "net" && s === sync) { await new Promise(ok => addEventListener("online", ok, { once: true })); r = await s.check(); }   // si riprova con la rete
+        if (s !== sync || c !== code) return;
+        if (r === "ok") {   // non è il codice: le letture rifiutate sono ferme, si riparte (sempre più di rado se si ripete)
+          const d = Math.min(3e5, 15e3 * 2 ** deniedN++);
+          setTimeout(() => { if (s === sync) { sync = null; syncStarting = false; s.stop().finally(() => startSync()); } }, d);
+          return;
+        }
+      }
+      rejectCode();
+    })().finally(() => { denying = null; });
+  }
+  // codice rifiutato davvero: si ferma la sincronizzazione (niente più tentativi con quel codice) e si chiede di nuovo.
+  // Coda delle modifiche e allegati da caricare restano sul telefono: ripartono quando si rimette il codice
+  function rejectCode() {
+    toast("Codice del viaggio non valido");
+    badCode = code; try { sessionStorage.setItem("jp27:badCode", code); } catch {}
+    code = ""; LS.set("code", ""); setTimeout(() => askWho(true), 400);
+    const old = sync; sync = null; syncStarting = false; syncDead = !!old; old?.stop();
+    // dati condivisi mai visti: con il codice giusto si richiede se aggiungere quello fatto qui
+    if (!localStorage.getItem("jp27:syncBase")) { try { localStorage.removeItem("jp27:joinBase"); } catch {} confirmed = { plan: clone(plan), booked: [...booked] }; }
+    render();
   }
   $("#syncdot").onclick = e => toast(e.currentTarget.title);   // sul telefono il "title" non si vede: lo dice un tocco
   let syncStarting = false, syncMemory = false;
@@ -675,7 +703,7 @@
     if (!(await joinLocal())) { syncStarting = false; return; }
     // si riparte dall'ultimo stato confermato: quello che era stato inviato senza conferma si rimanda
     synced ={ plan: clone(confirmed.plan), booked: [...confirmed.booked] };
-    import("./sync.js").then(m => { sync = m.start(window.FIREBASE, code, { main: onRemote, list: onList, server: onServer, status: setSync, recreate: () => sync.pushMain({ plan, booked: [...booked], by: me || "?" }) }, { memory: syncMemory }); checkOutbox(); uploadDocs(); dataVer++; if (location.hash.startsWith("#giorni") && !sheetOpen() && !reordering) keepScroll(render); }).catch(err => { syncStarting = false; setSync("error", err); });
+    import("./sync.js").then(m => { sync = m.start(window.FIREBASE, code, { main: onRemote, list: onList, server: onServer, status: setSync, denied: onDenied, recreate: () => sync.pushMain({ plan, booked: [...booked], by: me || "?" }) }, { memory: syncMemory }); checkOutbox(); uploadDocs(); dataVer++; if (location.hash.startsWith("#giorni") && !sheetOpen() && !reordering) keepScroll(render); }).catch(err => { syncStarting = false; setSync("error", err); });
   }
 
   // ricerca tollerante: ignora accenti (ō → o), trattini, apostrofi e maiuscole; ogni parola deve comparire
@@ -2682,7 +2710,7 @@
   // docSending: id → sincronizzazione che lo sta mandando (dopo una ripartenza quella nuova lo rimanda)
   const docUp = LS.get("docUp", {}), docSending = new Map();
   async function uploadDocs() {
-    if (!sync || !("caches" in window)) return;
+    if (!sync || !code || !("caches" in window)) return;
     const s = sync, c = await caches.open(DOCS).catch(() => null); if (!c) return;
     if (s !== sync) return;
     for (const [id, n] of Object.entries(docUp)) {
@@ -4535,7 +4563,7 @@
       <h2>${needCode ? "Benvenuti a bordo ✈️" : "Chi sei?"}</h2>
       <p class="lead">${needCode ? "Inserisci il codice del viaggio che vi siete passati: protegge programma, prenotazioni e spese." : "Così sappiamo chi ha fatto le modifiche."}</p>
       ${needCode ? `<input type="text" id="tcode" placeholder="Codice del viaggio" enterkeyhint="go" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(code || badCode)}" style="font-weight:700;letter-spacing:.04em">
-        ${(badCode || oldCode) && !code ? `<p class="small" id="badcode" style="color:var(--shu);margin:8px 0 0">${icon("KeyRound")} ${badCode ? "Non è il codice giusto: controlla maiuscole, minuscole e simboli." : "Il codice del viaggio è cambiato: usa quello nuovo che vi siete passati."}</p>` : ""}` : ""}
+        ${(badCode || oldCode) && !code ? `<p class="small" id="badcode" style="color:var(--shu);margin:8px 0 0">${icon("KeyRound")} ${badCode ? (badCode === LS.get("dataCode", "") ? "Il server non accetta più questo codice, che prima funzionava: forse è stato cambiato. Chiedi agli altri quello nuovo." : "Non è il codice giusto: controlla maiuscole, minuscole e simboli.") : "Il codice del viaggio è cambiato: usa quello nuovo che vi siete passati."}</p>` : ""}` : ""}
       <div class="who">${T.viaggiatori.map(n => `<button data-who="${n}" class="${n === me ? "sel" : ""}"><span class="avatar" style="background:${AVATAR[n] || "#888"}">${n[0]}</span>${n}</button>`).join("")}</div>
       ${needCode ? `<div class="btns"><button class="btn ghost" data-close>Più tardi</button><button class="btn primary" id="enter">Entra</button></div>
         <p class="muted small" style="margin-top:12px">Senza codice l'app funziona lo stesso, ma solo su questo telefono e senza spese e prenotazioni condivise.</p>` : ""}`, el => {
@@ -4557,7 +4585,8 @@
         closeSheet();
         LS.set("skipCode", false);
         if (other) { const old = sync; sync = null; Promise.resolve(old?.stop()).finally(() => { forgetTrip(); location.reload(); }); }
-        else if (changed && sync) location.reload(); else { startSync(); toast(`Ciao ${me}! 👋`); render(); }
+        // syncDead: Firestore fermato dopo un codice rifiutato non riparte nella stessa pagina
+        else if (changed && (sync || syncDead)) location.reload(); else { startSync(); toast(`Ciao ${me}! 👋`); render(); }
       });
     }, () => {
       if (needCode && !code) {
