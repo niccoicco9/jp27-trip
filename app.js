@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 203;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 204;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -97,6 +97,13 @@
         const out = { ...x, pagine: n, nome: str(x.nome).slice(0, 60) || "Documento", t: +x.t || 0 };
         if (!/^https:\/\/\S+$/.test(str(x.link))) delete out.link;
         for (const k of ["dal", "al"]) if (!isoDay(x[k])) delete out[k];
+        // file Excel: nomi dei fogli, giorni scritti dentro e colori (per la miniatura)
+        if (x.xlsx) {
+          out.xlsx = 1;
+          out.fogli = (Array.isArray(x.fogli) ? x.fogli : []).filter(f => f && typeof f === "object").slice(0, 20).map(f => ({
+            n: str(f.n).slice(0, 40) || "Foglio", d: (Array.isArray(f.d) ? f.d : []).filter(d => isoDay(d)).slice(0, 40),
+            c: (Array.isArray(f.c) ? f.c : []).filter(c => /^#[0-9a-f]{6}$/i.test(c)).slice(0, 3) }));
+        } else { delete out.xlsx; delete out.fogli; }
         return out;
       }
       if (name === "categorie") return str(x.n) ? { ...x, n: str(x.n).slice(0, 24), e: oneEmo(x.e), col: /^#[0-9a-f]{6}$/i.test(x.col) ? x.col : "#8a6d4b" } : null;
@@ -2684,11 +2691,13 @@
   }
   setInterval(sweepDocs, 30e3);
 
-  // ——— I MIEI FOGLI: gli itinerari fatti in Excel, salvati come immagini (PDF o screenshot) ———
-  // Sono documenti come quelli delle prenotazioni (stesse pagine su Firestore e copia offline), con pren "fogli:<nome>":
-  // compaiono solo a chi li usa (FOGLI_DI), in Home e in Utility › I miei fogli. Un foglio lungo si taglia a strisce
-  // larghe fino a 1600 px (così il testo resta leggibile) e nel visore le strisce si leggono di seguito, come in Excel.
-  const FOGLI_DI = ["Antonella"], SHEET_MAX = 30;
+  // ——— I MIEI FOGLI: gli itinerari fatti in Excel ———
+  // Si carica il file .xlsx vero: resta salvato com'è (come i documenti delle prenotazioni: Firestore + copia offline,
+  // pren "fogli:<nome>") e l'app lo mostra impaginato come in Excel (colori, bordi, celle unite), un foglio alla volta.
+  // «Apri in Excel» passa il file vero all'app Excel. Vanno bene anche PDF e screenshot (diventano immagini).
+  // Compaiono solo a chi li usa (FOGLI_DI), in Home e in Utility › I miei fogli.
+  const FOGLI_DI = ["Antonella"], SHEET_MAX = 30, XLSX_MAX = 900e3;
+  const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   const myFogli = () => FOGLI_DI.includes(me);
   const fogliKey = () => "fogli:" + (me || "?");
   const isFoglio = a => String(a.pren).startsWith("fogli:");
@@ -2704,52 +2713,227 @@
     }
     return out;
   }
-  // foglio del giorno (solo in viaggio): quello con i giorni scelti, se no quello con il nome della zona di oggi (es. "Tokyo")
-  function foglioOggi(fs) {
-    const today = todayJP(); if (today < T.inizio || today > T.fine) return null;
-    const z = dayZone(today), nome = z && z !== "altre" ? zona[z].nome.toLowerCase() : "";
-    return fs.find(a => a.dal && a.al && a.dal <= today && today <= a.al) || (nome && fs.find(a => a.nome.toLowerCase().includes(nome))) || null;
+
+  // — lettura del file Excel (.xlsx = uno zip di file XML), senza librerie —
+  async function unzip(buf) {
+    const dv = new DataView(buf), u8 = new Uint8Array(buf), td = new TextDecoder(), files = {};
+    let e = buf.byteLength - 22; while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--;
+    if (e < 0) throw new Error("zip");
+    let p = dv.getUint32(e + 16, true);
+    for (let i = 0, n = dv.getUint16(e + 10, true); i < n; i++) {
+      const nl = dv.getUint16(p + 28, true), name = td.decode(u8.subarray(p + 46, p + 46 + nl));
+      files[name] = { meth: dv.getUint16(p + 10, true), size: dv.getUint32(p + 20, true), off: dv.getUint32(p + 42, true) };
+      p += 46 + nl + dv.getUint16(p + 30, true) + dv.getUint16(p + 32, true);
+    }
+    return async name => {
+      const f = files[name]; if (!f) return null;
+      const s = f.off + 30 + dv.getUint16(f.off + 26, true) + dv.getUint16(f.off + 28, true), raw = u8.subarray(s, s + f.size);
+      if (f.meth === 0) return td.decode(raw);
+      return new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).text();
+    };
   }
+  const MESI = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
+  const DAY_RX = new RegExp(`(\\d{1,2})\\s+(${MESI.join("|")})`, "i");
+  // { sheets: [{ name, cols, rows: Map(r → { ht, cells: Map(c → [testo, stile]) }), merges, covered, maxc, maxr, days: {data → riga}, colors }] }
+  async function readXlsx(buf) {
+    const read = await unzip(buf), P = new DOMParser();
+    const X = async n => { const t = await read(n); return t ? P.parseFromString(t, "application/xml") : null; };
+    const all = (el, n) => el ? [...el.getElementsByTagNameNS("*", n)] : [];
+    const kids = (el, n) => el ? [...el.children].filter(c => c.localName === n) : [];
+    const kid = (el, n) => kids(el, n)[0] || null;
+    const wb = await X("xl/workbook.xml"); if (!wb) throw new Error("xlsx");
+    const rels = Object.fromEntries(all(await X("xl/_rels/workbook.xml.rels"), "Relationship").map(r => [r.getAttribute("Id"), r.getAttribute("Target")]));
+    const sst = all(await X("xl/sharedStrings.xml"), "si").map(si => all(si, "t").map(t => t.textContent).join(""));
+    const th = {}; for (const el of all(await X("xl/theme/theme1.xml"), "clrScheme")[0]?.children || []) { const c = el.firstElementChild; th[el.localName] = c && (c.getAttribute("lastClr") || c.getAttribute("val")); }
+    const THEME = ["lt1", "dk1", "lt2", "dk2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6", "hlink", "folHlink"].map((k, i) => th[k] || (i % 2 ? "000000" : "FFFFFF"));
+    const IDX = { 8: "000000", 9: "FFFFFF", 10: "FF0000", 11: "00FF00", 12: "0000FF", 13: "FFFF00", 22: "C0C0C0", 23: "808080" };
+    const hex = n => Math.round(Math.min(255, Math.max(0, n * 255))).toString(16).padStart(2, "0");
+    const color = el => {
+      if (!el) return null;
+      let rgb = el.getAttribute("rgb")?.slice(-6) || (el.hasAttribute("theme") ? THEME[+el.getAttribute("theme")] : el.hasAttribute("indexed") ? IDX[+el.getAttribute("indexed")] : null);
+      if (!rgb) return null;
+      const t = +(el.getAttribute("tint") || 0);
+      if (t) {   // la sfumatura di Excel: più chiaro (tint > 0) o più scuro (tint < 0) in HSL
+        const [r, g, b] = [0, 2, 4].map(i => parseInt(rgb.slice(i, i + 2), 16) / 255), mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+        let h = 0, s = 0, l = (mx + mn) / 2; const d = mx - mn;
+        if (d) { s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn); h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h /= 6; }
+        l = t < 0 ? l * (1 + t) : l * (1 - t) + t;
+        const q = l < .5 ? l * (1 + s) : l + s - l * s, pp = 2 * l - q;
+        const f = k => { k = (k + 1) % 1; return k < 1 / 6 ? pp + (q - pp) * 6 * k : k < .5 ? q : k < 2 / 3 ? pp + (q - pp) * (2 / 3 - k) * 6 : pp; };
+        rgb = s ? hex(f(h + 1 / 3)) + hex(f(h)) + hex(f(h - 1 / 3)) : hex(l) + hex(l) + hex(l);
+      }
+      return "#" + rgb.toLowerCase();
+    };
+    const st = (await X("xl/styles.xml"))?.documentElement;
+    const fonts = kids(kid(st, "fonts"), "font").map(f => ({ b: !!kid(f, "b") && kid(f, "b").getAttribute("val") !== "0", i: !!kid(f, "i"), sz: +(kid(f, "sz")?.getAttribute("val") || 11), c: color(kid(f, "color")) }));
+    const fills = kids(kid(st, "fills"), "fill").map(f => { const p = kid(f, "patternFill"); return p && p.getAttribute("patternType") === "solid" ? color(kid(p, "fgColor")) : null; });
+    const W = { thin: 1, hair: 1, dotted: 1, dashed: 1, medium: 2, mediumDashed: 2, thick: 3, double: 3 };
+    const borders = kids(kid(st, "borders"), "border").map(b => Object.fromEntries(["left", "right", "top", "bottom"].map(s => [s, kid(b, s)]).filter(([, e]) => e?.getAttribute("style")).map(([s, e]) => [s, `${W[e.getAttribute("style")] || 1}px solid ${color(kid(e, "color")) || "#000"}`])));
+    const xfs = kids(kid(st, "cellXfs"), "xf").map(x => { const al = kid(x, "alignment"); return { f: fonts[+x.getAttribute("fontId") || 0] || {}, fill: fills[+x.getAttribute("fillId") || 0], bd: borders[+x.getAttribute("borderId") || 0] || {}, nf: +x.getAttribute("numFmtId") || 0, h: al?.getAttribute("horizontal"), v: al?.getAttribute("vertical"), wrap: al?.getAttribute("wrapText") === "1" }; });
+    const ref = r => { const m = /^([A-Z]+)(\d+)$/.exec(r); let n = 0; for (const ch of m[1]) n = n * 26 + ch.charCodeAt(0) - 64; return [n, +m[2]]; };
+    const year = +T.inizio.slice(0, 4), sheets = [];
+    for (const s of all(wb, "sheet")) {
+      const rid = s.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id") || s.getAttribute("r:id"), tgt = rels[rid];
+      if (!tgt || s.getAttribute("state") === "hidden") continue;
+      const sh = (await X(tgt.startsWith("/") ? tgt.slice(1) : "xl/" + tgt.replace(/^\.\//, "")))?.documentElement; if (!sh) continue;
+      const cols = {}; for (const c of all(kid(sh, "cols"), "col")) for (let i = +c.getAttribute("min"); i <= +c.getAttribute("max") && i < 60; i++) cols[i] = c.getAttribute("hidden") === "1" ? 0 : +c.getAttribute("width");
+      const merges = new Map(), covered = new Set();
+      for (const m of all(sh, "mergeCell")) {
+        const [a, b] = m.getAttribute("ref").split(":"); if (!b) continue; const [c1, r1] = ref(a), [c2, r2] = ref(b);
+        merges.set(r1 + ":" + c1, [r2 - r1 + 1, c2 - c1 + 1]);
+        for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) if (r !== r1 || c !== c1) covered.add(r + ":" + c);
+      }
+      const defh = +(kid(sh, "sheetFormatPr")?.getAttribute("defaultRowHeight") || 15), rows = new Map(), days = {}, colors = [];
+      let maxc = Math.max(0, ...Object.keys(cols).map(Number)), maxr = 0;
+      for (const r of all(kid(sh, "sheetData"), "row")) {
+        const rn = +r.getAttribute("r"), cells = new Map(); if (r.getAttribute("hidden") === "1") continue;
+        for (const c of kids(r, "c")) {
+          const [cn] = ref(c.getAttribute("r")), xf = xfs[+c.getAttribute("s") || 0] || {}, v = kid(c, "v"), t = c.getAttribute("t");
+          let txt = "";
+          if (t === "inlineStr") txt = all(c, "t").map(x => x.textContent).join("");
+          else if (v) {
+            if (t === "s") txt = sst[+v.textContent] ?? "";
+            else if (t === "str" || t === "b" || t === "e") txt = v.textContent;
+            else {
+              const f = +v.textContent;
+              // orari (frazioni di giorno) come 07:30; il resto come numero
+              if ([18, 19, 20, 21, 45, 46].includes(xf.nf) || (f > 0 && f < 1 && ![9, 10].includes(xf.nf))) { const m = Math.round((f % 1) * 1440); txt = String(Math.floor(m / 60) % 24).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0"); }
+              else if (xf.nf === 9 || xf.nf === 10) txt = Math.round(f * 100) + "%";
+              else txt = String(Math.round(f * 100) / 100).replace(".", ",");
+            }
+          }
+          if (!txt && !xf.fill && !Object.keys(xf.bd || {}).length) continue;
+          cells.set(cn, [txt, xf]); maxc = Math.max(maxc, cn);
+          if (xf.fill && colors.length < 3 && !colors.includes(xf.fill) && !/^#f{6}$/i.test(xf.fill)) colors.push(xf.fill);
+          const dm = txt && DAY_RX.exec(txt);
+          if (dm) { const d = `${year}-${String(MESI.indexOf(dm[2].toLowerCase()) + 1).padStart(2, "0")}-${dm[1].padStart(2, "0")}`; if (isoDay(d) && !(d in days)) days[d] = rn; }
+        }
+        rows.set(rn, { ht: r.getAttribute("ht") ? +r.getAttribute("ht") : defh, cells }); if (cells.size) maxr = Math.max(maxr, rn);
+      }
+      for (const k of merges.keys()) { const [r, c] = k.split(":").map(Number); maxr = Math.max(maxr, r); maxc = Math.max(maxc, c + merges.get(k)[1] - 1); }
+      maxc = Math.min(maxc, 40);
+      sheets.push({ name: s.getAttribute("name") || "Foglio", cols, rows, merges, covered, maxc, maxr, defh, days, colors });
+    }
+    if (!sheets.length) throw new Error("vuoto");
+    return sheets;
+  }
+  // un foglio come tabella HTML con le misure di Excel (larghezze in caratteri, altezze in punti)
+  function sheetHtml(sh) {
+    const cw = []; for (let c = 1; c <= sh.maxc; c++) cw.push(sh.cols[c] === 0 ? 0 : Math.round((sh.cols[c] ?? 8.43) * 7 + 5));
+    let h = `<table class="xl"><colgroup>${cw.map(w => `<col style="width:${w}px">`).join("")}</colgroup>`;
+    for (let r = 1; r <= sh.maxr; r++) {
+      const row = sh.rows.get(r) || { ht: sh.defh, cells: new Map() }, day = Object.keys(sh.days).find(d => sh.days[d] === r);
+      h += `<tr style="height:${(row.ht * 4 / 3).toFixed(1)}px"${day ? ` data-day="${day}"` : ""}>`;
+      for (let c = 1; c <= sh.maxc; c++) {
+        if (sh.covered.has(r + ":" + c)) continue;
+        const [txt, xf] = row.cells.get(c) || ["", null], mg = sh.merges.get(r + ":" + c), css = [];
+        if (xf) {
+          const f = xf.f || {};
+          if (f.b) css.push("font-weight:700"); if (f.i) css.push("font-style:italic");
+          if (f.sz && f.sz !== 11) css.push(`font-size:${f.sz}pt`);
+          if (f.c && f.c !== "#000000") css.push(`color:${f.c}`);
+          if (xf.fill) css.push(`background:${xf.fill}`);
+          for (const [s, b] of Object.entries(xf.bd || {})) css.push(`border-${s}:${b}`);
+          const al = xf.h || (/^\d\d:\d\d$/.test(txt) ? "right" : "");
+          if (al === "center" || al === "centerContinuous") css.push("text-align:center"); else if (al === "right") css.push("text-align:right");
+          if (xf.v === "center") css.push("vertical-align:middle"); else if (xf.v === "top") css.push("vertical-align:top");
+          if (xf.wrap) css.push("white-space:normal");
+        }
+        // titolo largo quanto tutto il foglio (es. «LUNEDÌ 22 FEBBRAIO»): a sinistra, se no sul telefono resta fuori dallo schermo
+        if (mg && mg[1] >= sh.maxc && txt) css.push("text-align:left;padding-left:10px");
+        h += `<td${mg ? ` rowspan="${mg[0]}" colspan="${mg[1]}"` : ""}${css.length ? ` style="${css.join(";")}"` : ""}>${esc(txt).replace(/\n/g, "<br>")}</td>`;
+      }
+      h += "</tr>";
+    }
+    return h + "</table>";
+  }
+  // nome del foglio da mostrare: «Nara_Osaka» → «Nara · Osaka», «TOKYO» → «Tokyo»
+  const sheetLabel = n => String(n).replace(/_/g, " · ").replace(/\b([A-ZÀ-Ý]{2,})\b/g, w => w[0] + w.slice(1).toLowerCase()).trim().slice(0, 40) || "Foglio";
+
+  // — Home e scelta del foglio di oggi —
+  // una voce per foglio: { a, sh (indice del foglio nel file Excel, -1 per un'immagine), nome, d (date), c (colori) }
+  const fogliVoci = () => fogli().flatMap(a => a.xlsx ? (a.fogli || []).map((f, sh) => ({ a, sh, nome: sheetLabel(f.n), d: f.d || [], c: f.c || [] })) : [{ a, sh: -1, nome: a.nome, d: [], c: [] }]);
   const fmtShort = d => fmtDay(d, { day: "numeric", month: "short" });
-  const fogliGiorni = a => a.dal && a.al ? (a.dal === a.al ? fmtShort(a.dal) : `${fmtShort(a.dal)} – ${fmtShort(a.al)}`) : "";
+  const vGiorni = v => { const d = [...v.d].sort(); return d.length ? (d.length === 1 ? fmtShort(d[0]) : `${fmtShort(d[0])} – ${fmtShort(d[d.length - 1])}`) : v.a.dal && v.a.al ? (v.a.dal === v.a.al ? fmtShort(v.a.dal) : `${fmtShort(v.a.dal)} – ${fmtShort(v.a.al)}`) : ""; };
+  // foglio di oggi (solo in viaggio): quello con la data di oggi scritta dentro, se no quello con il nome della zona di oggi
+  function voceOggi(vs) {
+    const today = todayJP(); if (today < T.inizio || today > T.fine) return null;
+    const z = dayZone(today), words = z && z !== "altre" ? zona[z].nome.toLowerCase().split(/[^a-zà-ÿ]+/).filter(w => w.length >= 4 && w !== "vicino") : [];
+    return vs.find(v => v.d.includes(today)) || vs.find(v => v.a.dal && v.a.al && v.a.dal <= today && today <= v.a.al)
+      || vs.find(v => words.some(w => v.nome.toLowerCase().includes(w))) || null;
+  }
+  const xlThumb = c => `<span class="fth xlth" style="--c1:${c[0] || "#c00000"};--c2:${c[1] || c[0] || "#ff0000"};--c3:${c[2] || "#fbe2d6"}"></span>`;
   function fogliRow() {
     if (!myFogli()) return "";
-    const fs = fogli();
-    if (!fs.length) return `<a class="card row fogli-new" href="#utility/fogli"><span class="ic">${icon("FileText")}</span><div class="grow"><b>I tuoi fogli Excel</b><div class="muted small">Aggiungili qui e li apri con un tocco, anche offline</div></div>${icon("ChevronRight")}</a>`;
-    const oggi = foglioOggi(fs), list = oggi ? [oggi, ...fs.filter(a => a !== oggi)] : fs;
+    const vs = fogliVoci();
+    if (!vs.length) return `<a class="card row fogli-new" href="#utility/fogli"><span class="ic">${icon("FileText")}</span><div class="grow"><b>I tuoi fogli Excel</b><div class="muted small">Carica il file e lo apri con un tocco, anche offline</div></div>${icon("ChevronRight")}</a>`;
+    const oggi = voceOggi(vs), list = oggi ? [oggi, ...vs.filter(v => v !== oggi)] : vs;
     return `<div class="fogli-h"><div class="section-h"><h3>I miei fogli</h3><a class="small" href="#utility/fogli">Gestisci</a></div>
-      <div class="hscroll">${list.map(a => `<button class="foglio${a === oggi ? " on" : ""}" data-foglio="${a.id}"><span class="fth" data-dth="${a.id}">${icon("FileText")}</span><b>${esc(a.nome)}</b><small>${a === oggi ? "Oggi" : esc(fogliGiorni(a)) || "&nbsp;"}</small></button>`).join("")}</div></div>`;
+      <div class="hscroll">${list.map(v => `<button class="foglio${v === oggi ? " on" : ""}" data-foglio="${v.a.id}" data-sh="${v.sh}">${v.sh >= 0 ? xlThumb(v.c) : `<span class="fth" data-dth="${v.a.id}">${icon("FileText")}</span>`}<b>${esc(v.nome)}</b><small>${v === oggi ? "Oggi" : esc(vGiorni(v)) || "&nbsp;"}</small></button>`).join("")}</div></div>`;
   }
-  // "Apri in Excel": i file su OneDrive/SharePoint si aprono direttamente nell'app Excel (schema ms-excel di Office)
-  const xlUrl = u => /^https:\/\/([^/]*\.)?(sharepoint\.com|onedrive\.live\.com|1drv\.ms|live\.com)\//i.test(u) ? "ms-excel:ofv|u|" + u : u;
+
+  // — visore: il foglio a schermo intero, zoom con due dita o doppio tocco, linguette dei fogli come in Excel —
+  const xlCache = new Map();   // id → fogli già letti (il file si legge una volta sola finché l'app è aperta)
   const fogliPos = LS.get("fogliPos", {});
-  async function openFoglio(a) {
+  async function openFoglio(a, shIdx = 0) {
     if (docOpening || $(".fviewer, .viewer")) return;
     docOpening = true; let waitShown = false;
     const wait = setTimeout(() => { waitShown = true; toast("Scarico il foglio…"); }, 500), urls = [];
+    let sheets = null, bytes = null;
+    const missing = () => toast(navigator.onLine ? "Foglio non ancora caricato: arriva da solo appena il telefono dove l'hai aggiunto apre l'app con la rete" : "Foglio non ancora scaricato su questo telefono: serve la rete una volta");
     try {
-      for (let k = 0; k < a.pagine; k++) {
+      if (a.xlsx) {
+        const b = await docBlob(a, 0).catch(() => null); if (!b) return missing();
+        bytes = await b.arrayBuffer();
+        sheets = xlCache.get(a.id) || await readXlsx(bytes).catch(err => { console.warn("Excel:", err); return null; });
+        if (!sheets) return toast("Non riesco a leggere questo file Excel");
+        xlCache.set(a.id, sheets);
+      } else for (let k = 0; k < a.pagine; k++) {
         const u = await docURL(a, k);
-        if (!u) { urls.forEach(URL.revokeObjectURL); clearTimeout(wait); toast(navigator.onLine ? "Foglio non ancora caricato: arriva da solo appena il telefono dove l'hai aggiunto apre l'app con la rete" : "Foglio non ancora scaricato su questo telefono: serve la rete una volta"); return; }
+        if (!u) { urls.forEach(URL.revokeObjectURL); return missing(); }
         urls.push(u);
       }
-    } finally { clearTimeout(wait); docOpening = false; }
-    if (waitShown) $("#toast").hidden = true;
+    } finally { clearTimeout(wait); docOpening = false; if (waitShown) $("#toast").hidden = true; }
     buzz();
+    const share = a.xlsx && navigator.canShare?.({ files: [new File([new Uint8Array(1)], "x.xlsx", { type: XLSX_TYPE })] });
     const v = document.createElement("div"); v.className = "fviewer";
     v.innerHTML = `<div class="fv-bar"><button class="fv-btn fv-x" aria-label="Chiudi">${icon("X")}</button><b>${esc(a.nome)}</b>
-      ${a.link ? `<a class="fv-btn fv-web" href="${esc(a.link)}" target="_blank" rel="noopener" aria-label="Apri il link">${icon("ExternalLink")}</a><a class="btn small primary fv-xl" href="${esc(xlUrl(a.link))}">Apri in Excel</a>` : ""}</div>
-      <div class="fv-sc"><div class="fv-in">${urls.map(u => `<img src="${u}" alt="" draggable="false">`).join("")}</div></div>`;
+      ${a.xlsx ? `<button class="btn small primary fv-xl">${share ? "Apri in Excel" : `${icon("Download")} Scarica`}</button>` : ""}</div>
+      <div class="fv-sc"><div class="fv-in${a.xlsx ? " xlin" : ""}"></div></div>
+      ${sheets && sheets.length > 1 ? `<div class="fv-tabs">${sheets.map((s, i) => `<button data-tab-sh="${i}">${esc(sheetLabel(s.name))}</button>`).join("")}</div>` : ""}`;
     document.body.appendChild(v);
     const sc = $(".fv-sc", v), inn = $(".fv-in", v);
-    let z = 1;
-    // zoom con due dita (o doppio tocco) intorno al punto toccato: il foglio diventa più largo e si scorre anche di lato
+    let z = 1, zMin = 1, zMax = 4, cur = 0, posKey = a.id;
+    const target = () => a.xlsx ? $("table", inn) : inn;
+    const applyZ = () => { if (a.xlsx) target().style.zoom = z; else inn.style.width = z * 100 + "%"; };
+    // zoom intorno al punto toccato (cx, cy dentro il riquadro): quel punto resta sotto le dita
     const setZ = (nz, cx, cy) => {
-      nz = Math.min(4, Math.max(1, nz)); if (nz === z) return;
+      nz = Math.min(zMax, Math.max(zMin, nz)); if (Math.abs(nz - z) < .001) return;
       const sx = (sc.scrollLeft + cx) / z, sy = (sc.scrollTop + cy) / z;
-      z = nz; inn.style.width = z * 100 + "%";
+      z = nz; applyZ();
       sc.scrollLeft = sx * z - cx; sc.scrollTop = sy * z - cy;
     };
+    const savePos = () => { if (sc.scrollHeight) fogliPos[posKey] = Math.round(sc.scrollTop / sc.scrollHeight * 1e4) / 1e4; };
+    // un foglio Excel: si apre largo quanto lo schermo, sul giorno di oggi se c'è (se no dove l'avevi lasciato)
+    const showSheet = i => {
+      if (cur !== i || !inn.firstChild) savePos();
+      cur = i; posKey = a.id + ":" + i;
+      const s = sheets[i]; inn.innerHTML = sheetHtml(s);
+      const w = target().offsetWidth || 1;
+      zMin = Math.min(1, (sc.clientWidth - 2) / w); zMax = Math.max(2.5, zMin * 6); z = Math.max(zMin, Math.min(.72, zMax)); applyZ();   // leggibile come Excel sul telefono; con due dita si vede tutto
+      $$("[data-tab-sh]", v).forEach(b => b.classList.toggle("on", +b.dataset.tabSh === i));
+      $(`[data-tab-sh="${i}"]`, v)?.scrollIntoView({ inline: "nearest", block: "nearest" });
+      const today = todayJP(), row = today in s.days && $(`tr[data-day="${today}"]`, inn);
+      sc.scrollLeft = 0;
+      sc.scrollTop = row ? row.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop : (fogliPos[posKey] || 0) * sc.scrollHeight;
+    };
+    if (a.xlsx) showSheet(Math.min(Math.max(0, shIdx), sheets.length - 1));
+    else {
+      inn.innerHTML = urls.map(u => `<img src="${u}" alt="" draggable="false">`).join("");
+      const pos = fogliPos[posKey];
+      if (pos > 0) Promise.all($$("img", inn).map(i => i.decode().catch(() => {}))).then(() => { sc.scrollTop = pos * sc.scrollHeight; });
+    }
+    $$("[data-tab-sh]", v).forEach(b => b.onclick = () => { buzz(); showSheet(+b.dataset.tabSh); });
     const rel = (x, y) => { const r = sc.getBoundingClientRect(); return [x - r.left, y - r.top]; };
     let pinch = null, lastTap = 0, tap0 = null;
     sc.addEventListener("touchstart", e => {
@@ -2765,21 +2949,25 @@
       const d = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
       setZ(pinch.z * d / pinch.d, ...rel((t[0].clientX + t[1].clientX) / 2, (t[0].clientY + t[1].clientY) / 2));
     }, { passive: false });
+    const dbl = (x, y) => setZ(z > zMin * 1.2 ? zMin : a.xlsx ? Math.max(zMin, Math.min(.72, zMax)) : 2.5, ...rel(x, y));
     sc.addEventListener("touchend", e => {
       if (e.touches.length < 2) pinch = null;
       if (e.touches.length || !tap0 || Date.now() - tap0.t > 300) return;
       const now = Date.now();
-      if (now - lastTap < 300) { setZ(z > 1.2 ? 1 : 2.5, ...rel(tap0.x, tap0.y)); lastTap = 0; } else lastTap = now;
+      if (now - lastTap < 300) { dbl(tap0.x, tap0.y); lastTap = 0; } else lastTap = now;
       tap0 = null;
     });
-    sc.addEventListener("dblclick", e => setZ(z > 1.2 ? 1 : 2.5, ...rel(e.clientX, e.clientY)));   // sul computer
-    // si riapre dove l'avevi lasciato
-    const pos = fogliPos[a.id];
-    if (pos > 0) Promise.all([...inn.querySelectorAll("img")].map(i => i.decode().catch(() => {}))).then(() => { sc.scrollTop = pos * sc.scrollHeight; });
+    sc.addEventListener("dblclick", e => dbl(e.clientX, e.clientY));   // sul computer
+    // «Apri in Excel»: il file vero, dal foglio di condivisione di iPhone (lì si sceglie Excel o Numbers); sul computer si scarica
+    $(".fv-xl", v)?.addEventListener("click", async () => {
+      const file = new File([bytes], (a.nome || "Itinerario").replace(/[\\/:*?"<>|]+/g, " ").trim() + ".xlsx", { type: XLSX_TYPE });
+      if (share) { try { await navigator.share({ files: [file] }); } catch {} return; }
+      const u = URL.createObjectURL(file), l = document.createElement("a"); l.href = u; l.download = file.name; l.click(); setTimeout(() => URL.revokeObjectURL(u), 1e4);
+    });
     const close = () => {
       if (v.classList.contains("out")) return;
-      fogliPos[a.id] = sc.scrollHeight ? Math.round(sc.scrollTop / sc.scrollHeight * 1e4) / 1e4 : 0;
-      for (const k of Object.keys(fogliPos)) if (!lists.allegati.some(x => x.id === k)) delete fogliPos[k];
+      savePos();
+      for (const k of Object.keys(fogliPos)) if (!lists.allegati.some(x => x.id === k.split(":")[0])) delete fogliPos[k];
       LS.set("fogliPos", fogliPos);
       v.classList.add("out"); document.removeEventListener("keydown", key); dropLayer(layer);
       setTimeout(() => { v.remove(); urls.forEach(URL.revokeObjectURL); }, 200);
@@ -2795,67 +2983,92 @@
     e.preventDefault();
     const a = lists.allegati.find(x => x.id === b.dataset.foglio);
     if (!a) return toast("Foglio eliminato intanto");
-    openFoglio(a);
+    openFoglio(a, +b.dataset.sh || 0);
   });
-  // Utility › I miei fogli: aggiungere, rinominare, scegliere i giorni e il link di Excel, sostituire, eliminare
+
+  // — aggiungere un file: Excel (.xlsx) com'è, PDF e foto come immagini —
+  async function addFoglio(file, step) {
+    const isX = /\.xlsx$/i.test(file.name) || file.type === XLSX_TYPE;
+    if (!isX) {
+      if (/\.(xls|numbers|ods|csv)$/i.test(file.name)) return { err: "si legge solo il formato .xlsx: in Excel «Salva con nome» → .xlsx" };
+      return addDoc(fogliKey(), file, step, () => true, true);
+    }
+    if (file.size > XLSX_MAX) return { err: "il file è troppo grande (massimo 900 KB)" };
+    step("Leggo il file Excel…");
+    const buf = await file.arrayBuffer();
+    let sheets; try { sheets = await readXlsx(buf); } catch (err) { console.warn("Excel:", err); return { err: "non riesco a leggere questo file Excel" }; }
+    const id = uid(), c = await caches.open(DOCS);
+    docPrep.add(id);
+    try { await c.put(docKey(id, 0), new Response(new Blob([buf], { type: XLSX_TYPE }), { headers: { "Content-Type": XLSX_TYPE } })); } finally { docPrep.delete(id); }
+    xlCache.set(id, sheets);
+    const a = putItem("allegati", { id, pren: fogliKey(), nome: docName(file.name), pagine: 1, xlsx: 1, t: Date.now(),
+      fogli: sheets.slice(0, 20).map(s => ({ n: s.name.slice(0, 40), d: Object.keys(s.days).slice(0, 40), c: s.colors })) });
+    docUp[a.id] = 1; LS.set("docUp", docUp); uploadDocs();
+    keepData();
+    return { a };
+  }
+
+  // Utility › I miei fogli: aggiungere, rinominare, sostituire, eliminare
   function renderFogli(back) {
     if (!myFogli()) return go("#utility");
     const fs = fogli(), dayOpt = (sel, empty) => `<option value="">${empty}</option>` + DAYS.map(d => `<option value="${d}"${d === sel ? " selected" : ""}>${fmtDay(d, { weekday: "short", day: "numeric", month: "short" })}</option>`).join("");
     view.innerHTML = `${back}<h2>I miei fogli</h2><p class="lead">I tuoi itinerari fatti in Excel, sempre a un tocco dalla Home, anche senza rete. Li vedi solo tu.</p>
       <div class="card">
-        <button class="btn primary" id="f-add" style="width:100%">${icon("Plus")} Aggiungi un foglio</button>
-        <input type="file" id="f-file" accept="image/*,application/pdf" multiple hidden>
-        <p class="muted small" style="margin:10px 0 0">Da Excel sul telefono: <b>Condividi → Esporta → PDF</b>. Meglio con «Adatta a 1 pagina di larghezza», così le colonne non si spezzano. Va bene anche uno screenshot.</p>
+        <button class="btn primary" id="f-add" style="width:100%">${icon("Plus")} Carica un file Excel</button>
+        <input type="file" id="f-file" accept=".xlsx,${XLSX_TYPE},application/pdf" hidden>
+        <p class="muted small" style="margin:10px 0 0">Scegli il file <b>.xlsx</b> da File (iCloud, OneDrive o un allegato salvato in File). Ogni foglio del file diventa un pulsante in Home e si apre sul giorno di oggi. Quando cambi il file, caricalo di nuovo con «Sostituisci».</p>
       </div>
       ${fs.map(a => `<div class="card fedit" data-fid="${a.id}">
-        <div class="row"><button class="foglio mini" data-foglio="${a.id}" aria-label="Apri ${esc(a.nome)}"><span class="fth" data-dth="${a.id}">${icon("FileText")}</span></button>
+        <div class="row"><button class="foglio mini" data-foglio="${a.id}" data-sh="0" aria-label="Apri ${esc(a.nome)}">${a.xlsx ? xlThumb(a.fogli?.[0]?.c || []) : `<span class="fth" data-dth="${a.id}">${icon("FileText")}</span>`}</button>
           <div class="grow"><label class="small muted" for="fn-${a.id}">Nome</label><input id="fn-${a.id}" data-f="nome" value="${esc(a.nome)}" maxlength="60" autocomplete="off"></div></div>
-        <div class="fdays"><div><label class="small muted">Dal</label><select data-f="dal">${dayOpt(a.dal, "—")}</select></div><div><label class="small muted">Al</label><select data-f="al">${dayOpt(a.al, "—")}</select></div></div>
-        <label class="small muted" for="fl-${a.id}">Link del file su OneDrive (per «Apri in Excel»)</label>
-        <input id="fl-${a.id}" data-f="link" type="url" inputmode="url" value="${esc(a.link || "")}" placeholder="https://1drv.ms/…" autocomplete="off" autocapitalize="off">
+        ${a.xlsx ? `<p class="small muted fsheets">${(a.fogli || []).length === 1 ? "1 foglio" : (a.fogli || []).length + " fogli"}: ${(a.fogli || []).map(f => esc(sheetLabel(f.n))).join(", ")}</p>`
+          : `<div class="fdays"><div><label class="small muted">Dal</label><select data-f="dal">${dayOpt(a.dal, "—")}</select></div><div><label class="small muted">Al</label><select data-f="al">${dayOpt(a.al, "—")}</select></div></div>`}
         <div class="row fbtns"><button class="btn small" data-fopen="${a.id}">${icon("FileText")} Apri</button><button class="btn small" data-frep="${a.id}">${icon("RotateCcw")} Sostituisci</button><button class="btn small ghost fdel" data-fdel="${a.id}" aria-label="Elimina">${icon("Trash2")}</button></div>
-      </div>`).join("")}
-      ${fs.length ? `<p class="muted small">In Home, durante il viaggio, il foglio di oggi è il primo: quello con i giorni scelti, oppure quello con il nome della città (es. «Tokyo»).</p>` : ""}`;
+      </div>`).join("")}`;
     const file = $("#f-file"); let replacing = null;
     const add = async files => {
       const btn = $("#f-add"), errs = []; let ok = 0;
       btn.disabled = true;
       for (const f of files) {
-        const r = await addDoc(fogliKey(), f, t => { btn.textContent = t; }, () => true, true);
+        const r = await addFoglio(f, t => { btn.textContent = t; });
         if (r.err) { errs.push(`${f.name}: ${r.err}`); continue; }
+        if (!r.a) continue;
         ok++;
-        if (replacing) {   // stesso nome, giorni e link del foglio vecchio, che poi si toglie
+        if (replacing) {   // stesso nome e stesso posto del file vecchio, che poi si toglie
           const old = lists.allegati.find(x => x.id === replacing);
-          if (old) { putItem("allegati", { ...r.a, nome: old.nome, t: old.t, ...(old.link ? { link: old.link } : {}), ...(old.dal ? { dal: old.dal, al: old.al } : {}) }); if (fogliPos[old.id]) { fogliPos[r.a.id] = fogliPos[old.id]; delete fogliPos[old.id]; LS.set("fogliPos", fogliPos); } delDoc(old); }
+          if (old) {
+            putItem("allegati", { ...r.a, nome: old.nome, t: old.t, ...(old.dal && !r.a.xlsx ? { dal: old.dal, al: old.al } : {}) });
+            for (const k of Object.keys(fogliPos)) if (k.split(":")[0] === old.id) { fogliPos[r.a.id + k.slice(old.id.length)] = fogliPos[k]; delete fogliPos[k]; }
+            LS.set("fogliPos", fogliPos); xlCache.delete(old.id); delDoc(old);
+          }
           replacing = null;
         }
       }
-      toast(errs.length ? errs.join(" · ") : ok > 1 ? `${ok} fogli aggiunti ✓` : "Foglio pronto ✓");
+      toast(errs.length ? errs.join(" · ") : ok > 1 ? `${ok} file caricati ✓` : "Foglio pronto ✓");
       rerender();
     };
-    $("#f-add").onclick = () => { replacing = null; file.multiple = true; file.click(); };
+    $("#f-add").onclick = () => { replacing = null; file.click(); };   // un file alla volta: su iPhone basta toccarlo, senza «Apri»
     file.onchange = () => { const fl = [...file.files]; file.value = ""; if (fl.length) add(replacing ? fl.slice(0, 1) : fl); };
     $$(".fedit", view).forEach(card => {
       const id = card.dataset.fid;
       const save = () => {
         const a = lists.allegati.find(x => x.id === id); if (!a) return;
-        const val = k => $(`[data-f="${k}"]`, card).value.trim();
-        let dal = val("dal"), al = val("al"), link = val("link");
+        const val = k => $(`[data-f="${k}"]`, card)?.value.trim() || "";
+        let dal = val("dal"), al = val("al");
         if (dal && !al) al = dal; if (al && !dal) dal = al; if (dal > al) [dal, al] = [al, dal];
-        if (link && !/^https:\/\/\S+$/.test(link)) { toast("Il link deve iniziare con https://"); link = a.link || ""; $(`[data-f="link"]`, card).value = link; }
-        const { link: _l, dal: _d, al: _a, ...rest } = a;
-        const next = { ...rest, nome: val("nome").slice(0, 60) || a.nome, ...(link ? { link } : {}), ...(dal ? { dal, al } : {}) };
+        const { dal: _d, al: _a, ...rest } = a;
+        const next = { ...rest, nome: val("nome").slice(0, 60) || a.nome, ...(dal ? { dal, al } : {}) };
         if (sig(next) === sig({ ...a, w: next.w, by: next.by })) return;
         putItem("allegati", next);
-        $(`[data-f="dal"]`, card).value = dal; $(`[data-f="al"]`, card).value = al;
+        if (!a.xlsx) { $(`[data-f="dal"]`, card).value = dal; $(`[data-f="al"]`, card).value = al; }
       };
       $$("[data-f]", card).forEach(i => i.onchange = save);
-      $("[data-fopen]", card).onclick = () => { const a = lists.allegati.find(x => x.id === id); if (a) openFoglio(a); };
-      $("[data-frep]", card).onclick = () => { replacing = id; file.multiple = false; file.click(); };
+      $("[data-fopen]", card).onclick = () => { const a = lists.allegati.find(x => x.id === id); if (a) openFoglio(a, 0); };
+      $("[data-frep]", card).onclick = () => { replacing = id; file.click(); };
       $("[data-fdel]", card).onclick = async () => {
         const a = lists.allegati.find(x => x.id === id); if (!a) return;
-        if (!(await ask({ title: "Eliminare il foglio?", text: `«${a.nome}» sparisce dall'app. Il file in Excel resta com'è.`, ok: "Elimina", danger: true }))) return;
-        delDoc(a); rerender();
+        if (!(await ask({ title: "Eliminare il foglio?", text: `«${a.nome}» sparisce dall'app. Il file originale resta com'è.`, ok: "Elimina", danger: true }))) return;
+        xlCache.delete(a.id); delDoc(a); rerender();
       };
     });
   }
