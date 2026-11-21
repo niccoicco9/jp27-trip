@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 200;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 201;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2926,7 +2926,7 @@
         const prev = lists.prenotazioni.find(x => x.id === pid), titNow = prev?.titolo;
         // indirizzo cambiato: la puntina vecchia si toglie subito (senza rete o se non si trova resta senza, non nel posto sbagliato)
         const moved = t === "hotel" && (ch.has("jp") || ch.has("indirizzo") || (!item.jp && !item.indirizzo && ch.has("titolo")));
-        if (moved) { delete item.lat; delete item.lng; }
+        if (moved) { delete item.lat; delete item.lng; delete item.geo; }
         const stored = putItem("prenotazioni", item);
         saveCost(item, titNow);
         if (isNew) notifyOthers("pren", stored);
@@ -2981,12 +2981,32 @@
     return [parts.join(", "), parts.slice().reverse().join(", ")].filter((x, i, l) => x && l.indexOf(x) === i);
   }
   const geoTried = new Set(), geoKey = h => h.id + "|" + h.jp + "|" + h.indirizzo + "|" + h.titolo + "|" + h.dal + "|" + h.al;
+  // prima Google (nome + indirizzo: trova l'hotel vero e proprio); se Google non c'è o non lo trova, OpenStreetMap.
+  // Errore = Google non disponibile (chiave, rete, servizio spento); null = ha risposto ma niente vicino alle tappe
+  async function googleHotel(h) {
+    await Promise.race([loadMaps(), new Promise((_, r) => setTimeout(() => r(new Error("timeout")), 4000))]);
+    const { Place } = await google.maps.importLibrary("places");
+    const qs = [[h.titolo, h.indirizzo].filter(Boolean).join(", "), h.jp, h.indirizzo].filter((x, i, l) => x && l.indexOf(x) === i);
+    for (const q of qs) {
+      const { places } = await Place.searchByText({ textQuery: q, fields: ["location"], region: "jp", maxResultCount: 5, locationBias: { lat: 35.4, lng: 137.5 } });
+      const pt = (places || []).map(x => ({ lat: x.location?.lat(), lng: x.location?.lng() })).find(pt => isFinite(pt.lat) && isFinite(pt.lng) && hotelFits(h, pt));
+      if (pt) return pt;
+    }
+    return null;
+  }
+  // hotel già con la puntina di OpenStreetMap (di solito il centro del quartiere): si riprova con Google una volta per indirizzo
+  const geoUp = new Set(LS.get("geoUp", []));
+  const markUp = h => { geoUp.add(geoKey(h)); LS.set("geoUp", [...geoUp].slice(-50), true); };
   async function geocodeHotel(h) {
     if (!navigator.onLine) return;
     geoTried.add(geoKey(h));
-    let found = null, failed = false;
+    let found = null, failed = false, src = "osm";
+    try { found = await googleHotel(h); markUp(h); if (found) src = "g"; }
+    catch (err) { console.info("Posizione hotel: Google non disponibile, uso OpenStreetMap:", err?.message || err); }
+    // c'era già una puntina buona di OpenStreetMap e Google non ha trovato di meglio: resta quella
+    if (!found && h.lat && hotelFits(h, h)) return;
     // col solo nome si trova spesso un hotel della stessa catena in un'altra città: si tiene il primo risultato vicino alle tappe
-    const qs = [h.jp, h.indirizzo && h.indirizzo + ", Japan", ...cleanAddr(h.indirizzo), h.titolo + ", Japan"].filter((x, i, l) => x && l.indexOf(x) === i);
+    const qs = found ? [] : [h.jp, h.indirizzo && h.indirizzo + ", Japan", ...cleanAddr(h.indirizzo), h.titolo + ", Japan"].filter((x, i, l) => x && l.indexOf(x) === i);
     for (const [i, q] of qs.entries()) {
       if (i) await new Promise(r => setTimeout(r, 1100));   // OpenStreetMap chiede al massimo una ricerca al secondo
       try {
@@ -2998,8 +3018,8 @@
     // intanto cambiato o eliminato (anche da un altro): la posizione vale solo se l'indirizzo è ancora quello
     const cur = lists.prenotazioni.find(x => x.id === h.id);
     if (!cur || geoKey(cur) !== geoKey(h)) return;
-    if (found) putItem("prenotazioni", { ...cur, lat: found.lat, lng: found.lng });
-    else if (cur.lat && !failed) { const { lat, lng, ...rest } = cur; putItem("prenotazioni", rest); }   // meglio nessuna puntina che una nel posto sbagliato
+    if (found) putItem("prenotazioni", { ...cur, lat: found.lat, lng: found.lng, geo: src });
+    else if (cur.lat && !failed) { const { lat, lng, geo, ...rest } = cur; putItem("prenotazioni", rest); }   // meglio nessuna puntina che una nel posto sbagliato
     refreshMap();   // con la mappa aperta la puntina compare (o sparisce) subito
   }
   // hotel senza puntina (indirizzo cambiato senza rete) o con la puntina lontana dalle sue tappe (trovata prima di questo
@@ -3007,7 +3027,8 @@
   let fixing = false;
   async function fixHotels() {
     if (fixing || !navigator.onLine) return; fixing = true;
-    try { let h; while ((h = lists.prenotazioni.find(h => h.tipo === "hotel" && (!h.lat || !hotelFits(h, h)) && !geoTried.has(geoKey(h))))) await geocodeHotel(h); }
+    const todo = h => h.tipo === "hotel" && !geoTried.has(geoKey(h)) && (!h.lat || !hotelFits(h, h) || (h.geo !== "g" && !geoUp.has(geoKey(h))));
+    try { let h; while ((h = lists.prenotazioni.find(todo))) await geocodeHotel(h); }
     finally { fixing = false; }
   }
   addEventListener("online", () => setTimeout(fixHotels, 2000));
