@@ -3,7 +3,7 @@
 
   // ——— storage (protetto: in privato o con dati bloccati può fallire) ———
   let dataVer = 0;   // cresce a ogni modifica salvata: le pagine tenute in memoria più vecchie si ricostruiscono
-  const UI_KEYS = new Set(["selDay", "selDayOn", "lview", "mapMode", "notifyQ", "skipCode", "lastPage", "lastBackup", "preRestore", "outbox", "syncBase", "docUp", "fogliPos"]);   // solo preferenze di navigazione: non cambiano le pagine
+  const UI_KEYS = new Set(["selDay", "selDayOn", "lview", "mapMode", "notifyQ", "skipCode", "lastPage", "lastBackup", "preRestore", "outbox", "syncBase", "joinBase", "preJoin", "docUp", "fogliPos"]);   // solo preferenze di navigazione: non cambiano le pagine
   const LS = {
     get(k, d) { try { const v = localStorage.getItem("jp27:" + k); return v ? JSON.parse(v) : d; } catch { return d; } },
     // quiet: dati uguali per le pagine (solo versioni del server): niente ricostruzione
@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 216;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 217;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -359,7 +359,8 @@
   // confirmed: ultimo stato che il server ha davvero confermato, salvato sul telefono. Alla partenza della
   // sincronizzazione si riparte da lì: le modifiche al programma che non sono arrivate (database locale rotto,
   // ripartenza "solo in memoria", "Riscarica i dati") risultano ancora da inviare e si rimandano.
-  let confirmed = LS.get("syncBase", null);
+  // joinBase: primo codice inserito qui, dati condivisi non ancora letti (vedi joinLocal); join = unire quello fatto senza codice
+  let confirmed = LS.get("syncBase", null) || LS.get("joinBase", null);
   if (!confirmed?.plan || typeof confirmed.plan !== "object" || !Array.isArray(confirmed.booked)) confirmed = { plan: clone(plan), booked: [...booked] };
   let synced = { plan: clone(confirmed.plan), booked: [...confirmed.booked] };
   let remoteSeq = 0;   // cresce a ogni stato letto dal server: una conferma arrivata dopo non lo sostituisce con uno più vecchio
@@ -368,7 +369,7 @@
   const markConfirmed = (s, seq) => {
     if (seq !== remoteSeq) return;
     confirmed = s; const j = JSON.stringify(s);
-    if (j !== confirmedJ) { confirmedJ = j; try { localStorage.setItem("jp27:syncBase", j); } catch {} }
+    if (j !== confirmedJ) { confirmedJ = j; try { localStorage.setItem("jp27:syncBase", j); localStorage.removeItem("jp27:joinBase"); } catch {} }
   };
   // telefono con il codice che non ha mai letto i dati dal server, aperto offline: programma e prenotazioni vuoti
   // non vuol dire che non ci siano (non ancora arrivati)
@@ -404,9 +405,10 @@
   }
   // unisce un giorno cambiato qui (mine) e dagli altri (theirs) partendo dall'ultima versione comune (base):
   // restano le tappe aggiunte da entrambi, spariscono quelle tolte da almeno uno
-  function mergeDay(base = {}, mine = {}, theirs = {}) {
+  // join: tappe fatte qui prima del codice che si aggiungono al programma condiviso: titolo e note degli altri restano
+  function mergeDay(base = {}, mine = {}, theirs = {}, join = false) {
     const out = { l: "", n: "", ...theirs };
-    for (const k of new Set([...Object.keys(base), ...Object.keys(mine)])) if (!["i", "f", "t"].includes(k) && !same(base[k], mine[k])) out[k] = mine[k] ?? "";
+    for (const k of new Set([...Object.keys(base), ...Object.keys(mine)])) if (!["i", "f", "t"].includes(k) && !same(base[k], mine[k]) && !(join && theirs[k])) out[k] = mine[k] ?? "";
     const pick = (b, m, t) => x => (m.includes(x) || t.includes(x)) && !(b.includes(x) && (!m.includes(x) || !t.includes(x)));
     const b = base.i || [], m = mine.i || [], t = theirs.i || [], keep = pick(b, m, t);
     const reordered = sig(m.filter(x => b.includes(x))) !== sig(b.filter(x => m.includes(x)));
@@ -558,12 +560,12 @@
     }
     // tiene le modifiche locali non ancora inviate, prende tutto il resto dal server: un giorno cambiato da
     // entrambe le parti si unisce tappa per tappa, così non si perde né la modifica di qui né quella degli altri
-    const mine = localChanges(), base = synced.plan;
+    const mine = localChanges(), base = synced.plan, join = !!confirmed.join;
     const remote = cleanPlan(data.plan);
     synced = { plan: clone(remote), booked: [...(Array.isArray(data.booked) ? data.booked : [])] };
     remoteSeq++; markConfirmed(synced, remoteSeq);   // senza scritture in sospeso: è lo stato del server
     const nextPlan = { ...remote };
-    for (const d of Object.keys(mine.days)) nextPlan[d] = mergeDay(base[d], plan[d] || { l: "", n: "", i: [] }, remote[d]);
+    for (const d of Object.keys(mine.days)) nextPlan[d] = mergeDay(base[d], plan[d] || { l: "", n: "", i: [] }, remote[d], join);
     const nextBooked = new Set([...(Array.isArray(data.booked) ? data.booked : []).filter(x => !mine.rem.includes(x)), ...mine.add]);
     if (Object.keys(mine.days).length || mine.add.length || mine.rem.length) { clearTimeout(pushT); pushT = setTimeout(pushChanges, 400); }
     // niente di nuovo (es. conferma della propria modifica): la pagina resta com'è, senza ricostruirla
@@ -612,6 +614,8 @@
       toast("Codice del viaggio non valido");
       badCode = code; try { sessionStorage.setItem("jp27:badCode", code); } catch {}
       code = ""; LS.set("code", ""); setTimeout(() => askWho(true), 400);
+      // dati condivisi mai visti: con il codice giusto si richiede se aggiungere quello fatto qui
+      if (!localStorage.getItem("jp27:syncBase")) { try { localStorage.removeItem("jp27:joinBase"); } catch {} confirmed = { plan: clone(plan), booked: [...booked] }; }
     }
     const ds = $("#dsync"); if (ds) ds.textContent = s === "online" ? "Sincronizzato" : "In attesa di rete";   // Giorni aperto: lo stato cambia senza ridisegnare
     const el = $("#syncdot");
@@ -628,6 +632,33 @@
     try { const h = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(c))); return OLD_CODES.includes([...h].map(b => b.toString(16).padStart(2, "0")).join("")); }
     catch { return false; }
   }
+  // Primo codice su questo telefono (dati condivisi mai arrivati): quello fatto qui senza codice (tappe, spunte, luoghi,
+  // fogli) non si unisce e non si perde in silenzio, si chiede. Prima si univa solo quello fatto dall'ultima apertura
+  // dell'app (col titolo del giorno sopra quello degli altri) e il resto spariva. false = intanto il codice è cambiato
+  async function joinLocal() {
+    if (localStorage.getItem("jp27:syncBase") || localStorage.getItem("jp27:joinBase")) return true;
+    const c = code, days = Object.values(plan).filter(d => d.i?.length || d.l || d.n);
+    const tappe = days.reduce((a, d) => a + (d.i?.length || 0), 0);
+    const own = Object.fromEntries(["luoghi", "allegati", "categorie"].map(n => [n, lists[n].filter(x => x.at == null)]));   // "at": dal server
+    const parts = [tappe ? `${nOf(tappe, "tappa", "tappe")} in ${nOf(days.length, "giorno", "giorni")}` : days.length ? nOf(days.length, "giorno con titolo o note", "giorni con titolo o note") : "",
+      booked.size ? nOf(booked.size, "spunta «prenotato»", "spunte «prenotato»") : "", own.luoghi.length ? nOf(own.luoghi.length, "luogo", "luoghi") : "",
+      own.allegati.length ? nOf(own.allegati.length, "foglio", "fogli") : "", own.categorie.length ? nOf(own.categorie.length, "categoria", "categorie") : ""].filter(Boolean);
+    let yes = false;
+    if (parts.length) {
+      yes = await ask({ title: "Aggiungo quello che hai fatto qui?", text: `Prima del codice, su questo telefono hai aggiunto ${parts.join(", ")}. Si aggiunge al viaggio condiviso, senza cancellare niente degli altri. Se no, resta solo quello condiviso.`, ok: "Aggiungi", no: "No" });
+      if (code !== c) return false;
+      LS.set("preJoin", { plan: clone(plan), booked: [...booked], lists: own, t: Date.now() });   // copia di riserva, in ogni caso
+    }
+    // sì: si parte da un programma vuoto, così tutto quello di qui risulta da inviare · no: vale quello condiviso
+    confirmed = yes ? { plan: {}, booked: [], join: 1 } : { plan: clone(plan), booked: [...booked] };
+    LS.set("joinBase", confirmed);
+    for (const [n, xs] of Object.entries(own)) for (const x of xs) {
+      if (yes) queuePut(n, x);
+      else if (n === "allegati") delete docUp[x.id];   // file di un foglio che non si aggiunge: non si carica
+    }
+    if (!yes) LS.set("docUp", docUp);
+    return true;
+  }
   async function startSync() {
     if (!window.FIREBASE || !code || sync || syncStarting) return;
     syncStarting = true;
@@ -637,8 +668,9 @@
       setTimeout(() => askWho(true), 600); render();
       return;
     }
+    if (!(await joinLocal())) { syncStarting = false; return; }
     // si riparte dall'ultimo stato confermato: quello che era stato inviato senza conferma si rimanda
-    synced = { plan: clone(confirmed.plan), booked: [...confirmed.booked] };
+    synced ={ plan: clone(confirmed.plan), booked: [...confirmed.booked] };
     import("./sync.js").then(m => { sync = m.start(window.FIREBASE, code, { main: onRemote, list: onList, server: onServer, status: setSync, recreate: () => sync.pushMain({ plan, booked: [...booked], by: me || "?" }) }, { memory: syncMemory }); checkOutbox(); uploadDocs(); dataVer++; if (location.hash.startsWith("#giorni") && !sheetOpen() && !reordering) keepScroll(render); }).catch(err => { syncStarting = false; setSync("error", err); });
   }
 
@@ -874,12 +906,12 @@
 
   // finestra di conferma nello stile dell'app (sopra anche le schede aperte); restituisce true/false
   const openAsks = new Set();   // conferme aperte: se la pagina cambia (es. "indietro" dal bordo) si chiudono come "Annulla"
-  function ask({ title, text = "", ok = "Conferma", danger = false, icon: ic = danger ? "Trash2" : "Sparkles" }) {
+  function ask({ title, text = "", ok = "Conferma", no = "Annulla", danger = false, icon: ic = danger ? "Trash2" : "Sparkles" }) {
     return new Promise(res => {
       const d = document.createElement("div"); d.className = "dlg";
       d.innerHTML = `<div class="dlg-bg"></div><div class="dlg-card" role="alertdialog" aria-modal="true">
         <span class="dlg-ic${danger ? " danger" : ""}">${icon(ic)}</span><b>${esc(title)}</b>${text ? `<p>${esc(text)}</p>` : ""}
-        <div class="dlg-btns"><button class="btn" data-a="0">Annulla</button><button class="btn ${danger ? "danger" : "primary"}" data-a="1">${esc(ok)}</button></div></div>`;
+        <div class="dlg-btns"><button class="btn" data-a="0">${esc(no)}</button><button class="btn ${danger ? "danger" : "primary"}" data-a="1">${esc(ok)}</button></div></div>`;
       const layer = () => close(false, true);
       pushLayer(layer);
       const close = (v, fromHistory) => { if (d.classList.contains("out")) return; if (!fromHistory) dropLayer(layer); openAsks.delete(layer); d.classList.add("out"); setTimeout(() => d.remove(), 180); document.removeEventListener("keydown", key); res(v); };
@@ -3159,7 +3191,8 @@
 
   // Utility › I miei fogli: aggiungere, rinominare, sostituire, eliminare
   function renderFogli(back) {
-    if (!myFogli()) return go("#utility");
+    // primo avvio da un link a I miei fogli: si aspetta di sapere chi sei (dopo «Chi sei?» la pagina si ridisegna)
+    if (!myFogli()) { if (me) return go("#utility"); view.innerHTML = `${back}<h2>I miei fogli</h2><p class="lead">Scegli chi sei per vedere i tuoi fogli.</p>`; return; }
     const fs = fogli(), dayOpt = (sel, empty) => `<option value="">${empty}</option>` + DAYS.map(d => `<option value="${d}"${d === sel ? " selected" : ""}>${fmtDay(d, { weekday: "short", day: "numeric", month: "short" })}</option>`).join("");
     view.innerHTML = `${back}<h2>I miei fogli</h2><p class="lead">I tuoi itinerari fatti in Excel, sempre a un tocco dalla Home, anche senza rete. Li vedi solo tu.</p>
       <div class="card">
@@ -4044,6 +4077,11 @@
 
   function renderSpese(back) {
     if (!code) { view.innerHTML = `${back}<h2>Spese</h2><p class="lead">Chi ha pagato cosa, e alla fine chi deve quanto a chi.</p>${needCodeBox("Le spese")}`; bindPcards(); return; }
+    // codice appena inserito, offline: "0 € · siete in pari" sembrerebbe vero. Una spesa si può aggiungere lo stesso (+)
+    if (!lists.spese.length && notArrived()) {
+      view.innerHTML = `${back}<h2>Spese</h2><button id="adds" hidden aria-hidden="true"></button><p class="lead">Chi ha pagato cosa, e alla fine chi deve quanto a chi.</p><p class="empty">Le spese non sono ancora arrivate su questo telefono: serve la rete una volta. Poi ci sono anche offline.</p>`;
+      $("#adds").onclick = () => editSpesa({}); return;
+    }
     const { net, total, cn } = balances();   // cn: saldo di ogni coppia
     const debt = Math.abs(cn[0]) < .5 ? null : cn[0] > 0 ? [COPPIE[1], COPPIE[0], cn[0]] : [COPPIE[0], COPPIE[1], -cn[0]];
     const trash = lists.spese.filter(s => s.del).sort((a, b) => b.del.t - a.del.t);
@@ -4492,7 +4530,7 @@
     openSheet(`
       <h2>${needCode ? "Benvenuti a bordo ✈️" : "Chi sei?"}</h2>
       <p class="lead">${needCode ? "Inserisci il codice del viaggio che vi siete passati: protegge programma, prenotazioni e spese." : "Così sappiamo chi ha fatto le modifiche."}</p>
-      ${needCode ? `<input type="text" id="tcode" placeholder="Codice del viaggio" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(code || badCode)}" style="font-weight:700;letter-spacing:.04em">
+      ${needCode ? `<input type="text" id="tcode" placeholder="Codice del viaggio" enterkeyhint="go" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(code || badCode)}" style="font-weight:700;letter-spacing:.04em">
         ${(badCode || oldCode) && !code ? `<p class="small" id="badcode" style="color:var(--shu);margin:8px 0 0">${icon("KeyRound")} ${badCode ? "Non è il codice giusto: controlla maiuscole, minuscole e simboli." : "Il codice del viaggio è cambiato: usa quello nuovo che vi siete passati."}</p>` : ""}` : ""}
       <div class="who">${T.viaggiatori.map(n => `<button data-who="${n}" class="${n === me ? "sel" : ""}"><span class="avatar" style="background:${AVATAR[n] || "#888"}">${n[0]}</span>${n}</button>`).join("")}</div>
       ${needCode ? `<div class="btns"><button class="btn ghost" data-close>Più tardi</button><button class="btn primary" id="enter">Entra</button></div>
@@ -4501,6 +4539,8 @@
         pick = b.dataset.who; $$("[data-who]", el).forEach(x => x.classList.toggle("sel", x === b));
         if (!needCode) { setMe(pick); closeSheet(); toast(`Ciao ${me}! 👋`); render(); }
       });
+      // "Vai" sulla tastiera = Entra (sull'SE con la tastiera aperta Entra resta sotto)
+      $("#tcode", el)?.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); $("#tcode", el).blur(); $("#enter", el).click(); } });
       $("#enter", el)?.addEventListener("click", () => {
         const c = cleanCode($("#tcode", el).value);   // il codice distingue maiuscole e minuscole
         if (!c) return toast("Scrivi il codice del viaggio");
