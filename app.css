@@ -1136,7 +1136,8 @@ body.kb-up .sheetfoot { position: static !important; }
 
 /* ——— I miei fogli (itinerari Excel): riga in Home, visore, pagina in Utility ——— */
 .fogli-h .section-h { margin-top: 18px; }
-.foglio { flex: none; width: 104px; display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding: 0 0 8px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); color: var(--ink); font: inherit; text-align: left; overflow: hidden; scroll-snap-align: start; box-shadow: var(--shadow-s); transition: transform .15s; }
+.foglio { flex: none; width: 6.5rem;   /* in rem: col testo grande di iPhone il pulsante si allarga e nome e giorni non si tagliano */
+   display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding: 0 0 8px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); color: var(--ink); font: inherit; text-align: left; overflow: hidden; scroll-snap-align: start; box-shadow: var(--shadow-s); transition: transform .15s; }
 .foglio:active { transform: scale(.97); }
 .foglio .fth { display: grid; place-items: center; height: 72px; background: var(--card-2) center top / cover no-repeat; border-bottom: 1px solid var(--line); color: var(--muted); margin-bottom: 4px; }
 .foglio .fth svg { width: 22px; height: 22px; }
