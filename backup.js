@@ -119,13 +119,24 @@ export function tables(b, info) {
     const w = info.prenota?.[id]; if (!w || !/^\d{4}-\d{2}-\d{2}$/.test(w.da) || !/^\d{4}-\d{2}-\d{2}$/.test(w.entro)) return null;
     let { da, entro } = w;
     if (v && w.prima > 0) { const span = Math.round((Date.parse(entro) - Date.parse(da)) / 864e5); da = add(v, -w.prima); entro = add(da, span); }
+    // mesi: stesso giorno N mesi prima (se non c'è, il 1° del mese dopo), primo: il 1° del mese, ieri: in Italia il giorno prima — come bookWin in app.js
+    if (v && w.mesi > 0) {
+      const [y, m, g] = v.split("-").map(Number), dim = new Date(Date.UTC(y, m - w.mesi, 0)).getUTCDate();
+      da = new Date(w.primo ? Date.UTC(y, m - 1 - w.mesi, 1) : g <= dim ? Date.UTC(y, m - 1 - w.mesi, g) : Date.UTC(y, m - w.mesi, 1)).toISOString().slice(0, 10);
+      if (w.ieri) da = add(da, -1);
+      entro = add(da, w.giorni || 0);
+    }
     if (v) { const last = add(v, -1); if (entro > last) entro = last; if (da > entro) da = entro; }
     return { ...w, da, entro };
   };
   const giorni = id => days.filter(d => Array.isArray(b.plan[d]?.i) && b.plan[d].i.includes(id));
-  const daPren = [...all.filter(p => p.pren && !p.out).map(p => ({ id: p.id, n: p.n || p.id, z: p.z, gg: giorni(p.id) })),
+  // un luogo vostro con lo stesso nome di uno di Wanderlog (es. Tokyo Tower rimesso a mano) ne usa le regole, come prenOf in app.js
+  const nome = t => String(t || "").trim().toLowerCase();
+  const regola = p => info.prenota?.[p.id] || p.stato !== "aggiunto da voi" ? p.id
+    : Object.keys(info.luoghi || {}).find(id => info.prenota?.[id] && nome(info.luoghi[id].n) === nome(p.n)) || p.id;
+  const daPren = [...all.filter(p => p.pren && !p.out).map(p => ({ id: p.id, r: regola(p), n: p.n || p.id, z: p.z, gg: giorni(p.id) })),
     ...(info.daPrenotare || []).map(p => ({ id: p.id, n: p.n, z: p.z, gg: p.giorno ? [p.giorno] : [], link: p.link }))]
-    .map(p => ({ ...p, w: win(p.id, p.gg[0]), ok: booked.has(p.id) }))
+    .map(p => ({ ...p, w: win(p.r || p.id, p.gg[0]), ok: booked.has(p.id) }))
     .sort((a, c) => a.ok - c.ok || (a.w?.entro || "9999").localeCompare(c.w?.entro || "9999") || (a.gg[0] || "9999").localeCompare(c.gg[0] || "9999") || zk(a) - zk(c));
   const prenota = [["Cosa", "Zona", "In programma", "Da quando", "Entro", "Si compra anche sul posto", "Prenotato", "Come", "Link"]];
   for (const p of daPren) prenota.push([p.n, zona(p.z), p.gg.map(d => d.slice(8) + "/" + d.slice(5, 7)).join(", "), p.w ? day(p.w.da) : "", p.w ? day(p.w.entro) : "",

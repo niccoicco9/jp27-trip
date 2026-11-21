@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 201;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 202;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -948,7 +948,7 @@
         ${p.eur ? `<dt>Costo</dt><dd>~${fmtEur(p.eur)} € a persona <span class="muted">(${p.mine || p.eurEd ? "stima vostra" : "stima Wanderlog"})</span></dd>` : ""}
         ${p.chiuso ? `<dt>Chiuso</dt><dd>${esc(p.chiuso)}</dd>` : ""}
         ${p.pren && !p.gone ? `<dt>Biglietti</dt><dd><label class="check" style="border:none;padding:0"><input type="checkbox" id="bk" ${booked.has(id) ? "checked" : ""}><span>${booked.has(id) ? "<b>Prenotato</b>" : "Da prenotare in anticipo: <b>segna quando è fatto</b>"}</span></label></dd>` : ""}
-        ${p.pren && !p.gone && PREN[p.id] && !booked.has(id) ? `<dt>Quando</dt><dd><b class="bkw ${bookWhen(p)?.cls || ""}">${esc(cap1(bookWhen(p).txt))}</b><div class="small muted" style="margin-top:2px">${esc(PREN[p.id].come)}</div></dd>` : ""}
+        ${p.pren && !p.gone && prenOf(p) && !booked.has(id) ? `<dt>Quando</dt><dd><b class="bkw ${bookWhen(p)?.cls || ""}">${esc(cap1(bookWhen(p).txt))}</b><div class="small muted" style="margin-top:2px">${esc(prenOf(p).come)}</div></dd>` : ""}
         <dt${ds.length && !p.gone ? ' class="dt-pday"' : ""}>In programma</dt><dd>${ds.length ? ds.map(d => `<div class="pday"><span><a href="#giorni/${d}">Giorno ${dayIndex(d) + 1} · ${fmtDay(d, { weekday: "short", day: "numeric", month: "short" })}</a>${closedOn(p, d) ? ` <span class="pill warn">chiuso</span>` : ""}</span>${p.gone ? "" : `<span class="pt-r">${timeIn(`class="ptime" data-ptime="${d}" value="${esc(plan[d]?.t?.[id] || "")}" aria-label="Ora in programma"`)}<button class="iconbtn pclear" data-pclear="${d}" aria-label="Togli l'ora"${plan[d]?.t?.[id] ? "" : " hidden"}>${icon("X")}</button></span>`}</div>`).join("")
           + (p.gone ? "" : `<div class="small muted">Tocca l'ora per segnare quando andarci</div>`) : "<span class='muted'>non ancora</span>"}</dd>
       </dl>
@@ -1115,12 +1115,25 @@
   const bookBy = p => bookWin(p)?.entro || "9999-12-31";
   // finestra di vendita di data.js riportata al giorno in programma: con "prima" le vendite aprono N giorni prima della
   // visita (si sposta con lei); in ogni caso "entro" non va oltre il giorno prima di andarci
+  // un luogo vostro con lo stesso nome di uno di Wanderlog eliminato (es. Tokyo Tower rimesso a mano) ne usa le regole
+  function prenOf(p) {
+    if (PREN[p.id] || !p.mine || !p.n) return PREN[p.id] || null;
+    const k = String(p.n).trim().toLowerCase(), hit = [...BASE_ORIG].find(([id, o]) => PREN[id] && String(o.n || "").trim().toLowerCase() === k);
+    return hit ? PREN[hit[0]] : null;
+  }
   function bookWin(p) {
-    const w = PREN[p.id]; if (!w) return null;
+    const w = prenOf(p); if (!w) return null;
     const v = p.giorno || dayOf(p.id)[0]; if (!v) return w;
     const add = (d, n) => new Date(Date.parse(d + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
     let { da, entro } = w;
     if (w.prima > 0) { const span = Math.round((Date.parse(entro) - Date.parse(da)) / 864e5); da = add(v, -w.prima); entro = add(da, span); }
+    // mesi: stesso giorno N mesi prima (se quel giorno non c'è, il 1° del mese dopo), primo: il 1° del mese; ieri: in Italia è il giorno prima
+    if (w.mesi > 0) {
+      const [y, m, g] = v.split("-").map(Number), dim = new Date(Date.UTC(y, m - 1 - w.mesi + 1, 0)).getUTCDate();
+      da = new Date(w.primo ? Date.UTC(y, m - 1 - w.mesi, 1) : g <= dim ? Date.UTC(y, m - 1 - w.mesi, g) : Date.UTC(y, m - w.mesi, 1)).toISOString().slice(0, 10);
+      if (w.ieri) da = add(da, -1);
+      entro = add(da, w.giorni || 0);
+    }
     const last = add(v, -1); if (entro > last) entro = last; if (da > entro) da = entro;
     return { ...w, da, entro };
   }

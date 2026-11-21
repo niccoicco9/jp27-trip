@@ -32,9 +32,9 @@ window.CATEGORIE = {
 
 window.LUOGHI = [
   // ——— TOKYO ———
-  { id: "t1", n: "Serra dello Shinjuku Gyoen", jp: "新宿御苑 大温室", z: "tokyo", lat: 35.6838, lng: 139.7116, c: "parco", d: "Grande serra con piante tropicali, orchidee e cactus dentro il giardino nazionale.", dur: "30 min", pren: true, eur: 3.10 },
+  { id: "t1", n: "Serra dello Shinjuku Gyoen", jp: "新宿御苑 大温室", z: "tokyo", lat: 35.6838, lng: 139.7116, c: "parco", d: "Grande serra con piante tropicali, orchidee e cactus dentro il giardino nazionale.", dur: "30 min", note: "inclusa nel biglietto dello Shinjuku Gyoen" },
   { id: "t2", n: "Tokyo DisneySea", jp: "東京ディズニーシー", z: "tokyo", lat: 35.6267, lng: 139.8851, c: "divertimento", d: "Il parco Disney più amato: 7 \"porti\" a tema con attrazioni, spettacoli e ristoranti.", dur: "tutto il giorno", pren: true, eur: 75 },
-  { id: "t3", n: "Zoo di Ueno", jp: "上野動物園", z: "tokyo", lat: 35.7165, lng: 139.7713, c: "parco", d: "Zoo ottocentesco con oltre 400 specie, panda inclusi, e una pagoda a 5 piani.", dur: "2-3 h", pren: true, eur: 4 },
+  { id: "t3", n: "Zoo di Ueno", jp: "上野動物園", z: "tokyo", lat: 35.7165, lng: 139.7713, c: "parco", d: "Zoo ottocentesco con oltre 400 specie, panda inclusi, e una pagoda a 5 piani.", dur: "2-3 h", pren: true, chiuso: "lun", eur: 4 },
   { id: "t4", n: "Shibuya Scramble Crossing", jp: "渋谷スクランブル交差点", z: "tokyo", lat: 35.6595, lng: 139.7005, c: "quartiere", d: "L'incrocio pedonale più famoso del mondo. Il top è al tramonto." },
   { id: "t5", n: "Testa di Godzilla", jp: "ゴジラヘッド（ホテルグレイスリー新宿）", z: "tokyo", lat: 35.6951, lng: 139.7020, c: "quartiere", d: "La testa di Godzilla sporge dall'Hotel Gracery a Kabukichō." },
   { id: "t6", n: "Akihabara", jp: "秋葉原", z: "tokyo", lat: 35.6984, lng: 139.7731, c: "quartiere", d: "Il quartiere di elettronica, anime, manga, videogiochi e maid café." },
@@ -106,7 +106,7 @@ window.LUOGHI = [
   { id: "k14", n: "Foresta di bambù di Arashiyama", jp: "嵐山 竹林の小径", z: "kyoto", lat: 35.0170, lng: 135.6717, c: "natura", d: "Il sentiero tra i bambù altissimi. Prima delle 8 è quasi deserto.", eur: 5 },
   { id: "k15", n: "Gion", jp: "祇園", z: "kyoto", lat: 35.0036, lng: 135.7750, c: "quartiere", d: "Il quartiere delle geisha: case di legno, Hanamikoji e Shirakawa. Non fotografate le geiko da vicino." },
   { id: "k16", n: "Mercato Nishiki", jp: "錦市場", z: "kyoto", lat: 35.0050, lng: 135.7649, c: "cibo", d: "\"La cucina di Kyoto\": 400 anni di bancarelle di cibo. Non si mangia camminando." },
-  { id: "k17", n: "Nintendo Museum", jp: "ニンテンドーミュージアム", z: "kyoto", lat: 34.8926, lng: 135.7842, c: "museo", d: "Il museo ufficiale Nintendo a Uji. Biglietti solo tramite lotteria online, mesi prima.", pren: true },
+  { id: "k17", n: "Nintendo Museum", jp: "ニンテンドーミュージアム", z: "kyoto", lat: 34.8926, lng: 135.7842, c: "museo", d: "Il museo ufficiale Nintendo a Uji. Biglietti solo tramite lotteria online, mesi prima.", pren: true, chiuso: "mar" },
   { id: "k18", n: "Round One Kyoto Kawaramachi", jp: "ラウンドワン 京都河原町店", z: "kyoto", lat: 35.0021, lng: 135.7681, c: "divertimento", d: "Bowling, karaoke, sale giochi e sport in un unico edificio." },
   { id: "k19", n: "Uji", jp: "宇治", z: "kyoto", lat: 34.8892, lng: 135.8077, c: "quartiere", d: "La città del tè matcha, con il Byōdō-in (quello sulla moneta da 10 yen)." },
   { id: "k20", n: "Prefettura di Shiga (Lago Biwa)", jp: "滋賀県 琵琶湖", z: "kyoto", lat: 35.0045, lng: 135.8686, c: "natura", d: "Il lago più grande del Giappone, a est di Kyoto: Otsu, Hikone e il suo castello." },
@@ -153,7 +153,7 @@ window.LUOGHI = [
 
   // ——— HAKONE / FUJI ———
   { id: "h1", n: "Hakone Open-Air Museum", jp: "彫刻の森美術館", z: "fuji", lat: 35.2445, lng: 139.0505, c: "museo", d: "Parco di sculture all'aperto, padiglione Picasso e pediluvio termale.", pren: true, eur: 10 },
-  { id: "h2", n: "Onsen Ryokan Mitake", jp: "温泉旅館 御嶽", z: "fuji", lat: 35.2330, lng: 139.1050, c: "onsen", d: "Ryokan tranquillo con vista sul giardino, cena e bagno termale in comune.", note: "questo o altri · posizione sulla mappa da verificare", pren: true, eur: 150 },
+  { id: "h2", n: "Ryokan Senkyoro", jp: "仙郷楼", z: "fuji", lat: 35.2639, lng: 139.0149, c: "onsen", d: "Ryokan a Sengokuhara con cena kaiseki e bagno termale.", note: "prenotato per la notte del 26 febbraio", pren: true, eur: 150 },
   { id: "h3", n: "Pagoda Chūreitō", jp: "忠霊塔", z: "fuji", lat: 35.5012, lng: 138.8016, c: "vista", d: "La cartolina del Giappone: pagoda rossa con il Fuji dietro. Ci sono 398 gradini." },
   { id: "h4", n: "Fuji-Q Highland", jp: "富士急ハイランド", z: "fuji", lat: 35.4870, lng: 138.7800, c: "divertimento", d: "Montagne russe da record e casa stregata, ai piedi del Fuji.", pren: true },
   { id: "h5", n: "Fuji-Honchō Main Street", jp: "富士吉田 本町通り", z: "fuji", lat: 35.4950, lng: 138.8040, c: "quartiere", d: "La strada di Fujiyoshida con il Fuji in fondo, famosa sui social. Attenzione al traffico mentre fate le foto." },
@@ -223,28 +223,29 @@ window.LUOGHI = [
 // da = quando aprono le vendite / da quando muoversi, entro = ultimo giorno utile prima di rischiare il tutto esaurito
 // (date italiane; le vendite giapponesi alle 14:00 JST = 6:00 in Italia d'inverno). come = cosa fare
 // prima = le vendite aprono N giorni prima della visita: da ed entro si spostano con il giorno in programma
+// mesi = aprono lo stesso giorno N mesi prima (primo: il 1° del mese; ieri: in Italia è ancora il giorno prima), giorni = da "da" a "entro"
 // cassa: si compra anche all'ingresso, quindi niente promemoria di prenotazione (l'app lo mostra comunque)
 window.PRENOTA = {
-  h2:  { da: "2026-11-10", entro: "2026-11-30", come: "Notte di sabato 27 febbraio, 4 persone, con cena kaiseki: dite che arrivate verso le 17 e chiedete l'orario della cena. I ryokan buoni finiscono mesi prima, e di sabato prima ancora. Se Mitake è pieno, un altro a Hakone-Yumoto vicino alla stazione" },
-  "treno-kyoto": { da: "2027-01-28", entro: "2027-02-21", come: "Shinkansen Hikari Odawara → Kyoto di domenica 28 febbraio pomeriggio, 4 posti riservati vicini. I posti si aprono 1 mese prima (online su SmartEX); la domenica pomeriggio si riempie" },
-  "rapit": { da: "2027-02-07", entro: "2027-03-05", come: "Il Rapi:t delle 6:00 da Namba per il volo delle 9:00: posto riservato, si compra da 1 mese prima e almeno il giorno prima (sito Nankai o in stazione). Controllate che il 6:00 ci sia davvero" },
-  "bus-fuji": { da: "2027-01-27", entro: "2027-02-06", come: "Bus Keio/Fujikyū delle 7:00 dal Busta Shinjuku per Kawaguchiko, 4 posti. Si prenota online (highwaybus.com) da 1 mese prima; di sabato si riempie, quindi prenotate appena apre" },
-  k17: { da: "2026-12-01", entro: "2026-12-31", come: "Lotteria sul sito Nintendo (serve un Nintendo Account): iscrizioni per le visite di marzo durante tutto dicembre, esito il 1° febbraio, pagamento entro il 7" },
+  h2:  { da: "2026-11-10", entro: "2026-11-30", come: "Già prenotato: Ryokan Senkyoro a Sengokuhara, notte di venerdì 26 febbraio, 4 persone con cena kaiseki. Check-in dalle 15:00 alle 18:00 (con la cena l'ultimo check-in è alle 18): da Kawaguchiko si cambia bus a Gotemba e servono 2-2,5 ore. Segnatelo come prenotato" },
+  "treno-kyoto": { da: "2027-01-27", entro: "2027-02-20", mesi: 1, giorni: 24, come: "Shinkansen Hikari Odawara → Kyoto di sabato 27 febbraio, 4 posti vicini. Da Odawara l'Hikari passa ogni 2 ore (nel weekend alle 12:07 e alle 14:07; alle 14:30 non c'è): controllate l'orario su SmartEX. I posti si aprono 1 mese prima alle 10:00 giapponesi (2:00 italiane). Con valigie grandi (oltre 160 cm sommando i lati) va prenotato il posto con spazio bagagli" },
+  "rapit": { da: "2027-02-07", entro: "2027-03-05", come: "Il Rapi:t delle 6:00 da Namba per il volo delle 9:00 (di domenica c'è): posto riservato, si compra da 1 mese prima e almeno il giorno prima (sito Nankai o in stazione). Va bene se l'hotel di Osaka è vicino a Namba; da Umeda conviene l'Haruka o il bus per l'aeroporto" },
+  "bus-fuji": { da: "2027-01-26", entro: "2027-02-05", mesi: 1, giorni: 10, come: "Bus Keio/Fujikyū delle 7:00 dal Busta Shinjuku per Kawaguchiko, venerdì 26 febbraio, 4 posti. Si prenota online (highwaybus.com) da 1 mese prima: prenotate appena apre" },
+  k17: { da: "2026-12-01", entro: "2026-12-31", come: "Lotteria sul sito Nintendo (serve un Nintendo Account e una carta con 3D Secure): per le visite di marzo iscrizioni dal 1° al 31 dicembre, esito il 1° gennaio, pagamento entro il 7 gennaio alle 15:59 italiane. Chiuso il martedì: mercoledì 3 marzo, il giorno di Uji, è aperto" },
   a3:  { da: "2026-12-10", entro: "2026-12-10", come: "In vendita il 10 del mese alle 14:00 giapponesi (6:00 in Italia) per le visite di due mesi dopo: 10 dicembre per febbraio, 10 gennaio per marzo. Finiscono in poche ore, quindi va comprato il giorno stesso" },
-  k13: { da: "2026-12-01", entro: "2026-12-31", come: "Visita guidata gratuita, solo su prenotazione dal sito dell'Agenzia della Casa Imperiale. I posti sono pochi: controllate da inizio dicembre quando si apre marzo. Il pomeriggio qualche posto si libera sul posto dalle 11" },
-  t26: { da: "2026-12-01", entro: "2026-12-20", come: "Solo online, con orario d'ingresso. Weekend e festivi finiscono 1-3 mesi prima, i giorni feriali 2-4 settimane prima" },
-  t2:  { da: "2026-12-21", entro: "2026-12-31", come: "Biglietti a data fissa, in vendita 2 mesi prima alle 14:00 giapponesi (6:00 in Italia). Non si comprano all'ingresso: prendeteli il giorno in cui si apre la vostra data" },
-  o9:  { da: "2026-12-01", entro: "2027-01-05", come: "Per venerdì 5 marzo (non sabato 6: di venerdì le code sono più corte). Biglietto ed Express Pass con Super Nintendo World vanno comprati circa 2 mesi prima, l'Express Pass finisce" },
-  t24: { da: "2026-12-01", entro: "2026-12-15", come: "Le date escono il 1° del mese, circa 2 mesi prima: il 1° dicembre per febbraio, il 1° gennaio per marzo. I weekend finiscono anche in pochi minuti" },
-  t25: { da: "2026-12-01", entro: "2026-12-15", come: "Circa 2 mesi prima sul sito teamLab. Weekend e festivi finiscono presto; su Klook a volte restano posti" },
-  t28: { da: "2027-02-06", entro: "2027-02-08", prima: 14, come: "Si apre 14 giorni prima a mezzanotte giapponese (16:00 in Italia). L'orario del tramonto finisce in pochi minuti" },
+  k13: { da: "2026-10-31", entro: "2026-11-14", mesi: 3, primo: true, ieri: true, giorni: 14, come: "Visita guidata gratuita, solo su prenotazione dal sito dell'Agenzia della Casa Imperiale (sankan.kunaicho.go.jp). Si apre il 1° del mese 3 mesi prima, alle 5:00 giapponesi (21:00 italiane del giorno prima): per febbraio dal 1° novembre, per marzo dal 30 novembre alle 21. Solo maggiorenni, al massimo 4 per domanda, chiuso il lunedì. Il pomeriggio qualche posto si libera sul posto dalle 11. Il giorno dell'arrivo da Hakone, con le valigie, è difficile arrivare in tempo" },
+  t26: { da: "2026-11-21", entro: "2026-12-20", come: "Solo online, con orario d'ingresso, non rimborsabile. Weekend e festivi finiscono 1-3 mesi prima: martedì 23 febbraio è festa nazionale in Giappone (compleanno dell'Imperatore), quindi controllate subito sul sito" },
+  t2:  { da: "2026-12-24", entro: "2026-12-31", mesi: 2, giorni: 7, come: "Biglietti a data fissa, in vendita alle 14:00 giapponesi (6:00 italiane) dello stesso giorno di 2 mesi prima. Non si comprano all'ingresso: prendeteli appena si apre la vostra data" },
+  o9:  { da: "2027-01-01", entro: "2027-01-06", come: "Per giovedì 4 marzo. Biglietto ed Express Pass con Super Nintendo World escono circa 2 mesi prima (il giorno esatto varia): controllate dal 1° gennaio e comprate appena c'è la vostra data, l'Express Pass finisce" },
+  t24: { da: "2026-12-01", entro: "2026-12-15", mesi: 2, primo: true, giorni: 14, come: "Le date escono il 1° del mese, circa 2 mesi prima: il 1° dicembre per febbraio, il 1° gennaio per marzo. I weekend finiscono anche in pochi minuti" },
+  t25: { da: "2026-12-01", entro: "2026-12-15", mesi: 2, primo: true, giorni: 14, come: "Escono intorno al 1° del mese, 2 mesi prima (il 1° dicembre per febbraio), sul sito teamLab. Martedì 23 febbraio è festa nazionale in Giappone (compleanno dell'Imperatore): i posti finiscono come nel weekend; su Klook a volte restano posti" },
+  t28: { da: "2027-02-10", entro: "2027-02-10", prima: 15, come: "Si apre 14 giorni prima a mezzanotte giapponese, cioè alle 16:00 italiane del giorno prima: siate puntuali, l'orario del tramonto finisce in pochi minuti. Dal 19 novembre 2026 all'ingresso serve il passaporto originale di ognuno, con i dati uguali alla prenotazione" },
   t31: { da: "2027-01-20", entro: "2027-02-07", come: "Laboratorio a orari fissi con pochi posti: 2-3 settimane prima" },
   t20: { da: "2027-01-25", entro: "2027-02-14", come: "Biglietto a orario online, 1-2 settimane prima (nei weekend prima)" },
   t19: { da: "2027-01-25", entro: "2027-02-14", come: "Biglietto a orario online, 1-2 settimane prima. Nei giorni feriali si trova anche in cassa" },
-  o14: { da: "2027-02-01", entro: "2027-02-25", cassa: true, come: "Online sul sito del parco, qualche giorno prima. Si vende anche sul posto se non è esaurito" },
+  o14: { da: "2027-02-01", entro: "2027-02-25", cassa: true, come: "Online sul sito del parco, qualche giorno prima. Si vende anche sul posto se non è esaurito. È sull'isola di Awaji, 1h15-1h30 da Osaka: senza auto prenotate anche il bus da Osaka o Kobe, ritorno compreso (le ultime corse partono presto)" },
   h4:  { da: "2027-02-01", entro: "2027-02-25", cassa: true, come: "Pass giornaliero online qualche giorno prima, oppure in cassa" },
   v8:  { da: "2027-02-01", entro: "2027-02-25", cassa: true, come: "Online o in cassa, raramente esaurito (chiuso martedì e mercoledì)" },
-  t33: { da: "2027-02-01", entro: "2027-02-20", come: "Online qualche giorno prima per l'orario del tramonto, altrimenti in cassa" },
+  t33: { da: "2027-02-01", entro: "2027-02-20", come: "Il Main Deck (150 m) si compra in cassa; il Top Deck Tour (250 m) è a orario: prenotatelo online qualche giorno prima, soprattutto di festa o al tramonto" },
   o1:  { da: "2027-02-01", entro: "2027-02-28", cassa: true, come: "In cassa o online qualche giorno prima" },
   o10: { da: "2027-02-01", entro: "2027-02-28", cassa: true, come: "In cassa o online qualche giorno prima (l'osservatorio al 16° piano è gratis)" },
   o6:  { da: "2027-02-01", entro: "2027-02-28", cassa: true, come: "Online per saltare la fila alla cassa, anche il giorno stesso" },
@@ -254,14 +255,13 @@ window.PRENOTA = {
   v5:  { da: "2027-02-01", entro: "2027-02-25", cassa: true, come: "Ingresso in cassa" },
   t3:  { da: "2027-02-01", entro: "2027-02-20", cassa: true, come: "In cassa; nei weekend conviene il biglietto online qualche giorno prima" },
   t15: { da: "2027-02-01", entro: "2027-02-20", cassa: true, come: "Online o in cassa, anche il giorno stesso (chiuso il lunedì)" },
-  t1:  { da: "2027-02-01", entro: "2027-02-20", cassa: true, come: "La serra è inclusa nel biglietto dello Shinjuku Gyoen" },
 };
 
 // Cose da prenotare che non sono luoghi (bus, treni…): compaiono nella lista "Da prenotare" con i biglietti.
 // giorno = quando si usa, link = dove si prenota
 window.DA_PRENOTARE = [
-  { id: "bus-fuji", n: "Bus Shinjuku → Kawaguchiko, ore 7:00", z: "fuji", giorno: "2027-02-27", link: "https://www.highwaybus.com/gp/index" },
-  { id: "treno-kyoto", n: "Shinkansen Odawara → Kyoto, ore 14:30", z: "fuji", giorno: "2027-02-28", link: "https://smart-ex.jp/en/" },
+  { id: "bus-fuji", n: "Bus Shinjuku → Kawaguchiko, ore 7:00", z: "fuji", giorno: "2027-02-26", link: "https://www.highwaybus.com/gp/index" },
+  { id: "treno-kyoto", n: "Shinkansen Odawara → Kyoto, Hikari 12:07 o 14:07", z: "fuji", giorno: "2027-02-27", link: "https://smart-ex.jp/en/" },
   { id: "rapit", n: "Rapi:t Namba → aeroporto Kansai, ore 6:00", z: "osaka", giorno: "2027-03-07" },
 ];
 
