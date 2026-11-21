@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 209;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 210;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2599,7 +2599,9 @@
     return out;
   }
   // nome del documento: senza estensione, al massimo 60 caratteri (senza spezzare un'emoji), "Documento" se vuoto
-  const docName = s => Array.from(String(s || "").replace(/\.[^.]*$/, "").trim()).slice(0, 60).join("").trim() || "Documento";
+  // (60 come il maxlength dei campi, che conta le emoji come 2: così il campo non ne mostra una spezzata)
+  const cut60 = s => { let o = ""; for (const ch of String(s || "")) { if (o.length + ch.length > 60) break; o += ch; } return o.trim(); };
+  const docName = s => cut60(String(s || "").replace(/\.[^.]*$/, "").trim()) || "Documento";
   // { a } = allegato, { err } = perché non si è potuto, { a, cut } = PDF con più di PDF_MAX pagine (tenute le prime);
   // alive(): false se intanto la scheda di una prenotazione nuova è stata chiusa senza salvarla (non si allega più niente)
   async function addDoc(pid, file, step, alive = () => true, sheet = false) {
@@ -2611,6 +2613,7 @@
       if (pdf) pages = await pdfPages(file, step, sheet ? cv => sliceJpegs(cv) : undefined);
       else { const im = await readImage(file); try { pages = sheet ? await sliceJpegs(im) : [await toJpeg(im, 2800)]; } finally { im.close?.(); } }
       if (sheet && pages.length > SHEET_MAX) return { err: "il foglio è troppo lungo: dividilo in due file" };
+      if (sheet && pages.total > pages.length) return { err: `il PDF ha più di ${PDF_MAX} pagine: dividilo in due file` };   // un foglio non perde pagine in silenzio
     }
     catch (err) {
       console.warn("Documento:", err);
@@ -3064,6 +3067,7 @@
     const isX = /\.xlsx$/i.test(file.name) || file.type === XLSX_TYPE;
     if (!isX) {
       if (/\.(xls|numbers|ods|csv)$/i.test(file.name)) return { err: "si legge solo il formato .xlsx: in Excel «Salva con nome» → .xlsx" };
+      if (!/\.(pdf|jpe?g|png|heic|heif|webp|gif)$/i.test(file.name) && file.type !== "application/pdf" && !file.type.startsWith("image/")) return { err: "si caricano file Excel (.xlsx), PDF o foto" };
       return addDoc(fogliKey(), file, step, () => true, true);
     }
     if (file.size > XLSX_MAX) return { err: "il file è troppo grande (massimo 900 KB)" };
@@ -3117,7 +3121,7 @@
           replacing = null;
         }
       }
-      toast(errs.length ? errs.join(" · ") : ok > 1 ? `${ok} file caricati ✓` : "Foglio pronto ✓");
+      toast(errs.length ? (ok ? `${ok === 1 ? "1 file caricato" : ok + " file caricati"} · ` : "") + errs.join(" · ") : ok > 1 ? `${ok} file caricati ✓` : "Foglio pronto ✓");
       rerender();
     };
     $("#f-add").onclick = () => { replacing = null; file.click(); };   // un file alla volta: su iPhone basta toccarlo, senza «Apri»
@@ -3130,7 +3134,8 @@
         let dal = val("dal"), al = val("al");
         if (dal && !al) al = dal; if (al && !dal) dal = al; if (dal > al) [dal, al] = [al, dal];
         const { dal: _d, al: _a, ...rest } = a;
-        const next = { ...rest, nome: val("nome").slice(0, 60) || a.nome, ...(dal ? { dal, al } : {}) };
+        const next = { ...rest, nome: cut60(val("nome")) || a.nome, ...(dal ? { dal, al } : {}) };   // vuoto: resta il nome di prima
+        $(`[data-f="nome"]`, card).value = next.nome;
         if (sig(next) === sig({ ...a, w: next.w, by: next.by })) return;
         putItem("allegati", next);
         if (!a.xlsx) { $(`[data-f="dal"]`, card).value = dal; $(`[data-f="al"]`, card).value = al; }
