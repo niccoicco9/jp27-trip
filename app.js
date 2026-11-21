@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 219;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 220;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -310,6 +310,10 @@
   // Spese e prenotazioni: una voce per documento, in cache locale per l'avvio offline.
   const lists = { spese: cleanList("spese", LS.get("spese", [])), prenotazioni: cleanList("prenotazioni", LS.get("prenotazioni", [])), luoghi: cleanList("luoghi", LS.get("luoghi", [])), categorie: cleanList("categorie", LS.get("categorie", [])), allegati: cleanList("allegati", LS.get("allegati", [])) };
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  // questo telefono (resta anche cambiando nome o codice): due telefoni con lo stesso nome (iPhone e iPad di Niccolò)
+  // non devono credere "proprio" quello che sta facendo l'altro. Le voci vecchie senza "dev" valgono per nome
+  const DEV = LS.get("dev", "") || (() => { const d = uid(); LS.set("dev", d, true); return d; })();
+  const mineDoc = a => a.dev ? a.dev === DEV : a.by === (me || "?");
   // codice incollato da WhatsApp/Note: via i caratteri invisibili (spazio a larghezza zero, BOM…), spazi strani → normali.
   // Maiuscole e simboli restano: il codice li distingue
   const cleanCode = c => typeof c === "string" ? c.normalize("NFC").replace(/[\u200B-\u200D\u2060\uFEFF]/g, "").replace(/\s/g, " ").trim() : "";
@@ -587,7 +591,7 @@
     // ("at"): una appena allegata qui e non ancora arrivata non è stata eliminata
     if (name === "allegati") {
       const ids = new Set(items.map(a => a.id));
-      for (const a of lists.allegati) if (!ids.has(a.id) && a.at != null && (a.by === (me || "?") || a.id in docUp)) {
+      for (const a of lists.allegati) if (!ids.has(a.id) && a.at != null && (mineDoc(a) || a.id in docUp)) {
         if (a.id in docUp) { delete docUp[a.id]; LS.set("docUp", docUp); }
         for (let k = 0; k < a.pagine; k++) sync?.delPage(a.id, k);
       }
@@ -2698,7 +2702,7 @@
       for (const [k, b] of pages.entries()) await c.put(docKey(id, k), new Response(b, { headers: { "Content-Type": "image/jpeg" } }));
       if (!alive()) { for (let k = 0; k < pages.length; k++) c.delete(docKey(id, k)); return {}; }
     } finally { docPrep.delete(id); }
-    const a = putItem("allegati", { id, pren: pid, nome: docName(file.name), pagine: pages.length, t: Date.now() });
+    const a = putItem("allegati", { id, pren: pid, nome: docName(file.name), pagine: pages.length, t: Date.now(), dev: DEV });
     docUp[a.id] = pages.length; LS.set("docUp", docUp); uploadDocs();
     keepData();
     return { a, cut: pages.total > pages.length ? pages.total : 0 };
@@ -2753,7 +2757,7 @@
     for (const a of lists.allegati) {
       // tolti da un ripristino di backup (bk): restano 30 giorni, poi li toglie chiunque
       const bkOld = a.bk && now - a.bk >= BK_KEEP;
-      if (isFoglio(a) || live.has(a.pren) || editingPren.has(a.pren) || (a.bk && !bkOld) || (a.by !== (me || "?") && !docGone[a.pren] && !bkOld)) continue;
+      if (isFoglio(a) || live.has(a.pren) || editingPren.has(a.pren) || (a.bk && !bkOld) || (!mineDoc(a) && !(a.by === (me || "?") && now - (+a.t || 0) > 864e5) && !docGone[a.pren] && !bkOld)) continue;   // dello stesso nome ma di un altro telefono (o di prima di reinstallare l'app): solo dopo un giorno, mai mentre l'altro lo sta allegando
       seen[a.id] = docOrphan[a.id] || now;
       if (now - seen[a.id] >= ORPHAN_WAIT) { delDoc(a); delete seen[a.id]; }
     }
