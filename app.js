@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 214;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 215;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2855,13 +2855,15 @@
     if (!sheets.length) throw new Error("vuoto");
     return sheets;
   }
-  // un foglio come tabella HTML con le misure di Excel (larghezze in caratteri, altezze in punti)
+  // un foglio come tabella HTML con le misure di Excel (larghezze in caratteri, altezze in punti).
+  // Le misure qui sono quelle a zoom 1 (data-w, data-h): il visore le moltiplica per lo zoom in pixel interi, e testo e
+  // margini seguono --z. Così il foglio si disegna alla sua misura vera e non rimpicciolito con transform (vedi applyZ)
   function sheetHtml(sh) {
     const cw = []; for (let c = 1; c <= sh.maxc; c++) cw.push(sh.cols[c] === 0 ? 0 : Math.round((sh.cols[c] ?? 8.43) * 7 + 5));
-    let h = `<table class="xl"><colgroup>${cw.map(w => `<col style="width:${w}px">`).join("")}</colgroup>`;
+    let h = `<table class="xl"><colgroup>${cw.map(w => `<col data-w="${w}" style="width:${w}px">`).join("")}</colgroup>`;
     for (let r = 1; r <= sh.maxr; r++) {
-      const row = sh.rows.get(r) || { ht: sh.defh, cells: new Map() }, day = Object.keys(sh.days).find(d => sh.days[d] === r);
-      h += `<tr style="height:${(row.ht * 4 / 3).toFixed(1)}px"${day ? ` data-day="${day}"` : ""}>`;
+      const row = sh.rows.get(r) || { ht: sh.defh, cells: new Map() }, day = Object.keys(sh.days).find(d => sh.days[d] === r), ht = (row.ht * 4 / 3).toFixed(1);
+      h += `<tr data-h="${ht}" style="height:${ht}px"${day ? ` data-day="${day}"` : ""}>`;
       for (let c = 1; c <= sh.maxc; c++) {
         if (sh.covered.has(r + ":" + c)) continue;
         const [txt, xf] = row.cells.get(c) || ["", null], css = [];
@@ -2869,7 +2871,7 @@
         if (xf) {
           const f = xf.f || {};
           if (f.b) css.push("font-weight:700"); if (f.i) css.push("font-style:italic");
-          if (f.sz && f.sz !== 11) css.push(`font-size:${f.sz}pt`);
+          if (f.sz && f.sz !== 11) css.push(`font-size:calc(var(--z)*${f.sz}pt)`);
           if (f.c && f.c !== "#000000") css.push(`color:${f.c}`);
           if (xf.fill) css.push(`background:${xf.fill}`);
           for (const [s, b] of Object.entries(xf.bd || {})) css.push(`border-${s}:${b}`);
@@ -2879,7 +2881,7 @@
           if (xf.wrap) css.push("white-space:normal");
         }
         // titolo largo quanto tutto il foglio (es. «LUNEDÌ 22 FEBBRAIO»): a sinistra, se no sul telefono resta fuori dallo schermo
-        if (mg && mg[1] >= sh.maxc && txt) css.push("text-align:left;padding-left:10px");
+        if (mg && mg[1] >= sh.maxc && txt) css.push("text-align:left;padding-left:calc(var(--z)*10px)");
         h += `<td${mg ? ` rowspan="${mg[0]}" colspan="${mg[1]}"` : ""}${css.length ? ` style="${css.join(";")}"` : ""}>${esc(txt).replace(/\n/g, "<br>")}</td>`;
       }
       h += "</tr>";
@@ -2945,14 +2947,16 @@
     document.body.appendChild(v);
     const sc = $(".fv-sc", v), inn = $(".fv-in", v);
     let z = 1, zMin = 1, zMax = 4, cur = 0, posKey = a.id;
-    // foglio Excel: la tabella resta alla sua misura e si ingrandisce con transform: scale dentro un riquadro grande
-    // quanto lei ingrandita. Non con la proprietà CSS zoom: Safari, cambiandola, la applicava due volte (tabella e testo
-    // 2,5 volte più grandi del dovuto) e lo zoom saltava
-    let natW = 1, natH = 1;
+    // foglio Excel: la tabella si disegna alla misura dello zoom, con colonne e righe in pixel interi e testo e margini
+    // che seguono --z. Prima restava alla misura di Excel rimpicciolita con transform: scale(0,72): sul telefono,
+    // scorrendo, tra i riquadri del disegno comparivano righe bianche, e ogni pezzo nuovo era più lento da disegnare.
+    // Non con la proprietà CSS zoom: Safari, cambiandola, la applicava due volte (tabella e testo 2,5 volte più grandi
+    // del dovuto) e lo zoom saltava
     const applyZ = () => {
       if (!a.xlsx) { inn.style.width = z * 100 + "%"; return; }
-      $("table", inn).style.transform = `scale(${z})`;
-      inn.style.width = natW * z + "px"; inn.style.height = natH * z + "px";
+      const t = $("table", inn); t.style.setProperty("--z", z);
+      for (const c of t.querySelectorAll("col")) c.style.width = Math.round(c.dataset.w * z) + "px";
+      for (const r of t.rows) r.style.height = Math.round(r.dataset.h * z) + "px";
     };
     // Zoom. Durante il gesto il foglio si ingrandisce con una trasformazione (fluida: la tabella non si ricalcola a ogni
     // movimento) e lo scorrimento è fermo; alla fine si applica lo zoom vero una volta sola, con lo scorrimento che lascia
@@ -2962,8 +2966,17 @@
     let gest = null;
     const clampZ = n => Math.min(zMax, Math.max(zMin, n));
     const startGest = (fx, fy) => {
-      gest = { z0: z, sl: sc.scrollLeft, st: sc.scrollTop, px: sc.scrollLeft + fx, py: sc.scrollTop + fy, fx, fy, s: 1, mx: fx, my: fy, W: sc.scrollWidth, H: sc.scrollHeight };
+      gest = { z0: z, sl: sc.scrollLeft, st: sc.scrollTop, px: sc.scrollLeft + fx, py: sc.scrollTop + fy, fx, fy, s: 1, mx: fx, my: fy, W: sc.scrollWidth, H: sc.scrollHeight, iw: inn.offsetWidth || 1 };
       inn.style.transformOrigin = `${gest.px}px ${gest.py}px`; inn.style.willChange = "transform";
+      // will-change solo durante il gesto: se restasse, iOS terrebbe il disegno fatto durante il gesto (rimpicciolito il
+      // foglio, il testo restava sfocato anche dopo)
+      // foglio Excel: la riga sotto le dita e il punto dentro di lei (a zoom basso l'altezza delle righe la decide il
+      // testo, e il foglio non cresce in modo uniforme: si tiene ferma la riga, non la proporzione di tutto il foglio)
+      if (a.xlsx) {
+        const rows = $("table", inn).rows; let lo = 0, hi = rows.length - 1;
+        while (lo < hi) { const m = (lo + hi + 1) >> 1; if (rows[m].offsetTop <= gest.py) lo = m; else hi = m - 1; }
+        const r = rows[lo]; if (r) { gest.ri = lo; gest.rf = (gest.py - r.offsetTop) / (r.offsetHeight || 1); }
+      }
     };
     const moveGest = (s, mx, my) => {
       const g = gest; g.s = clampZ(g.z0 * s) / g.z0;
@@ -2976,7 +2989,11 @@
       const g = gest; if (!g) return; gest = null;
       inn.style.transition = inn.style.transform = inn.style.willChange = "";
       z = g.z0 * g.s; applyZ();
-      sc.scrollLeft = g.px * g.s - g.mx; sc.scrollTop = g.py * g.s - g.my;
+      // foglio Excel: la misura nuova non è esattamente s volte quella di prima (pixel interi, bordi sottili che restano
+      // sottili): il punto sotto le dita si tiene con la misura vera
+      const kx = a.xlsx ? inn.offsetWidth / g.iw : g.s, r = g.ri != null && $("table", inn)?.rows[g.ri];
+      sc.scrollLeft = g.px * kx - g.mx;
+      sc.scrollTop = (r ? r.offsetTop + g.rf * r.offsetHeight : g.py * g.s) - g.my;
     };
     // finché ci sono due dita lo scorrimento resta fermo (anche quello per inerzia). Non con overflow: hidden: Safari,
     // rimettendolo, ignorava la posizione nuova e il foglio tornava al bordo sinistro
@@ -3000,9 +3017,10 @@
     const showSheet = i => {
       if (cur !== i || !inn.firstChild) savePos();
       cur = i; posKey = a.id + ":" + i;
-      const s = sheets[i]; inn.innerHTML = sheetHtml(s); inn.style.width = inn.style.height = "";
-      const t = $("table", inn); natW = t.offsetWidth || 1; natH = t.offsetHeight || 1;
-      zMin = Math.min(1, (sc.clientWidth - 2) / natW); zMax = Math.max(2.5, zMin * 6); z = Math.max(zMin, Math.min(.72, zMax)); applyZ();   // leggibile come Excel sul telefono; con due dita si vede tutto
+      const s = sheets[i]; inn.innerHTML = sheetHtml(s);
+      // a zoom 1 (misure di Excel): bordi a parte, la larghezza cresce con lo zoom; rimpicciolito al massimo sta nello schermo
+      const t = $("table", inn), natW = t.offsetWidth || 1, colW = [...t.querySelectorAll("col")].reduce((n, c) => n + +c.dataset.w, 0) || natW;
+      zMin = Math.min(1, Math.max(.05, (sc.clientWidth - 2 - (natW - colW)) / colW)); zMax = Math.max(2.5, zMin * 6); z = Math.max(zMin, Math.min(.72, zMax)); applyZ();   // leggibile come Excel sul telefono; con due dita si vede tutto
       $$("[data-tab-sh]", v).forEach(b => b.classList.toggle("on", +b.dataset.tabSh === i));
       $(`[data-tab-sh="${i}"]`, v)?.scrollIntoView({ inline: "nearest", block: "nearest" });
       const today = todayJP(), row = today in s.days && $(`tr[data-day="${today}"]`, inn);
@@ -3022,20 +3040,25 @@
     let pinchD = 0, lastTap = 0, tap0 = null;
     const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY) || 1;
     const mid = t => rel((t[0].clientX + t[1].clientX) / 2, (t[0].clientY + t[1].clientY) / 2);
+    // Il movimento delle dita si ascolta senza bloccare lo scorrimento (passive). Quello che blocca serve solo durante
+    // le due dita e si aggiunge solo allora: prima c'era sempre, e iOS a ogni scorrimento aspettava il codice prima di
+    // muovere il foglio (poco pronto, soprattutto mentre disegnava)
+    const pinchMove = e => {
+      if (!pinchD) return;
+      if (e.cancelable) e.preventDefault();
+      if (e.touches.length === 2) moveGest(dist(e.touches) / pinchD, ...mid(e.touches));
+    };
     sc.addEventListener("touchstart", e => {
       const t = e.touches; hold = null;   // il dito ha di nuovo il foglio
-      if (t.length === 2 && !gest) { pinchD = dist(t); startGest(...mid(t)); tap0 = null; return; }
+      if (t.length === 2 && !gest) { pinchD = dist(t); startGest(...mid(t)); tap0 = null; sc.addEventListener("touchmove", pinchMove, { passive: false }); return; }
       tap0 = t.length === 1 && !gest ? { x: t[0].clientX, y: t[0].clientY, t: Date.now() } : null;
     }, { passive: true });
     sc.addEventListener("touchmove", e => {
       const t = e.touches;
       if (tap0 && t.length === 1 && Math.hypot(t[0].clientX - tap0.x, t[0].clientY - tap0.y) > 8) tap0 = null;
-      if (!pinchD) return;
-      if (e.cancelable) e.preventDefault();
-      if (t.length === 2) moveGest(dist(t) / pinchD, ...mid(t));
-    }, { passive: false });
+    }, { passive: true });
     const dbl = (x, y) => zoomTo(z > zMin * 1.2 ? zMin : a.xlsx ? Math.max(zMin, Math.min(.72, zMax)) : 2.5, ...rel(x, y));
-    const pinchEnd = e => { if (pinchD && e.touches.length < 2) { pinchD = 0; endGest(); } };
+    const pinchEnd = e => { if (pinchD && e.touches.length < 2) { pinchD = 0; sc.removeEventListener("touchmove", pinchMove); endGest(); } };
     sc.addEventListener("touchcancel", pinchEnd);
     sc.addEventListener("touchend", e => {
       if (pinchD) return pinchEnd(e);
@@ -3058,8 +3081,9 @@
       const t = e.touches[0];
       if (edge?.on) v.style.transform = "";
       edge = e.touches.length === 1 && t.clientX < 24 && !gest ? { x: t.clientX, y: t.clientY, dx: 0, on: null, t: performance.now() } : null;
+      if (edge) v.addEventListener("touchmove", edgeMove, { passive: false });   // solo per questo gesto, come le due dita
     }, { passive: true });
-    v.addEventListener("touchmove", e => {
+    function edgeMove(e) {
       if (!edge) return;
       if (e.touches.length !== 1) { if (edge.on) v.style.transform = ""; edge = null; return; }
       const t = e.touches[0], mx = t.clientX - edge.x, my = t.clientY - edge.y;
@@ -3067,8 +3091,9 @@
       if (!edge.on) return;
       if (e.cancelable) e.preventDefault();
       edge.dx = Math.max(0, mx); v.style.transition = "none"; v.style.transform = `translateX(${edge.dx}px)`;
-    }, { passive: false });
+    }
     const edgeEnd = () => {
+      v.removeEventListener("touchmove", edgeMove);
       const g = edge; edge = null; if (!g?.on) return;
       const fast = g.dx > 30 && g.dx / (performance.now() - g.t) > .5;
       v.style.transition = "transform .2s cubic-bezier(.32, .72, 0, 1), opacity .2s";
