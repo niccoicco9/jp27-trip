@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 198;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 199;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -1768,6 +1768,12 @@
     return `<div class="gm-iw">${photo(id, 330)}<div class="iwtxt"><b>${esc(p.n)}</b><div class="jp">${esc(p.jp)}</div><button data-iw="${id}">Dettagli e indicazioni</button></div></div>`;
   }
   document.addEventListener("click", e => { const b = e.target.closest("[data-iw]"); if (b) openPlace(b.dataset.iw); });
+  // puntina dell'hotel: nome, notti e il pulsante per aprire la prenotazione
+  function hotelIwHtml(h) {
+    const d = x => x ? fmtDay(x, { day: "numeric", month: "short" }) : "?";
+    return `<div class="gm-iw"><div class="iwtxt"><b>${esc(h.titolo || "Hotel")}</b><div class="jp">${esc(h.jp || h.indirizzo || "")}</div><div class="jp">${d(h.dal)} → ${d(h.al)}</div><button data-iwh="${esc(h.id)}">Apri prenotazione</button></div></div>`;
+  }
+  document.addEventListener("click", e => { const b = e.target.closest("[data-iwh]"); if (!b) return; const h = lists.prenotazioni.find(x => x.id === b.dataset.iwh); if (h) editPren(h); else toast("Prenotazione non più presente"); });
   const hotelsWithPos = () => lists.prenotazioni.filter(p => p.tipo === "hotel" && p.lat && p.lng);
 
   // ——— puntine vicine raggruppate in un pallino con il numero (si apre toccandolo) ———
@@ -1874,8 +1880,12 @@
         for (const [id, m] of Object.entries(mk)) { const p = byId[id]; m.setPosition({ lat: p.lat, lng: p.lng }); m.setTitle(p.n); }
         for (const [id, m] of Object.entries(mk)) { const n = nums[id] || 0; m.setIcon(icon(pinUrl("p", byId[id], n), n)); m.setZIndex(n ? 100 - n : 1); }
         curVis = vis; curNums = nums; recluster();
+        { const live = new Set(hotelsWithPos().map(h => h.id)); for (const id of Object.keys(hk)) if (!live.has(id)) { hk[id].setMap(null); delete hk[id]; } }   // hotel eliminato o senza più posizione
         for (const h of hotelsWithPos()) {
-          hk[h.id] ||= new google.maps.Marker({ map, title: h.titolo, icon: icon(pinUrl("hotel")), zIndex: 50 });   // sopra le puntine, sotto i numeri del giorno
+          if (!hk[h.id]) {
+            const m = hk[h.id] = new google.maps.Marker({ map, title: h.titolo, icon: icon(pinUrl("hotel")), zIndex: 50 });   // sopra le puntine, sotto i numeri del giorno
+            const id = h.id; m.addListener("click", () => { const x = lists.prenotazioni.find(y => y.id === id); if (x) { iw.setContent(hotelIwHtml(x)); iw.open({ map, anchor: m }); } });
+          }
           hk[h.id].setPosition({ lat: h.lat, lng: h.lng });
         }
         iw?.close();
@@ -1983,7 +1993,8 @@
           e.setAttribute("aria-label", (n ? `Tappa ${n}: ` : "") + byId[id].n);
         }
         curVis = vis; curNums = nums; recluster();
-        for (const h of hotelsWithPos()) { if (hk[h.id]) hk[h.id].setLngLat([h.lng, h.lat]); else { const e = markerEl(pinUrl("hotel")); e.style.zIndex = 50; hk[h.id] = named(new maplibregl.Marker({ element: e, anchor: "bottom" }).setLngLat([h.lng, h.lat]).addTo(map), `Hotel: ${h.titolo || "hotel"}`); } }   // prima la posizione, poi sulla mappa
+        { const live = new Set(hotelsWithPos().map(h => h.id)); for (const id of Object.keys(hk)) if (!live.has(id)) { hk[id].remove(); delete hk[id]; } }   // hotel eliminato o senza più posizione
+        for (const h of hotelsWithPos()) { if (hk[h.id]) hk[h.id].setLngLat([h.lng, h.lat]); else { const e = markerEl(pinUrl("hotel")), id = h.id; e.style.zIndex = 50; e.addEventListener("click", ev => { ev.stopPropagation(); const x = lists.prenotazioni.find(y => y.id === id); if (x?.lat) popup.setLngLat([x.lng, x.lat]).setHTML(hotelIwHtml(x)).addTo(map); }); hk[h.id] = named(new maplibregl.Marker({ element: e, anchor: "bottom" }).setLngLat([h.lng, h.lat]).addTo(map), `Hotel: ${h.titolo || "hotel"}`); } }   // prima la posizione, poi sulla mappa
         popup?.remove();
       },
       route(pts) { routePts = pts; if (map.isStyleLoaded()) addRoute(); },
@@ -2124,6 +2135,7 @@
     if (dayIds) dayIds.forEach((id, k) => { vis.add(id); nums[id] = k + 1; });
     else LUOGHI.forEach(p => { if ((!p.out && (mapFilter.z === "all" || p.z === mapFilter.z)) || p.id === mapFilter.keep) vis.add(p.id); });
     eng.show(vis, nums);
+    fixHotels();   // puntine hotel mancanti o lontane dalle loro tappe
     const pts = dayIds ? dayIds.map(id => [byId[id].lng, byId[id].lat]) : [];
     eng.route(pts);
     renderCarousel(dayIds);
@@ -2950,26 +2962,45 @@
   }
 
   // posizione dell'hotel dall'indirizzo (OpenStreetMap), per la puntina sulla mappa
-  const geoTried = new Set();
+  // dove deve stare l'hotel: vicino ai luoghi in programma nelle sue notti, della zona che compare di più
+  // (le gite di un giorno non contano). Senza programma per quelle notti non si può dire: va bene ovunque
+  const HOTEL_KM = 25;
+  function hotelFits(h, pt) {
+    if (!h.dal || !h.al) return true;
+    const ps = Object.entries(plan).filter(([d]) => d >= h.dal && d < h.al).flatMap(([, g]) => g?.i || []).map(id => byId[id]).filter(p => p && isFinite(p.lat) && p.z !== "altre");
+    if (!ps.length) return true;
+    const c = {}; for (const p of ps) c[p.z] = (c[p.z] || 0) + 1;
+    const z = Object.entries(c).sort((a, b) => b[1] - a[1])[0][0];
+    return ps.some(p => p.z === z && kmBetween(p, pt) < HOTEL_KM);
+  }
+  const geoTried = new Set(), geoKey = h => h.id + "|" + h.jp + "|" + h.indirizzo + "|" + h.titolo + "|" + h.dal + "|" + h.al;
   async function geocodeHotel(h) {
     if (!navigator.onLine) return;
-    geoTried.add(h.id + "|" + h.jp + "|" + h.indirizzo + "|" + h.titolo);
+    geoTried.add(geoKey(h));
+    let found = null, failed = false;
+    // col solo nome si trova spesso un hotel della stessa catena in un'altra città: si tiene il primo risultato vicino alle tappe
     for (const q of [h.jp, h.indirizzo && h.indirizzo + ", Japan", h.titolo + ", Japan"].filter(Boolean)) {
       try {
-        const r = await (await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=jp&q=${encodeURIComponent(q)}`)).json();
-        if (r[0]) {
-          // intanto cambiato o eliminato (anche da un altro): la posizione vale solo se l'indirizzo è ancora quello
-          const cur = lists.prenotazioni.find(x => x.id === h.id);
-          if (cur && cur.jp === h.jp && cur.indirizzo === h.indirizzo && cur.titolo === h.titolo) putItem("prenotazioni", { ...cur, lat: +r[0].lat, lng: +r[0].lon });
-          return;
-        }
-      } catch {}
+        const r = await (await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=jp&q=${encodeURIComponent(q)}`)).json();
+        found = r.map(x => ({ lat: +x.lat, lng: +x.lon })).find(pt => isFinite(pt.lat) && isFinite(pt.lng) && hotelFits(h, pt));
+        if (found) break;
+      } catch { failed = true; }
     }
+    // intanto cambiato o eliminato (anche da un altro): la posizione vale solo se l'indirizzo è ancora quello
+    const cur = lists.prenotazioni.find(x => x.id === h.id);
+    if (!cur || geoKey(cur) !== geoKey(h)) return;
+    if (found) putItem("prenotazioni", { ...cur, lat: found.lat, lng: found.lng });
+    else if (cur.lat && !failed) { const { lat, lng, ...rest } = cur; putItem("prenotazioni", rest); }   // meglio nessuna puntina che una nel posto sbagliato
   }
-  // hotel rimasti senza puntina (indirizzo cambiato senza rete): si riprova quando torna la rete, una volta per indirizzo, uno alla volta
-  addEventListener("online", () => setTimeout(async () => {
-    for (const h of lists.prenotazioni.filter(h => h.tipo === "hotel" && !h.lat && !geoTried.has(h.id + "|" + h.jp + "|" + h.indirizzo + "|" + h.titolo))) await geocodeHotel(h);
-  }, 2000));
+  // hotel senza puntina (indirizzo cambiato senza rete) o con la puntina lontana dalle sue tappe (trovata prima di questo
+  // controllo, o programma cambiato): si riprova, una volta per indirizzo e date, uno alla volta
+  let fixing = false;
+  async function fixHotels() {
+    if (fixing || !navigator.onLine) return; fixing = true;
+    try { let h; while ((h = lists.prenotazioni.find(h => h.tipo === "hotel" && (!h.lat || !hotelFits(h, h)) && !geoTried.has(geoKey(h))))) await geocodeHotel(h); }
+    finally { fixing = false; }
+  }
+  addEventListener("online", () => setTimeout(fixHotels, 2000));
 
   // ——— LUOGHI aggiunti da voi ———
   // la zona si deduce dal luogo Wanderlog più vicino (entro ~40 km), altrimenti "Altre località"
