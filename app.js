@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 217;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 218;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -369,8 +369,12 @@
   const markConfirmed = (s, seq) => {
     if (seq !== remoteSeq) return;
     confirmed = s; const j = JSON.stringify(s);
-    if (j !== confirmedJ) { confirmedJ = j; try { localStorage.setItem("jp27:syncBase", j); localStorage.removeItem("jp27:joinBase"); } catch {} }
+    if (j !== confirmedJ) { confirmedJ = j; try { localStorage.setItem("jp27:syncBase", j); localStorage.setItem("jp27:dataCode", JSON.stringify(code)); localStorage.removeItem("jp27:joinBase"); } catch {} }
   };
+  // dati condivisi salvati qui (programma, liste, coda di riserva...): appartengono al viaggio di dataCode. Entrando con un
+  // codice diverso si tolgono, così non si vedono (né si rimandano) come se fossero del viaggio nuovo finché non arriva il suo
+  const TRIP_KEYS = ["plan", "booked", "lastEdit", "spese", "prenotazioni", "luoghi", "categorie", "allegati", "syncBase", "joinBase", "outbox", "docUp", "docOrphan", "docGone", "notifyQ", "dataCode"];
+  const forgetTrip = () => { for (const k of TRIP_KEYS) try { localStorage.removeItem("jp27:" + k); } catch {} };
   // telefono con il codice che non ha mai letto i dati dal server, aperto offline: programma e prenotazioni vuoti
   // non vuol dire che non ci siano (non ancora arrivati)
   const notArrived = () => !!code && !navigator.onLine && !localStorage.getItem("jp27:syncBase");
@@ -4548,10 +4552,12 @@
         if (!pick) return toast("Scegli chi sei");
         badCode = ""; oldCode = false; try { sessionStorage.removeItem("jp27:badCode"); } catch {}
         setMe(pick);
-        const changed = c !== code; code = c; LS.set("code", c);
+        const changed = c !== code, dc = LS.get("dataCode", ""), other = !!dc && dc !== c;   // other: i dati qui sono di un altro viaggio
+        code = c; LS.set("code", c);
         closeSheet();
         LS.set("skipCode", false);
-        if (changed && sync) location.reload(); else { startSync(); toast(`Ciao ${me}! 👋`); render(); }
+        if (other) { const old = sync; sync = null; Promise.resolve(old?.stop()).finally(() => { forgetTrip(); location.reload(); }); }
+        else if (changed && sync) location.reload(); else { startSync(); toast(`Ciao ${me}! 👋`); render(); }
       });
     }, () => {
       if (needCode && !code) {
