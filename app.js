@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 210;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 211;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2915,6 +2915,7 @@
   // — visore: il foglio a schermo intero, zoom con due dita o doppio tocco, linguette dei fogli come in Excel —
   const xlCache = new Map();   // id → fogli già letti (il file si legge una volta sola finché l'app è aperta)
   const fogliPos = LS.get("fogliPos", {});
+  let closeFoglio = null;   // il visore aperto: si chiude anche se cambia la pagina (indietro di Safari, un link)
   async function openFoglio(a, shIdx = 0) {
     if (docOpening || $(".fviewer, .viewer")) return;
     docOpening = true; let waitShown = false;
@@ -2979,7 +2980,15 @@
     };
     // finché ci sono due dita lo scorrimento resta fermo (anche quello per inerzia). Non con overflow: hidden: Safari,
     // rimettendolo, ignorava la posizione nuova e il foglio tornava al bordo sinistro
-    sc.addEventListener("scroll", () => { if (gest && (sc.scrollLeft !== gest.sl || sc.scrollTop !== gest.st)) { sc.scrollLeft = gest.sl; sc.scrollTop = gest.st; } }, { passive: true });
+    // Lo stesso subito dopo il cambio di foglio: l'inerzia del foglio di prima, su iPhone, continuava a far scorrere quello
+    // nuovo (si apriva più in basso del dovuto). hold: la posizione da tenere finché lo scorrimento non si ferma
+    let hold = null;
+    sc.addEventListener("scroll", () => {
+      const now = Date.now();
+      if (hold && now > hold.until) hold = null;
+      const h = gest ? { l: gest.sl, t: gest.st } : hold;
+      if (h && (sc.scrollLeft !== h.l || sc.scrollTop !== h.t)) { sc.scrollLeft = h.l; sc.scrollTop = h.t; if (hold) hold.until = Math.min(hold.max, now + 150); }
+    }, { passive: true });
     // doppio tocco: stesso meccanismo, animato
     const zoomTo = (nz, fx, fy) => {
       if (gest) return;
@@ -2999,6 +3008,8 @@
       const today = todayJP(), row = today in s.days && $(`tr[data-day="${today}"]`, inn);
       sc.scrollLeft = 0;
       sc.scrollTop = row ? row.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop : (fogliPos[posKey] || 0) * sc.scrollHeight;
+      const now = Date.now(); hold = { l: sc.scrollLeft, t: sc.scrollTop, until: now + 150, max: now + 1200 };
+      LS.set("fogliPos", fogliPos);
     };
     if (a.xlsx) showSheet(Math.min(Math.max(0, shIdx), sheets.length - 1));
     else {
@@ -3012,7 +3023,7 @@
     const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY) || 1;
     const mid = t => rel((t[0].clientX + t[1].clientX) / 2, (t[0].clientY + t[1].clientY) / 2);
     sc.addEventListener("touchstart", e => {
-      const t = e.touches;
+      const t = e.touches; hold = null;   // il dito ha di nuovo il foglio
       if (t.length === 2 && !gest) { pinchD = dist(t); startGest(...mid(t)); tap0 = null; return; }
       tap0 = t.length === 1 && !gest ? { x: t[0].clientX, y: t[0].clientY, t: Date.now() } : null;
     }, { passive: true });
@@ -3040,16 +3051,45 @@
       if (share) { try { await navigator.share({ files: [file] }); } catch {} return; }
       const u = URL.createObjectURL(file), l = document.createElement("a"); l.href = u; l.download = file.name; l.click(); setTimeout(() => URL.revokeObjectURL(u), 1e4);
     });
+    // indietro dal bordo sinistro (nell'app dalla schermata Home non c'è quello di Safari): il foglio segue il dito e si chiude.
+    // Prima lo scorrimento dal bordo cambiava la pagina sotto e il foglio restava aperto sopra
+    let edge = null;
+    v.addEventListener("touchstart", e => {
+      const t = e.touches[0];
+      if (edge?.on) v.style.transform = "";
+      edge = e.touches.length === 1 && t.clientX < 24 && !gest ? { x: t.clientX, y: t.clientY, dx: 0, on: null, t: performance.now() } : null;
+    }, { passive: true });
+    v.addEventListener("touchmove", e => {
+      if (!edge) return;
+      if (e.touches.length !== 1) { if (edge.on) v.style.transform = ""; edge = null; return; }
+      const t = e.touches[0], mx = t.clientX - edge.x, my = t.clientY - edge.y;
+      if (edge.on === null && (Math.abs(mx) > 6 || Math.abs(my) > 6)) { edge.on = mx > Math.abs(my); if (!edge.on) { edge = null; return; } }
+      if (!edge.on) return;
+      if (e.cancelable) e.preventDefault();
+      edge.dx = Math.max(0, mx); v.style.transition = "none"; v.style.transform = `translateX(${edge.dx}px)`;
+    }, { passive: false });
+    const edgeEnd = () => {
+      const g = edge; edge = null; if (!g?.on) return;
+      const fast = g.dx > 30 && g.dx / (performance.now() - g.t) > .5;
+      v.style.transition = "transform .2s cubic-bezier(.32, .72, 0, 1), opacity .2s";
+      if (g.dx > innerWidth * .35 || fast) { v.style.transform = `translateX(${innerWidth}px)`; buzz(); close(); } else v.style.transform = "";
+    };
+    v.addEventListener("touchend", edgeEnd); v.addEventListener("touchcancel", edgeEnd);
+    // la posizione si salva anche quando l'app va in secondo piano: chiusa da iOS col foglio aperto, riapre lì
+    const persist = () => { savePos(); LS.set("fogliPos", fogliPos); };
+    const onHide = () => { if (document.hidden) persist(); };
+    document.addEventListener("visibilitychange", onHide);
     const close = () => {
       if (v.classList.contains("out")) return;
       endGest(); savePos();
       for (const k of Object.keys(fogliPos)) if (!lists.allegati.some(x => x.id === k.split(":")[0])) delete fogliPos[k];
       LS.set("fogliPos", fogliPos);
-      v.classList.add("out"); document.removeEventListener("keydown", key); dropLayer(layer);
+      v.classList.add("out"); document.removeEventListener("keydown", key); document.removeEventListener("visibilitychange", onHide); dropLayer(layer);
+      if (closeFoglio === close) closeFoglio = null;
       setTimeout(() => { v.remove(); urls.forEach(URL.revokeObjectURL); }, 200);
     };
     const layer = () => close();
-    pushLayer(layer);
+    pushLayer(layer); closeFoglio = close;
     const key = e => { if (e.key === "Escape") close(); };
     document.addEventListener("keydown", key);
     $(".fv-x", v).onclick = close;
@@ -4687,7 +4727,7 @@
     }
     document.addEventListener("touchstart", e => {
       const t = e.touches[0];
-      if (busy || e.touches.length > 1 || t.clientX > 24 || onMap(e) || sheetOpen() || !$("#big").hidden || !backTarget()) { x0 = null; return; }
+      if (busy || e.touches.length > 1 || t.clientX > 24 || onMap(e) || sheetOpen() || !$("#big").hidden || $(".fviewer, .viewer") || !backTarget()) { x0 = null; return; }   // visori a schermo intero: il gesto è loro
       x0 = t.clientX; y0 = t.clientY; dx = 0; on = null; vx = 0; lx = t.clientX; lt = performance.now();
       document.addEventListener("touchmove", move, { passive: false });   // solo durante questo gesto: lo scroll normale resta fluido
     }, { passive: true });
@@ -4814,6 +4854,7 @@
   function navigate() {
     if (!isSub(location.hash)) subPushed = false;   // indietro di sistema da una sottopagina: non si è più "dentro"
     layers.length = 0;   // la pagina cambia: le schede aperte si chiudono
+    closeFoglio?.();
     for (const c of [...openAsks]) c();
     closeSheet(true, true); hideBig(true);
     if (maybeImport()) return;
