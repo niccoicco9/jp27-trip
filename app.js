@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 197;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 198;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -3584,37 +3584,56 @@
   }
 
   // ——— IL NOSTRO GIAPPONE: il viaggio in numeri (anteprima prima di partire, completo alla fine) ———
+  // calcoli della pagina, fuori dal disegno così si provano (test/calcoli.test.mjs)
+  function ricordiCalc(before) {
+    const ok = id => byId[id] && !byId[id].gone;   // luogo eliminato (o che non esiste più): non conta
+    const planOf = d => (plan[d]?.i || []).filter(ok);
+    // fatte nell'ordine del giorno (non in quello delle spunte), così i km seguono il percorso
+    const doneOf = d => { const i = plan[d]?.i || [], f = new Set(Array.isArray(plan[d]?.f) ? plan[d].f : []); return [...i.filter(id => f.has(id)), ...[...f].filter(id => !i.includes(id))].filter(ok); };
+    const anyDone = !before && DAYS.some(d => doneOf(d).length);   // prima di partire una spunta non può essere vera
+    const stopsOf = anyDone ? doneOf : planOf;
+    const uniq = [...new Set(DAYS.flatMap(stopsOf))], planned = new Set(DAYS.flatMap(planOf)).size;
+    const pos = p => Number.isFinite(p?.lat) && Number.isFinite(p?.lng);
+    // a piedi: solo tra tappe dello stesso giorno (niente treno Tokyo → Kyoto), saltando i luoghi senza posizione
+    let km = 0; for (const d of DAYS) { const s = stopsOf(d).map(id => byId[id]).filter(pos); for (let j = 1; j < s.length; j++) km += kmBetween(s[j - 1], s[j]) * 1.25; }
+    const zs = []; for (const d of DAYS) { const z = dayZone(d); if (!zona[z]) continue; if (zs[zs.length - 1]?.z !== z) zs.push({ z, n: 0 }); zs[zs.length - 1].n++; }
+    const cities = [...new Set(zs.map(x => x.z))];
+    const sp = speseVive().filter(x => x.cat !== "rimborso" && Number.isFinite(x.eur) && x.eur > 0), tot = sp.reduce((a, x) => a + x.eur, 0);
+    // pari merito: sempre lo stesso su tutti i telefoni (le liste possono arrivare in ordine diverso)
+    const top = o => Object.entries(o).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0] || null;
+    const byCat = {}; for (const x of sp) { const k = catOf(x.cat).k; byCat[k] = (byCat[k] || 0) + x.eur; }
+    const byWho = {}; for (const x of sp) byWho[x.pagatoDa] = (byWho[x.pagatoDa] || 0) + x.eur;
+    const big = [...sp].sort((a, b) => b.eur - a.eur || (a.ts || 0) - (b.ts || 0) || String(a.id).localeCompare(String(b.id)))[0] || null;
+    const seenU = new Set(), pics = uniq.filter(id => { const u = photoUrl(id); if (!u || seenU.has(u)) return false; seenU.add(u); return true; }).slice(0, 9);   // stessa foto su più luoghi: una volta sola
+    return { anyDone, uniq, planned, km, zs, cities, tot, perHead: tot / Math.max(1, T.viaggiatori.length), topCat: top(byCat), topWho: top(byWho), big, pics };
+  }
+  const tappeTxt = r => `${r.uniq.length} ${r.uniq.length === 1 ? "tappa" : "tappe"} ${r.anyDone ? (r.uniq.length === 1 ? "fatta" : "fatte") : "in programma"}`;
+  function ricordiTesto(r) {
+    const p = [`${DAYS.length} ${DAYS.length === 1 ? "giorno" : "giorni"}${r.cities.length ? ` (${r.cities.map(z => zona[z].nome).join(", ")})` : ""}`];
+    if (r.uniq.length) p.push(tappeTxt(r));
+    if (r.km >= 1) p.push(`~${fmtInt(r.km)} km a piedi`);
+    if (r.tot) p.push(`${fmtInt(r.tot)} € in tutto`);
+    return `${T.titolo}: ${p.join(", ")}. 🇯🇵`;
+  }
   function renderRicordi(back) {
     const today = todayJP(), before = today < T.inizio, after = today > T.fine;
-    const anyDone = DAYS.some(d => plan[d]?.f?.length);
-    const stopsOf = d => ((anyDone ? plan[d]?.f : plan[d]?.i) || []).filter(id => byId[id]);
-    const stops = DAYS.flatMap(stopsOf), uniq = [...new Set(stops)];
-    let km = 0; for (const d of DAYS) { const s = stopsOf(d); for (let j = 1; j < s.length; j++) km += kmBetween(byId[s[j - 1]], byId[s[j]]) * 1.25; }
-    const zs = []; for (const d of DAYS) { const z = dayZone(d); if (z && zs[zs.length - 1]?.z !== z) zs.push({ z, n: 0 }); if (z) zs[zs.length - 1].n++; }
-    const cities = [...new Set(zs.map(x => x.z))];
-    const sp = speseVive().filter(x => x.cat !== "rimborso"), tot = sp.reduce((a, x) => a + x.eur, 0);
-    const byCat = {}; for (const x of sp) { const k = catOf(x.cat).k; byCat[k] = (byCat[k] || 0) + x.eur; }
-    const topCat = Object.entries(byCat).sort((a, b) => b[1] - a[1])[0];
-    const byWho = {}; for (const x of sp) byWho[x.pagatoDa] = (byWho[x.pagatoDa] || 0) + x.eur;
-    const topWho = Object.entries(byWho).sort((a, b) => b[1] - a[1])[0];
-    const big = [...sp].sort((a, b) => b.eur - a.eur)[0];
-    const seenU = new Set(), pics = uniq.filter(id => { const u = photoUrl(id); if (!u || seenU.has(u)) return false; seenU.add(u); return true; }).slice(0, 9);   // stessa foto su più luoghi: una volta sola
+    const r = ricordiCalc(before), { anyDone, uniq, planned, km, zs, cities, tot, perHead, topCat, topWho, big, pics } = r;
     const stat = (n, l, c) => `<div class="rstat" style="--c:${c}"><b${String(n).length > 6 ? ' class="long"' : ""}>${n}</b><small>${l}</small></div>`;
     view.innerHTML = `${back}<h2>Il nostro Giappone</h2><p class="lead">${before ? "Anteprima: si completa durante il viaggio, man mano che timbrate le tappe e segnate le spese." : after ? "Com'è andata, in numeri." : "Il viaggio fin qui, in numeri."}</p>
       <div class="rgrid">
         ${stat(DAYS.length, "giorni", "#c8402f")}${stat(cities.length, "città", "#7b4fa0")}
-        ${stat(uniq.length, (uniq.length === 1 ? "tappa " : "tappe ") + (anyDone ? (uniq.length === 1 ? "fatta" : "fatte") : "in programma"), "#1f9488")}${stat(km >= 1 ? Math.round(km) + " km" : "–", "a piedi (stima)", "#d9822b")}
-        ${stat(tot ? fmtInt(tot) + " €" : "–", "spesi in tutto", "#2e6fb0")}${stat(tot ? fmtInt(tot / T.viaggiatori.length) + " €" : "–", "a testa", "#4f8a3c")}
+        ${stat(uniq.length, tappeTxt(r).replace(/^\d+ /, "") + (anyDone && planned > uniq.length ? ` (su ${planned})` : ""), "#1f9488")}${stat(km >= 1 ? Math.round(km) + " km" : "–", "a piedi (stima)", "#d9822b")}
+        ${stat(tot ? fmtInt(tot) + " €" : "–", "spesi in tutto", "#2e6fb0")}${stat(tot ? fmtInt(perHead) + " €" : "–", "a testa", "#4f8a3c")}
       </div>
       ${zs.length ? `<div class="card"><h3 style="margin-top:0">Il percorso</h3><div class="rtrip">${zs.map(x => `<span style="--c:${zona[x.z].colore}"><b>${esc(zona[x.z].nome)}</b><small>${x.n} ${x.n === 1 ? "giorno" : "giorni"}</small></span>`).join(`<i>${icon("ChevronRight")}</i>`)}</div></div>` : ""}
-      ${sp.length ? `<div class="card"><h3 style="margin-top:0">Le spese</h3>
+      ${tot ? `<div class="card"><h3 style="margin-top:0">Le spese</h3>
         ${topCat ? `<div class="row rline"><span class="pic" style="--c:${catOf(topCat[0]).col}">${catOf(topCat[0]).html}</span><div class="grow"><small class="muted">Categoria regina</small><b>${esc(catOf(topCat[0]).n)} · ${eurF(topCat[1])}</b></div></div>` : ""}
         ${big ? `<div class="row rline"><span class="pic" style="--c:${catOf(big.cat).col}">${catOf(big.cat).html}</span><div class="grow"><small class="muted">La spesa più grande</small><b>${esc(big.desc || catOf(big.cat).n)} · ${eurF(big.eur)}</b></div></div>` : ""}
         ${topWho ? `<div class="row rline">${avatar(topWho[0], 40)}<div class="grow"><small class="muted">Ha anticipato di più</small><b>${esc(topWho[0])} · ${eurF(topWho[1])}</b></div></div>` : ""}</div>` : ""}
       ${pics.length ? `<h3>${anyDone ? "Dove siamo stati" : "Dove andremo"}</h3><div class="rpics">${pics.map(id => `<div class="ph" data-bg="${photoUrl(id, 330)}" data-place="${id}"></div>`).join("")}</div>` : ""}
       ${navigator.share ? `<button class="btn primary" id="rshare" style="width:100%;margin-top:16px">${icon("Share2")} Condividi il riassunto</button>` : ""}`;
     lazyScan();
-    $("#rshare")?.addEventListener("click", () => navigator.share({ title: T.titolo, text: `${T.titolo}: ${DAYS.length} giorni, ${cities.map(z => zona[z].nome).join(", ")}${uniq.length ? `, ${uniq.length} tappe` : ""}${km >= 1 ? `, ~${Math.round(km)} km a piedi` : ""}${tot ? `, ${fmtInt(tot)} € in tutto` : ""}. 🇯🇵` }).catch(() => {}));
+    $("#rshare")?.addEventListener("click", () => navigator.share({ title: T.titolo, text: ricordiTesto(r) }).catch(() => {}));
   }
 
   // ——— NOTIFICHE ———
