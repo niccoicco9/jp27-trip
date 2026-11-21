@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 204;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 205;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2904,23 +2904,56 @@
     document.body.appendChild(v);
     const sc = $(".fv-sc", v), inn = $(".fv-in", v);
     let z = 1, zMin = 1, zMax = 4, cur = 0, posKey = a.id;
-    const target = () => a.xlsx ? $("table", inn) : inn;
-    const applyZ = () => { if (a.xlsx) target().style.zoom = z; else inn.style.width = z * 100 + "%"; };
-    // zoom intorno al punto toccato (cx, cy dentro il riquadro): quel punto resta sotto le dita
-    const setZ = (nz, cx, cy) => {
-      nz = Math.min(zMax, Math.max(zMin, nz)); if (Math.abs(nz - z) < .001) return;
-      const sx = (sc.scrollLeft + cx) / z, sy = (sc.scrollTop + cy) / z;
-      z = nz; applyZ();
-      sc.scrollLeft = sx * z - cx; sc.scrollTop = sy * z - cy;
+    // foglio Excel: la tabella resta alla sua misura e si ingrandisce con transform: scale dentro un riquadro grande
+    // quanto lei ingrandita. Non con la proprietà CSS zoom: Safari, cambiandola, la applicava due volte (tabella e testo
+    // 2,5 volte più grandi del dovuto) e lo zoom saltava
+    let natW = 1, natH = 1;
+    const applyZ = () => {
+      if (!a.xlsx) { inn.style.width = z * 100 + "%"; return; }
+      $("table", inn).style.transform = `scale(${z})`;
+      inn.style.width = natW * z + "px"; inn.style.height = natH * z + "px";
+    };
+    // Zoom. Durante il gesto il foglio si ingrandisce con una trasformazione (fluida: la tabella non si ricalcola a ogni
+    // movimento) e lo scorrimento è fermo; alla fine si applica lo zoom vero una volta sola, con lo scorrimento che lascia
+    // tutto dov'era. Prima lo zoom vero cambiava a ogni movimento: lento, e vicino ai bordi il punto scivolava via.
+    // gest: z0 = zoom all'inizio, (px, py) = punto del foglio sotto le dita, (fx, fy) = dove stava nel riquadro,
+    // s = ingrandimento del gesto, (mx, my) = dove sta adesso quel punto (tenuto in modo che il foglio non esca dai bordi)
+    let gest = null;
+    const clampZ = n => Math.min(zMax, Math.max(zMin, n));
+    const startGest = (fx, fy) => {
+      gest = { z0: z, sl: sc.scrollLeft, st: sc.scrollTop, px: sc.scrollLeft + fx, py: sc.scrollTop + fy, fx, fy, s: 1, mx: fx, my: fy, W: sc.scrollWidth, H: sc.scrollHeight };
+      inn.style.transformOrigin = `${gest.px}px ${gest.py}px`; inn.style.willChange = "transform";
+    };
+    const moveGest = (s, mx, my) => {
+      const g = gest; g.s = clampZ(g.z0 * s) / g.z0;
+      const vw = sc.clientWidth, vh = sc.clientHeight, W = g.W * g.s, H = g.H * g.s;
+      const ox = Math.min(0, Math.max(Math.min(0, vw - W), mx - g.px * g.s)), oy = Math.min(0, Math.max(Math.min(0, vh - H), my - g.py * g.s));
+      g.mx = ox + g.px * g.s; g.my = oy + g.py * g.s;
+      inn.style.transform = `translate(${g.mx - g.fx}px, ${g.my - g.fy}px) scale(${g.s})`;
+    };
+    const endGest = () => {
+      const g = gest; if (!g) return; gest = null;
+      inn.style.transition = inn.style.transform = inn.style.willChange = "";
+      z = g.z0 * g.s; applyZ();
+      sc.scrollLeft = g.px * g.s - g.mx; sc.scrollTop = g.py * g.s - g.my;
+    };
+    // finché ci sono due dita lo scorrimento resta fermo (anche quello per inerzia). Non con overflow: hidden: Safari,
+    // rimettendolo, ignorava la posizione nuova e il foglio tornava al bordo sinistro
+    sc.addEventListener("scroll", () => { if (gest && (sc.scrollLeft !== gest.sl || sc.scrollTop !== gest.st)) { sc.scrollLeft = gest.sl; sc.scrollTop = gest.st; } }, { passive: true });
+    // doppio tocco: stesso meccanismo, animato
+    const zoomTo = (nz, fx, fy) => {
+      if (gest) return;
+      startGest(fx, fy); inn.style.transition = "transform .22s cubic-bezier(.32, .72, 0, 1)";
+      moveGest(clampZ(nz) / z, fx, fy); setTimeout(endGest, 230);
     };
     const savePos = () => { if (sc.scrollHeight) fogliPos[posKey] = Math.round(sc.scrollTop / sc.scrollHeight * 1e4) / 1e4; };
     // un foglio Excel: si apre largo quanto lo schermo, sul giorno di oggi se c'è (se no dove l'avevi lasciato)
     const showSheet = i => {
       if (cur !== i || !inn.firstChild) savePos();
       cur = i; posKey = a.id + ":" + i;
-      const s = sheets[i]; inn.innerHTML = sheetHtml(s);
-      const w = target().offsetWidth || 1;
-      zMin = Math.min(1, (sc.clientWidth - 2) / w); zMax = Math.max(2.5, zMin * 6); z = Math.max(zMin, Math.min(.72, zMax)); applyZ();   // leggibile come Excel sul telefono; con due dita si vede tutto
+      const s = sheets[i]; inn.innerHTML = sheetHtml(s); inn.style.width = inn.style.height = "";
+      const t = $("table", inn); natW = t.offsetWidth || 1; natH = t.offsetHeight || 1;
+      zMin = Math.min(1, (sc.clientWidth - 2) / natW); zMax = Math.max(2.5, zMin * 6); z = Math.max(zMin, Math.min(.72, zMax)); applyZ();   // leggibile come Excel sul telefono; con due dita si vede tutto
       $$("[data-tab-sh]", v).forEach(b => b.classList.toggle("on", +b.dataset.tabSh === i));
       $(`[data-tab-sh="${i}"]`, v)?.scrollIntoView({ inline: "nearest", block: "nearest" });
       const today = todayJP(), row = today in s.days && $(`tr[data-day="${today}"]`, inn);
@@ -2935,23 +2968,26 @@
     }
     $$("[data-tab-sh]", v).forEach(b => b.onclick = () => { buzz(); showSheet(+b.dataset.tabSh); });
     const rel = (x, y) => { const r = sc.getBoundingClientRect(); return [x - r.left, y - r.top]; };
-    let pinch = null, lastTap = 0, tap0 = null;
+    let pinchD = 0, lastTap = 0, tap0 = null;
+    const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY) || 1;
+    const mid = t => rel((t[0].clientX + t[1].clientX) / 2, (t[0].clientY + t[1].clientY) / 2);
     sc.addEventListener("touchstart", e => {
       const t = e.touches;
-      if (t.length === 2) { pinch = { d: Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY), z }; tap0 = null; return; }
-      tap0 = t.length === 1 ? { x: t[0].clientX, y: t[0].clientY, t: Date.now() } : null;
+      if (t.length === 2 && !gest) { pinchD = dist(t); startGest(...mid(t)); tap0 = null; return; }
+      tap0 = t.length === 1 && !gest ? { x: t[0].clientX, y: t[0].clientY, t: Date.now() } : null;
     }, { passive: true });
     sc.addEventListener("touchmove", e => {
       const t = e.touches;
       if (tap0 && t.length === 1 && Math.hypot(t[0].clientX - tap0.x, t[0].clientY - tap0.y) > 8) tap0 = null;
-      if (!pinch || t.length !== 2) return;
-      e.preventDefault();
-      const d = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
-      setZ(pinch.z * d / pinch.d, ...rel((t[0].clientX + t[1].clientX) / 2, (t[0].clientY + t[1].clientY) / 2));
+      if (!pinchD) return;
+      if (e.cancelable) e.preventDefault();
+      if (t.length === 2) moveGest(dist(t) / pinchD, ...mid(t));
     }, { passive: false });
-    const dbl = (x, y) => setZ(z > zMin * 1.2 ? zMin : a.xlsx ? Math.max(zMin, Math.min(.72, zMax)) : 2.5, ...rel(x, y));
+    const dbl = (x, y) => zoomTo(z > zMin * 1.2 ? zMin : a.xlsx ? Math.max(zMin, Math.min(.72, zMax)) : 2.5, ...rel(x, y));
+    const pinchEnd = e => { if (pinchD && e.touches.length < 2) { pinchD = 0; endGest(); } };
+    sc.addEventListener("touchcancel", pinchEnd);
     sc.addEventListener("touchend", e => {
-      if (e.touches.length < 2) pinch = null;
+      if (pinchD) return pinchEnd(e);
       if (e.touches.length || !tap0 || Date.now() - tap0.t > 300) return;
       const now = Date.now();
       if (now - lastTap < 300) { dbl(tap0.x, tap0.y); lastTap = 0; } else lastTap = now;
@@ -2966,7 +3002,7 @@
     });
     const close = () => {
       if (v.classList.contains("out")) return;
-      savePos();
+      endGest(); savePos();
       for (const k of Object.keys(fogliPos)) if (!lists.allegati.some(x => x.id === k.split(":")[0])) delete fogliPos[k];
       LS.set("fogliPos", fogliPos);
       v.classList.add("out"); document.removeEventListener("keydown", key); dropLayer(layer);
