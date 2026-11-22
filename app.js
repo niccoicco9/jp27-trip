@@ -29,7 +29,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 223;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 224;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -1125,7 +1125,7 @@
     const dupHtml = hs.slice(1).map(p => `<div class="mini" data-pren="${p.id}"><span style="color:var(--warn-fg)">${icon("BedDouble")}</span><span class="grow"><small>Stessa notte, si sovrappone</small><b>${esc(p.titolo)}</b></span>${docBtn(p)}</div>`).join("");
     const arr = lists.prenotazioni.filter(p => p.tipo === "volo" && p.al === d && p.dal !== d);   // atterraggi di oggi (partiti ieri)
     const bsHtml = bs.map(p => { const [ic, col] = PTYPE[p.tipo] || PTYPE.altro; return `<div class="mini" data-pren="${p.id}"><span style="color:${col}">${icon(ic)}</span><span class="grow"><small>${p.ora ? esc(p.ora) : "Prenotato"}${p.tipo === "volo" && p.oraA ? ` → arrivo ${p.al && p.al !== p.dal ? fmtDay(p.al, { weekday: "short", day: "numeric" }) + " " : ""}${esc(p.oraA)}` : ""}</small><b>${esc(p.titolo)}</b></span>${docBtn(p)}${webLink(p.link) ? `<a class="btn small" href="${esc(webLink(p.link))}" target="_blank" rel="noopener">${icon("Link")}</a>` : ""}</div>`; }).join("");
-    const noHotel = !h && d !== T.fine && !inFlight(d) ? `<a class="mini" href="#utility/prenotazioni">${icon("BedDouble")} <span class="grow">Nessun hotel per questa notte</span><b>Aggiungi</b></a>` : "";
+    const noHotel = !h && d !== T.fine && !inFlight(d) ? `<a class="mini" href="#utility/prenotazioni/hotel">${icon("BedDouble")} <span class="grow">Nessun hotel per questa notte</span><b>Aggiungi</b></a>` : "";
     return `${outHtml}${arr.map(p => `<div class="mini" data-pren="${p.id}"><span style="color:${PTYPE.volo[1]}">${icon("Plane")}</span><span class="grow"><small>Atterraggio${p.oraA ? " " + esc(p.oraA) : ""}${p.a ? " · " + esc(p.a) : ""}</small><b>${esc(p.titolo)}</b></span></div>`).join("")}${bsHtml}${noHotel}${h ? `<div class="mini hotel" data-pren="${h.id}">${icon("BedDouble")}<span class="grow"><small>${ci.includes(h) ? "Check-in" + (h.ora ? " " + esc(h.ora) : "") : "Notte"}</small><b>${esc(h.titolo)}</b></span>
         ${docBtn(h)}<a class="btn small primary" href="${gmTo(addrQ(h))}" target="_blank" rel="noopener" aria-label="Portami all'hotel">${icon("Navigation")}</a><button class="btn small" data-taxi="${h.id}" aria-label="Mostra al tassista">${icon("CarTaxiFront")}</button></div>` : ""}${dupHtml}`;
   }
@@ -1258,8 +1258,8 @@
     const rows = [row("button", 'data-goto="booklist"', "Ticket", "#d4442f", "Biglietti da prenotare", `${doneBook}/${toBook.length}`, doneBook, toBook.length)];
     if (code) {
       const NIGHTS = nights(), covered = NIGHTS.filter(hotelFor).length, voli = lists.prenotazioni.filter(p => p.tipo === "volo").length;
-      rows.push(row("a", 'href="#utility/prenotazioni"', "BedDouble", "#2e6fb0", "Hotel", `${covered}/${NIGHTS.length} notti`, covered, NIGHTS.length));
-      rows.push(row("a", 'href="#utility/prenotazioni"', "Plane", "#7b4fa0", "Voli", voli ? `${voli} ${voli === 1 ? "inserito" : "inseriti"}` : "da inserire", Math.min(voli, 2), 2));
+      rows.push(row("a", 'href="#utility/prenotazioni/hotel"', "BedDouble", "#2e6fb0", "Hotel", `${covered}/${NIGHTS.length} notti`, covered, NIGHTS.length));
+      rows.push(row("a", 'href="#utility/prenotazioni/volo"', "Plane", "#7b4fa0", "Voli", voli ? `${voli} ${voli === 1 ? "inserito" : "inseriti"}` : "da inserire", Math.min(voli, 2), 2));
     }
     rows.push(row("a", 'href="#utility/checklist"', "Luggage", "#c89b3c", "Valigia e documenti", `${checksDone()}/${tot}`, checksDone(), tot));
     rows.push(row("a", 'href="#utility/mappe"', "CloudOff", "#1f9488", "Mappe offline", "…", 0, 1, "prep-maps"));
@@ -2416,7 +2416,7 @@
   // in alto le 4 cose di ogni giorno (riquadri grandi), sotto il resto in elenchi sobri stile Impostazioni di iPhone
   const UTOP = ["prenotazioni", "spese", "frasi", "yen"];
   const UGROUPS = [["In viaggio", ["fogli", "sos", "mappe"]], ["Prima di partire", ["checklist", "budget", "pratico", "installa"]], ["Guide", ["trasporti", "soldi", "galateo", "stagione"]]];
-  function renderUtility(sub) {
+  function renderUtility(sub, sub2) {
     const from = isSub(subFrom) ? "#utility" : subFrom, fromTab = from.slice(1).split("/")[0];
     const back = `<a class="back" href="${from}">${icon("ChevronLeft")} ${esc(TABS.find(t => t[0] === fromTab)?.[2] || "Utility")}</a>`;
     if (!sub) {
@@ -2450,7 +2450,7 @@
       bindPhrases(); return;
     }
     if (sub === "budget") return renderBudget(back);
-    if (sub === "prenotazioni") return renderPren(back);
+    if (sub === "prenotazioni") return renderPren(back, sub2);
     // aperta da un indirizzo (es. riavvio dell'app lì): si resta su Utility con la scheda sopra
     if (sub === "mappe") { history.replaceState(null, "", "#utility"); lastHash = "#utility"; subPushed = false; renderUtility(); setTimeout(openOfflineMaps, 50); return; }
     if (sub === "spese") return renderSpese(back);
@@ -3389,22 +3389,49 @@
     $("#needcode", root)?.addEventListener("click", () => askWho(true));
   }
 
-  function renderPren(back) {
+  // filtro per tipo: dall'indirizzo (#utility/prenotazioni/volo, es. "Voli" in Oggi) oppure dai chip in cima;
+  // il chip scelto resta finché si è su quell'indirizzo (anche quando la pagina si ridisegna per dati nuovi)
+  const PPLUR = { hotel: "Hotel", volo: "Voli", treno: "Treni", biglietto: "Biglietti", altro: "Altro" };
+  const ptipoOf = p => PTYPE[p.tipo] ? p.tipo : "altro";
+  let prenSel = { key: "", tipo: "all" };
+  function renderPren(back, fromUrl) {
     if (!code) { view.innerHTML = `${back}<h2>Prenotazioni</h2><p class="lead">Hotel, voli, treni e biglietti, condivisi tra voi quattro.</p>${needCodeBox("Le prenotazioni")}`; bindPcards(); return; }
+    const key = location.hash;
+    if (prenSel.key !== key) prenSel = { key, tipo: PTYPE[fromUrl] ? fromUrl : "all" };
     const all = [...lists.prenotazioni].sort((a, b) => (a.dal || "9").localeCompare(b.dal || "9") || (a.ora || "").localeCompare(b.ora || ""));
+    const count = t => all.filter(p => ptipoOf(p) === t).length;
+    const chips = () => [["all", "Tutte", all.length], ...Object.keys(PTYPE).map(k => [k, PPLUR[k], count(k)])]
+      .map(([k, n, c]) => `<button class="chip${prenSel.tipo === k ? " on" : ""}" data-pt="${k}" aria-pressed="${prenSel.tipo === k}">${k !== "all" ? `<span style="color:${PTYPE[k][1]};display:contents">${icon(PTYPE[k][0])}</span> ` : ""}${n}${c ? ` <small>${c}</small>` : ""}</button>`).join("");
     const NIGHTS = nights(), covered = NIGHTS.filter(hotelFor).length, dupNights = DAYS.slice(0, -1).filter(d => hotelsFor(d).length > 1);
-    view.innerHTML = `${back}<h2>Prenotazioni</h2><p class="lead">Hotel, voli, treni e biglietti, condivisi tra voi quattro.</p>
-      <div class="card">
+    const nightsCard = `<div class="card">
         <div class="between"><b>${icon("BedDouble")} Notti con hotel</b><b>${covered}/${NIGHTS.length}</b></div>
         <div class="nights">${NIGHTS.map(d => { const hs = hotelsFor(d); return `<i title="${short(d)}${hs.length ? " · " + hs.map(h => esc(h.titolo)).join(" + ") : ""}" class="${hs.length > 1 ? "ok dup" : hs.length ? "ok" : ""}"></i>`; }).join("")}</div>
         ${covered < NIGHTS.length ? `<p class="small muted" style="margin:8px 0 0">Mancano: ${NIGHTS.filter(d => !hotelFor(d)).map(short).join(", ")}</p>` : `<p class="small" style="margin:8px 0 0;color:var(--ok)">Tutte le notti sono coperte ✓</p>`}
         ${dupNights.length ? `<p class="small" style="margin:6px 0 0;color:var(--warn-fg)">Due hotel ${dupNights.length === 1 ? "la notte del" : "le notti del"} ${dupNights.map(short).join(", ")}: ${[...new Set(dupNights.flatMap(d => hotelsFor(d).map(h => h.titolo)))].map(esc).join(" e ")}</p>` : ""}
-      </div>
-      <div class="section-h"><h3>Aggiungi</h3></div>
-      <div class="addgrid">${Object.entries(PTYPE).map(([k, [ic, col, tn]]) => `<button data-addp="${k}"><span class="pic" style="--c:${col}">${icon(ic)}</span>${tn}</button>`).join("")}</div>
-      ${all.length ? all.map((p, k) => (k === 0 || p.dal !== all[k - 1].dal ? `<h3>${p.dal ? cap1(fmtDay(p.dal)) : "Senza data"}</h3>` : "") + pcard(p)).join("") : notArrived() ? `<p class="empty">Le prenotazioni non sono ancora arrivate su questo telefono: serve la rete una volta. Poi ci sono anche offline.</p>` : `<p class="empty">Ancora nessuna prenotazione. Comincia dagli hotel e dai voli.</p>`}`;
-    $$("[data-addp]").forEach(b => b.onclick = () => editPren({ tipo: b.dataset.addp }));
-    bindPcards();
+      </div>`;
+    const addGrid = `<div class="section-h"><h3>Aggiungi</h3></div><div class="addgrid">${Object.entries(PTYPE).map(([k, [ic, col, tn]]) => `<button data-addp="${k}"><span class="pic" style="--c:${col}">${icon(ic)}</span>${tn}</button>`).join("")}</div>`;
+    const list = () => {
+      const t = prenSel.tipo, sel = t === "all" ? all : all.filter(p => ptipoOf(p) === t);
+      const head = t === "all" || t === "hotel" ? nightsCard : "";
+      if (!all.length) return head + addGrid + (notArrived() ? `<p class="empty">Le prenotazioni non sono ancora arrivate su questo telefono: serve la rete una volta. Poi ci sono anche offline.</p>` : `<p class="empty">Ancora nessuna prenotazione. Comincia dagli hotel e dai voli.</p>`);
+      if (!sel.length) {
+        const [ic, , tn] = PTYPE[t], nome = t === "altro" ? "prenotazione" : tn.toLowerCase();
+        return head + `<p class="empty">${t === "altro" ? "Nessuna prenotazione in Altro" : `Nessun ${nome} inserito`}.</p><div class="btns" style="justify-content:center"><button class="btn primary" data-addp="${t}">${icon(ic)} Aggiungi ${nome}</button></div>`;
+      }
+      return head + addGrid + sel.map((p, k) => (k === 0 || p.dal !== sel[k - 1].dal ? `<h3>${p.dal ? cap1(fmtDay(p.dal)) : "Senza data"}</h3>` : "") + pcard(p)).join("");
+    };
+    view.innerHTML = `${back}<h2>Prenotazioni</h2><p class="lead">Hotel, voli, treni e biglietti, condivisi tra voi quattro.</p>
+      <div class="chips" id="ptf">${chips()}</div><div id="plist">${list()}</div>`;
+    const bindList = () => { $$("[data-addp]", view).forEach(b => b.onclick = () => editPren({ tipo: b.dataset.addp })); bindPcards(); };
+    // chip scelto fuori vista (es. Biglietti aperto da un indirizzo): la fila scorre fino a lui
+    { const ptf = $("#ptf"), on = $(".on", ptf); if (on && on.offsetLeft + on.offsetWidth > ptf.clientWidth) ptf.scrollLeft = on.offsetLeft - 16; }
+    $("#ptf").onclick = e => {
+      const b = e.target.closest("[data-pt]"); if (!b || b.dataset.pt === prenSel.tipo) return;
+      buzz(); prenSel.tipo = b.dataset.pt;
+      $$("[data-pt]", view).forEach(c => { const on = c.dataset.pt === prenSel.tipo; c.classList.toggle("on", on); c.setAttribute("aria-pressed", on); });
+      $("#plist").innerHTML = list(); bindList();
+    };
+    bindList();
   }
 
   function editPren(p) {
@@ -4753,8 +4780,8 @@
   }
   let restored = false;
   function render() {
-    let [tab, sub] = (location.hash.slice(1) || "oggi").split("/");
-    if (!TABS.some(t => t[0] === tab)) { tab = "oggi"; sub = undefined; history.replaceState(null, "", "#oggi"); }   // indirizzo sconosciuto
+    let [tab, sub, sub2] = (location.hash.slice(1) || "oggi").split("/");
+    if (!TABS.some(t => t[0] === tab)) { tab = "oggi"; sub = sub2 = undefined; history.replaceState(null, "", "#oggi"); }   // indirizzo sconosciuto
     const key = location.hash || "#oggi";
     if (shown && shown.key !== key) stashPage(); else shown = null;
     view.classList.remove("full");
@@ -4769,7 +4796,7 @@
     const kept = pages.get(key); pages.delete(key);
     restored = !!kept && kept.stamp === stampNow();
     if (restored) { view.replaceChildren(kept.frag); if (tab === "oggi") tick(); }
-    else ({ oggi: renderOggi, giorni: () => renderGiorni(sub), luoghi: renderLuoghi, mappa: renderMappa, utility: () => renderUtility(sub) }[tab] || renderOggi)();
+    else ({ oggi: renderOggi, giorni: () => renderGiorni(sub), luoghi: renderLuoghi, mappa: renderMappa, utility: () => renderUtility(sub, sub2) }[tab] || renderOggi)();
     shown = { key, stamp: stampNow() }; oggiKey = oggiNow();
     watchTitle();
     // Spese: pulsante "+ Spesa" in basso a destra, a portata di pollice (anche su iPhone grandi)
@@ -4834,8 +4861,8 @@
       if (kept && kept.stamp === stampNow()) { pages.delete(to); m.appendChild(kept.frag); }
       else {
         const keep = document.createDocumentFragment(); while (view.firstChild) keep.appendChild(view.firstChild);
-        const full = view.classList.contains("full"), [tab, sub] = to.slice(1).split("/");
-        try { ({ oggi: renderOggi, giorni: () => renderGiorni(sub), luoghi: renderLuoghi, utility: () => renderUtility(sub) }[tab] || renderOggi)(); } catch (err) { console.warn(err); }
+        const full = view.classList.contains("full"), [tab, sub, sub2] = to.slice(1).split("/");
+        try { ({ oggi: renderOggi, giorni: () => renderGiorni(sub), luoghi: renderLuoghi, utility: () => renderUtility(sub, sub2) }[tab] || renderOggi)(); } catch (err) { console.warn(err); }
         while (view.firstChild) m.appendChild(view.firstChild);
         view.appendChild(keep); view.classList.toggle("full", full);
       }

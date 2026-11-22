@@ -269,6 +269,7 @@ main.enter { animation: fade .18s ease-out; }
   font-size: .84rem; font-weight: 600; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); box-shadow: var(--shadow-s);
 }
 .chip.on { background: var(--ink); color: var(--bg); border-color: transparent; }
+.chip small { font-size: .74rem; font-weight: 700; opacity: .6; font-variant-numeric: tabular-nums; }
 
 /* tutti i campi: anche quelli senza type, ora, data e link */
 :where(input:not([type=checkbox]):not([type=radio]), select, textarea) {
