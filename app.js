@@ -26,7 +26,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 221;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 222;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -314,9 +314,9 @@
   // non devono credere "proprio" quello che sta facendo l'altro. Le voci vecchie senza "dev" valgono per nome
   const DEV = LS.get("dev", "") || (() => { const d = uid(); LS.set("dev", d, true); return d; })();
   const mineDoc = a => a.dev ? a.dev === DEV : a.by === (me || "?");
-  // codice incollato da WhatsApp/Note: via i caratteri invisibili (spazio a larghezza zero, BOM…), spazi strani → normali.
+  // codice incollato da WhatsApp/Note: via i caratteri invisibili (spazio a larghezza zero, BOM, segni di direzione del testo…), spazi strani → normali.
   // Maiuscole e simboli restano: il codice li distingue
-  const cleanCode = c => typeof c === "string" ? c.normalize("NFC").replace(/[\u200B-\u200D\u2060\uFEFF]/g, "").replace(/\s/g, " ").trim() : "";
+  const cleanCode = c => typeof c === "string" ? c.normalize("NFC").replace(/[\u00AD\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g, "").replace(/\s/g, " ").trim() : "";
   // nomi che Firestore non accetta per un documento: con questi la sincronizzazione resterebbe in errore per sempre
   const validCode = c => !!c && !c.includes("/") && c !== "." && c !== ".." && !/^__.*__$/.test(c) && new TextEncoder().encode(c).length <= 1500;
   let code = cleanCode(LS.get("code", ""));
