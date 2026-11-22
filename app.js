@@ -9,6 +9,9 @@
     // quiet: dati uguali per le pagine (solo versioni del server): niente ricostruzione
     set(k, v, quiet) { if (!quiet && !UI_KEYS.has(k)) dataVer++; try { localStorage.setItem("jp27:" + k, JSON.stringify(v)); } catch {} },
   };
+  // elenco di testi salvato sul telefono (spunte, prenotati…): un valore rovinato (numero, oggetto, testo) non deve
+  // fermare l'app all'avvio (prima new Set(5) → pagina bianca)
+  const lsList = k => { const v = LS.get(k, []); return Array.isArray(v) ? v.filter(x => typeof x === "string") : []; };
 
   // cambio: quanti ¥ fa 1 €. Si tiene solo un numero sensato: una risposta strana del servizio
   // (vuota, 0, testo, negativa) o un dato rovinato non deve dare spese da NaN o da 0 €
@@ -26,7 +29,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 222;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 223;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -122,8 +125,11 @@
     }).filter(Boolean);
   }
   let plan = cleanPlan(LS.get("plan", null) || clone(window.BOZZA || {}));   // { "2027-02-20": { l, n, i: [...] } }
-  let booked = new Set(LS.get("booked", []));
-  let checks = new Set(LS.get("checks", []));
+  let booked = new Set(lsList("booked"));
+  let checks = new Set(lsList("checks"));
+  // voci spuntate che ci sono ancora nella checklist: una voce cambiata in una versione nuova resta salvata ma non conta
+  // (prima il conto poteva arrivare a "27/26" e la barra uscire)
+  const checksDone = () => CHECKLIST.reduce((s, [, it]) => s + it.filter(t => checks.has(t)).length, 0);
   let me = LS.get("me", "");
   if (!T.viaggiatori.includes(me)) me = "";   // nome rovinato o non più nel viaggio ("Niccolo", 123): si richiede
   let lastEdit = LS.get("lastEdit", null);   // { by, at }
@@ -223,7 +229,7 @@
 
   // ——— tema ———
   const mq = matchMedia("(prefers-color-scheme: dark)");
-  let theme = LS.get("theme", "");
+  let theme = ["light", "dark"].includes(LS.get("theme", "")) ? LS.get("theme", "") : "";   // valore rovinato: Auto
   const isDark = () => theme === "dark" || (theme !== "light" && mq.matches);
   function applyTheme() {
     if (theme) document.documentElement.dataset.theme = theme; else delete document.documentElement.dataset.theme;
@@ -962,6 +968,13 @@
   }
 
   function bigLayer() { hideBig(true); }
+  // frase a schermo intero: anche lo scorrimento dal bordo sinistro la chiude, come "indietro" nelle altre pagine
+  // (prima il gesto non faceva niente e restava solo il tocco)
+  (() => {
+    const b = $("#big"); let x0 = null, y0 = 0;
+    b.addEventListener("touchstart", e => { const t = e.touches[0]; x0 = e.touches.length === 1 && t.clientX < 30 ? t.clientX : null; y0 = t.clientY; }, { passive: true });
+    b.addEventListener("touchend", e => { const t = e.changedTouches[0]; if (x0 !== null && t.clientX - x0 > 70 && Math.abs(t.clientY - y0) < t.clientX - x0) { e.preventDefault(); hideBig(); } x0 = null; });
+  })();
   function hideBig(fromHistory) {
     const b = $("#big"); if (b.hidden || b.classList.contains("out")) return;
     if (fromHistory !== true) dropLayer(bigLayer);
@@ -1248,7 +1261,7 @@
       rows.push(row("a", 'href="#utility/prenotazioni"', "BedDouble", "#2e6fb0", "Hotel", `${covered}/${NIGHTS.length} notti`, covered, NIGHTS.length));
       rows.push(row("a", 'href="#utility/prenotazioni"', "Plane", "#7b4fa0", "Voli", voli ? `${voli} ${voli === 1 ? "inserito" : "inseriti"}` : "da inserire", Math.min(voli, 2), 2));
     }
-    rows.push(row("a", 'href="#utility/checklist"', "Luggage", "#c89b3c", "Valigia e documenti", `${checks.size}/${tot}`, checks.size, tot));
+    rows.push(row("a", 'href="#utility/checklist"', "Luggage", "#c89b3c", "Valigia e documenti", `${checksDone()}/${tot}`, checksDone(), tot));
     rows.push(row("a", 'href="#utility/mappe"', "CloudOff", "#1f9488", "Mappe offline", "…", 0, 1, "prep-maps"));
     return `<div class="card"><h3 style="margin:0 0 2px">Prima di partire</h3>${rows.join("")}${code ? "" : `<p class="small muted" style="margin:8px 0 0">Con il codice del viaggio vedrete qui anche hotel e voli.</p>`}</div>`;
   }
@@ -2417,7 +2430,7 @@
         <div class="seg">${[["", "Auto"], ["light", "Chiaro"], ["dark", "Scuro"]].map(([k, t]) => `<button data-theme="${k}" class="${theme === k ? "on" : ""}">${t}</button>`).join("")}</div></div>`);
       $$("[data-theme]", view).forEach(b => b.onclick = () => { buzz(); setTheme(b.dataset.theme); });
       notifCard();
-      const lb = LS.get("lastBackup", 0), ago = lb ? Math.floor((Date.now() - lb) / 864e5) : -1;
+      const lb = +LS.get("lastBackup", 0) || 0, ago = lb > 0 ? Math.max(0, Math.floor((Date.now() - lb) / 864e5)) : -1;   // rovinato: "mai"; orologio indietro: "oggi"
       view.insertAdjacentHTML("beforeend", `<div class="card row"><div class="grow"><b>Backup</b><div class="muted small">${ago < 0 ? "Mai fatto su questo telefono" : `Ultimo su questo telefono: ${ago === 0 ? "oggi" : ago === 1 ? "ieri" : ago + " giorni fa"}`}</div></div><button class="btn small" id="backup">${icon("Download")} Apri</button></div>`);
       $("#backup").onclick = openBackup;
       view.insertAdjacentHTML("beforeend", `<div class="card row"><div class="grow"><b>Versione ${APP_VERSION}</b><div class="muted small">Se qualcosa non sembra aggiornato, scarica di nuovo l'app (le mappe offline restano).</div></div><button class="btn small" id="forceupd">${icon("RotateCcw")} Aggiorna adesso</button></div>`);
@@ -2471,7 +2484,8 @@
     const jpy = $("#jpy"), eur = $("#eur");
     const showRate = d => { $("#rate").textContent = `1 € = ${rate.toFixed(2).replace(".", ",")} ¥ · ${d ? "aggiornato al " + new Date(d).toLocaleDateString("it-IT") : "tasso indicativo (offline)"}`; $("#k").textContent = (1000 / rate).toFixed(2).replace(".", ","); };
     // scritti come in Italia: 1.000 ¥ e 5,64 € (si legge anche 1000 e 5.64)
-    const fromY = () => { const y = parseNum(jpy.value, true); eur.value = y >= 0 ? (y / rate).toFixed(2).replace(".", ",") : ""; };
+    // il tastierino dell'iPhone ha la virgola: "12000,5" ¥ qui vale 12.000,5 (prima il campo euro restava vuoto senza dire perché)
+    const fromY = () => { const t = jpy.value, y = parseNum(t, true) >= 0 ? parseNum(t, true) : /€/.test(t) ? NaN : parseNum(t); eur.value = y >= 0 ? (y / rate).toFixed(2).replace(".", ",") : ""; };
     const fromE = () => { const e = parseNum(eur.value); jpy.value = e >= 0 ? fmtInt(e * rate) : ""; };
     jpy.oninput = fromY; eur.oninput = fromE;
     // toccando un campo si riparte da vuoto; se si esce senza scrivere niente torna il valore di prima
@@ -2502,7 +2516,7 @@
 
   function renderChecklist(back) {
     const total = CHECKLIST.reduce((s, [, it]) => s + it.length, 0);
-    const head = () => `<div class="between small"><span class="muted">Salvata su questo telefono</span><b>${checks.size}/${total}</b></div><div class="progress bar-head"><i style="width:${checks.size / total * 100}%"></i></div>`;
+    const head = () => `<div class="between small"><span class="muted">Salvata su questo telefono</span><b>${checksDone()}/${total}</b></div><div class="progress bar-head"><i style="width:${checksDone() / total * 100}%"></i></div>`;
     view.innerHTML = `${back}<h2>Checklist</h2><div class="card" id="ckhead">${head()}</div>
       ${CHECKLIST.map(([g, items]) => `<div class="card"><h3 style="margin-top:0">${g}</h3>${items.map(t => `<label class="check${checks.has(t) ? " done" : ""}"><input type="checkbox" data-ck="${esc(t)}" ${checks.has(t) ? "checked" : ""}><span>${esc(t)}</span></label>`).join("")}</div>`).join("")}`;
     $$("[data-ck]").forEach(cb => cb.onchange = () => {
@@ -3633,7 +3647,7 @@
     return null;
   }
   // hotel già con la puntina di OpenStreetMap (di solito il centro del quartiere): si riprova con Google una volta per indirizzo
-  const geoUp = new Set(LS.get("geoUp", []));
+  const geoUp = new Set(lsList("geoUp"));
   const markUp = h => { geoUp.add(geoKey(h)); LS.set("geoUp", [...geoUp].slice(-50), true); };
   async function geocodeHotel(h) {
     if (!navigator.onLine) return;
