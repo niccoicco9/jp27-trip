@@ -29,7 +29,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 225;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 226;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -2408,7 +2408,7 @@
     ["frasi", "Languages", "#2b4c7e", "Frasi utili", "Con pronuncia audio"],
     ["sos", "Siren", "#d4442f", "Emergenze", "Numeri e ambasciata"],
     ["mappe", "CloudOff", "#1f9488", "Mappe offline", "Scarica le zone"],
-    ["budget", "Wallet", "#b8860b", "Budget", "Costi da Wanderlog"],
+    ["budget", "Wallet", "#b8860b", "Budget", "Alloggi e Tokyo"],
     ["checklist", "Luggage", "#c89b3c", "Checklist", "Valigia e documenti"],
     ["fogli", "FileText", "#1d7a46", "I miei fogli", "Itinerari fatti in Excel"],   // solo per chi li usa (FOGLI_DI)
     ...Object.entries(GUIDE).map(([k, g]) => [k, g.icon, g.col, g.titolo, { trasporti: "Suica, Shinkansen, JR Pass", galateo: "Cosa fare e non fare", soldi: "Contanti, ATM, tax free", stagione: "Clima ed eventi", pratico: "Prese, eSIM, farmaci", installa: "Aggiungila alla Home" }[k] || ""]),
@@ -2500,18 +2500,30 @@
   }
 
   function renderBudget(back) {
-    const act = LUOGHI.filter(p => p.eur && !p.out), out = LUOGHI.filter(p => p.eur && p.out);
-    const sum = a => a.reduce((s, p) => s + p.eur, 0);
     const eur = v => fmtEur(v) + " €";
-    const perZ = ZONE.map(z => [z, sum(act.filter(p => p.z === z.id))]).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
-    const max = Math.max(...perZ.map(x => x[1]));
-    const planned = new Set(DAYS.flatMap(d => plan[d]?.i || []));
-    view.innerHTML = `${back}<h2>Budget</h2><p class="lead">Biglietti e attività stimati in Wanderlog, a persona.</p>
-      <div class="hero solid" style="min-height:0"><span class="kanji" aria-hidden="true">予算</span><div class="hero-in" style="min-height:170px"><span class="kicker">Luoghi attivi</span><div class="big-n" style="font-size:2.8rem">${eur(sum(act))}</div><p>In programma: <b>${eur(sum(act.filter(p => planned.has(p.id))))}</b> · Totale Wanderlog con gli scartati: ${eur(T.budgetWanderlog)}</p></div></div>
-      <div class="card"><h3 style="margin-top:0">Per zona</h3>${perZ.map(([z, v]) => `<div style="margin-bottom:12px"><div class="row small"><span class="dot" style="background:${z.colore}"></span><span class="grow">${z.nome}</span><b>${eur(v)}</b></div><div class="bar"><i style="width:${v / max * 100}%;background:${z.colore}"></i></div></div>`).join("")}</div>
-      <div class="card"><h3 style="margin-top:0">Dettaglio</h3><table class="budget">${act.sort((a, b) => b.eur - a.eur).map(p => `<tr data-place="${p.id}" style="cursor:pointer"><td>${esc(p.n)} <span class="muted small">· ${zona[p.z].nome}</span></td><td>${eur(p.eur)}</td></tr>`).join("")}</table>
-      ${out.length ? `<h3>Scartati</h3><table class="budget">${out.map(p => `<tr class="muted"><td>${esc(p.n)}</td><td>${eur(p.eur)}</td></tr>`).join("")}</table>` : ""}</div>
+    const B = window.BUDGET_TOKYO, toE = y => y / B.cambio;
+    const rng = ([a, b], f) => a === b ? f(a) : `${f(a)} – ${f(b)}`;
+    const tot = l => l.reduce((s, x) => [s[0] + x[2][0], s[1] + x[2][1]], [0, 0]);
+    // alloggi: gli hotel inseriti in Prenotazioni, con la quota a persona del costo collegato
+    const hotels = lists.prenotazioni.filter(okHotel).sort((a, b) => a.dal.localeCompare(b.dal));
+    const quota = h => { const s = spesaOf(h.id); if (!s) return null; const per = s.perChi?.length ? s.perChi : T.viaggiatori; return s.eur / per.length; };
+    const alloggi = hotels.reduce((s, h) => s + (quota(h) || 0), 0), senza = hotels.filter(h => quota(h) == null).length;
+    const at = tot(B.attrazioni), sp = tot(B.spostamenti), tk = [at[0] + sp[0], at[1] + sp[1]];
+    const lo = alloggi + toE(tk[0]), hi = alloggi + toE(tk[1]);
+    const row = (t, sub, v) => `<tr><td>${t}${sub ? `<div class="muted small">${sub}</div>` : ""}</td><td>${v}</td></tr>`;
+    const yrow = ([d, n, y, note]) => row(esc(n), [d ? short(d) : "", note || ""].filter(Boolean).join(" · "), `${rng(y, v => eur(toE(v)))}<div class="muted small" style="font-weight:400">${rng(y, fmtInt)} ¥</div>`);
+    view.innerHTML = `${back}<h2>Budget</h2><p class="lead">Stima a persona: alloggi inseriti nell'app e, per ora, attrazioni e spostamenti di Tokyo.</p>
+      <div class="hero solid" style="min-height:0"><span class="kanji" aria-hidden="true">予算</span><div class="hero-in" style="min-height:170px"><span class="kicker">Totale a persona</span><div class="big-n" style="font-size:2rem">${rng([lo, hi].map(Math.round), v => fmtInt(v) + " €")}</div><p>Alloggi <b>${eur(alloggi)}</b> · Tokyo <b>${rng(tk, v => eur(toE(v)))}</b></p></div></div>
+      <div class="card"><h3 style="margin-top:0">Alloggi</h3>${hotels.length ? `<table class="budget">${hotels.map(h => { const q = quota(h), n = nightsOf(h); return `<tr data-hotel style="cursor:pointer"><td>${esc(h.titolo || "Hotel")}<div class="muted small">${short(h.dal)} → ${short(h.al)} · ${n} ${n === 1 ? "notte" : "notti"}</div></td><td>${q == null ? `<span class="muted" style="font-weight:400">costo da inserire</span>` : eur(q)}</td></tr>`; }).join("")}${row("<b>Totale a persona</b>", senza ? `${senza} senza costo` : "", eur(alloggi))}</table>` : `<p class="muted small">Nessun hotel in <a href="#utility/prenotazioni/hotel">Prenotazioni</a>.</p>`}
+        <p class="muted small" style="margin-bottom:0">Quota a persona del costo inserito nella prenotazione.</p></div>
+      <div class="card"><h3 style="margin-top:0">Tokyo · 21–25 febbraio</h3>
+        <h4>Attrazioni</h4><table class="budget">${B.attrazioni.map(yrow).join("")}${row("<b>Totale attrazioni</b>", "", rng(at, v => eur(toE(v))))}</table>
+        <h4>Spostamenti (Suica)</h4><table class="budget">${B.spostamenti.map(yrow).join("")}${row("<b>Totale spostamenti</b>", "", rng(sp, v => eur(toE(v))))}</table>
+        <h4>Extra facoltativi</h4><table class="budget">${B.extra.map(([n, y, note]) => yrow(["", n, y, note])).join("")}</table>
+        <h4>Arrivo e partenza</h4><table class="budget">${B.trasferimenti.map(([n, y, note]) => yrow(["", n, y, note])).join("")}</table>
+        <p class="muted small" style="margin-bottom:0">Extra, arrivo e partenza non sono nel totale. Cambio 1 € = ${String(B.cambio).replace(".", ",")} ¥.</p></div>
       <p class="muted small">Quello che spendete davvero, e chi deve quanto a chi, è in <a href="#utility/spese">Spese</a>.</p>`;
+    $$("[data-hotel]").forEach(r => r.onclick = () => { location.hash = "#utility/prenotazioni/hotel"; });
   }
 
   function renderChecklist(back) {

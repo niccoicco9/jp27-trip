@@ -8,7 +8,6 @@ window.TRIP = {
   inizio: "2027-02-21",     // primo giorno in Giappone
   fine: "2027-03-07",       // ultimo giorno: volo da Kansai alle 9:00
   viaggiatori: ["Niccolò", "Antonella", "Miriam", "Paolo"],
-  budgetWanderlog: 643.10,
   mapsKey: "AIzaSyBwcY9sg8fPJvxad05hlcvIdade0aQserA",
   notifyUrl: "https://jp27-notifiche.niccoicco9.workers.dev",   // servizio notifiche (Cloudflare Worker); vuoto = notifiche nascoste
 };
@@ -277,4 +276,34 @@ window.FIREBASE = {
   storageBucket: "viaggio-in-giappone-da22c.firebasestorage.app",
   messagingSenderId: "471616366612",
   appId: "1:471616366612:web:c20c574aac4f86e72c1f01",
+};
+
+// Budget Tokyo (21–25/2/2027), stima a persona di attrazioni e spostamenti (verifica Google, 27/11/2026, 1 € = 174,5 ¥).
+// Valori in yen: [min, max]. Le altre città si aggiungono man mano.
+window.BUDGET_TOKYO = {
+  cambio: 174.5,
+  attrazioni: [
+    ["2027-02-23", "Shinjuku Gyoen", [500, 500]],
+    ["2027-02-23", "Warner Bros. Studio Tour – Harry Potter", [6600, 7300], "festivo: preventivare 7.300 ¥"],
+    ["2027-02-23", "teamLab Borderless", [4400, 5800], "prezzo dinamico, nei festivi 5.800 ¥"],
+    ["2027-02-24", "Tokyo DisneySea (1-Day Passport)", [9900, 9900]],
+    ["2027-02-25", "Kamakura: Grande Buddha (Kotoku-in)", [300, 350], "+50 ¥ per entrare nella statua"],
+    ["2027-02-25", "Kamakura: Hase-dera", [400, 400]],
+    ["2027-02-25", "Shibuya Sky (tramonto)", [3400, 3400], "online, dalle 15:00"],
+  ],
+  spostamenti: [
+    ["2027-02-21", "Kabukicho, Golden Gai: a piedi", [0, 0]],
+    ["2027-02-22", "Asakusa, Ueno, Akihabara", [775, 865]],
+    ["2027-02-23", "Harajuku, Toshimaen, Azabudai, Tokyo Tower", [1090, 1550]],
+    ["2027-02-24", "DisneySea (JR A/R + monorotaia)", [1480, 1560]],
+    ["2027-02-25", "Kamakura (JR + Enoden) e Shibuya", [2385, 2775]],
+  ],
+  extra: [
+    ["Tokyo Tower, Main Deck 150 m", [1500, 1500]],
+    ["1–2 Disney Premier Access", [1500, 4000]],
+  ],
+  trasferimenti: [
+    ["Narita → Shin-Okubo (Skyliner + JR)", [2520, 2790], "N'EX diretto: 3.330 ¥"],
+    ["Bus Shinjuku → Kawaguchiko (26/2, 7:00)", [2000, 2000], "tariffa web; 2.200 ¥ in biglietteria"],
+  ],
 };
