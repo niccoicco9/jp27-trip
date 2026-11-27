@@ -29,7 +29,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 226;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 227;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -1048,7 +1048,7 @@
       </div>
       <dl class="info">
         ${p.dur ? `<dt>Durata</dt><dd>${esc(p.dur)}</dd>` : ""}
-        ${p.eur ? `<dt>Costo</dt><dd>~${fmtEur(p.eur)} € a persona <span class="muted">(${p.mine || p.eurEd ? "stima vostra" : "stima Wanderlog"})</span></dd>` : ""}
+        ${p.eur ? `<dt>Costo</dt><dd>~${fmtEur(p.eur)} € a persona <span class="muted">(${p.mine || p.eurEd ? "stima vostra" : p.eurG ? "stima Google" : "stima Wanderlog"})</span></dd>` : ""}
         ${p.chiuso ? `<dt>Chiuso</dt><dd>${esc(p.chiuso)}</dd>` : ""}
         ${p.pren && !p.gone ? `<dt>Biglietti</dt><dd><label class="check" style="border:none;padding:0"><input type="checkbox" id="bk" ${booked.has(id) ? "checked" : ""}><span>${booked.has(id) ? "<b>Prenotato</b>" : "Da prenotare in anticipo: <b>segna quando è fatto</b>"}</span></label></dd>` : ""}
         ${p.pren && !p.gone && prenOf(p) && !booked.has(id) ? `<dt>Quando</dt><dd><b class="bkw ${bookWhen(p)?.cls || ""}">${esc(cap1(bookWhen(p).txt))}</b><div class="small muted" style="margin-top:2px">${esc(prenOf(p).come)}</div></dd>` : ""}

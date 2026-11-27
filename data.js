@@ -1,6 +1,7 @@
 // Dati del viaggio, estratti dal piano Wanderlog "Viaggio a Japan" (partenza 20/2, in Giappone 21/2 – 7/3/2027).
 // Campi luogo: id, n (nome), jp (nome giapponese), z (zona), lat, lng, c (categoria),
 // d (descrizione), dur (durata), pren (prenotare in anticipo), chiuso, eur (costo stimato a persona), note, out (scartato)
+// eurG: costo dalla stima Google di Tokyo (BUDGET_TOKYO, 1 € = 174,5 ¥), non da Wanderlog
 
 window.TRIP = {
   titolo: "Giappone 2027",
@@ -32,7 +33,7 @@ window.CATEGORIE = {
 window.LUOGHI = [
   // ——— TOKYO ———
   { id: "t1", n: "Serra dello Shinjuku Gyoen", jp: "新宿御苑 大温室", z: "tokyo", lat: 35.6838, lng: 139.7116, c: "parco", d: "Grande serra con piante tropicali, orchidee e cactus dentro il giardino nazionale.", dur: "30 min", note: "inclusa nel biglietto dello Shinjuku Gyoen" },
-  { id: "t2", n: "Tokyo DisneySea", jp: "東京ディズニーシー", z: "tokyo", lat: 35.6267, lng: 139.8851, c: "divertimento", d: "Il parco Disney più amato: 7 \"porti\" a tema con attrazioni, spettacoli e ristoranti.", dur: "tutto il giorno", pren: true, eur: 75 },
+  { id: "t2", n: "Tokyo DisneySea", jp: "東京ディズニーシー", z: "tokyo", lat: 35.6267, lng: 139.8851, c: "divertimento", d: "Il parco Disney più amato: 7 \"porti\" a tema con attrazioni, spettacoli e ristoranti.", dur: "tutto il giorno", pren: true, eur: 56.73, eurG: true },
   { id: "t3", n: "Zoo di Ueno", jp: "上野動物園", z: "tokyo", lat: 35.7165, lng: 139.7713, c: "parco", d: "Zoo ottocentesco con oltre 400 specie, panda inclusi, e una pagoda a 5 piani.", dur: "2-3 h", pren: true, chiuso: "lun", eur: 4 },
   { id: "t4", n: "Shibuya Scramble Crossing", jp: "渋谷スクランブル交差点", z: "tokyo", lat: 35.6595, lng: 139.7005, c: "quartiere", d: "L'incrocio pedonale più famoso del mondo. Il top è al tramonto." },
   { id: "t5", n: "Testa di Godzilla", jp: "ゴジラヘッド（ホテルグレイスリー新宿）", z: "tokyo", lat: 35.6951, lng: 139.7020, c: "quartiere", d: "La testa di Godzilla sporge dall'Hotel Gracery a Kabukichō." },
@@ -45,7 +46,7 @@ window.LUOGHI = [
   { id: "t12", n: "Tempio Gōtokuji", jp: "豪徳寺", z: "tokyo", lat: 35.6489, lng: 139.6474, c: "tempio", d: "Tempio buddhista del periodo Edo con migliaia di maneki-neko, i gatti portafortuna." },
   { id: "t13", n: "Tempio Jindaiji", jp: "深大寺", z: "tokyo", lat: 35.6703, lng: 139.5465, c: "tempio", d: "Tempio fondato nel 733, immerso nel verde. Famoso per la soba nelle botteghe intorno." },
   { id: "t14", n: "Parco di Ueno", jp: "上野恩賜公園", z: "tokyo", lat: 35.7148, lng: 139.7731, c: "parco", d: "Grande parco cittadino con laghetto, barche, zoo e diversi musei." },
-  { id: "t15", n: "Shinjuku Gyoen", jp: "新宿御苑", z: "tokyo", lat: 35.6852, lng: 139.7100, c: "parco", d: "Ex tenuta imperiale di 58 ettari con giardini giapponese, inglese e francese.", pren: true, chiuso: "lun" },
+  { id: "t15", n: "Shinjuku Gyoen", jp: "新宿御苑", z: "tokyo", lat: 35.6852, lng: 139.7100, c: "parco", d: "Ex tenuta imperiale di 58 ettari con giardini giapponese, inglese e francese.", pren: true, chiuso: "lun", eur: 2.87, eurG: true },
   { id: "t16", n: "Parco di Yoyogi", jp: "代々木公園", z: "tokyo", lat: 35.6717, lng: 139.6949, c: "parco", d: "Ampio parco pubblico con laghetti, fontane e alberi maturi, accanto a Harajuku." },
   { id: "t17", n: "Fiume Meguro", jp: "目黒川", z: "tokyo", lat: 35.6440, lng: 139.6990, c: "quartiere", d: "Passeggiata lungo il canale di Nakameguro, tra caffè e negozi. È uno dei viali di ciliegi più belli della città." },
   { id: "t18", n: "Nittele Tower (orologio Ghibli)", jp: "日テレ大時計", z: "tokyo", lat: 35.6643, lng: 139.7603, c: "esperienza", d: "Il gigantesco orologio meccanico disegnato da Miyazaki a Shiodome. Si anima più volte al giorno." },
@@ -55,15 +56,15 @@ window.LUOGHI = [
   { id: "t22", n: "GiGO Akihabara 3", jp: "GiGO秋葉原3号館", z: "tokyo", lat: 35.6993, lng: 139.7712, c: "divertimento", d: "Sala giochi su più piani: UFO catcher, rhythm game e purikura." },
   { id: "t23", n: "Oedo Antique Market", jp: "大江戸骨董市", z: "tokyo", lat: 35.6768, lng: 139.7639, c: "shopping", d: "Mercato dell'antiquariato al Tokyo International Forum. Si tiene solo alcune domeniche al mese: controlla il calendario." },
   { id: "t24", n: "teamLab Planets", jp: "チームラボプラネッツ", z: "tokyo", lat: 35.6491, lng: 139.7898, c: "museo", d: "Arte digitale immersiva a Toyosu, a piedi nudi e in parte nell'acqua.", pren: true, eur: 30 },
-  { id: "t25", n: "teamLab Borderless", jp: "チームラボボーダレス", z: "tokyo", lat: 35.6605, lng: 139.7400, c: "museo", d: "Museo di arte digitale senza confini ad Azabudai Hills. Foto spettacolari.", pren: true, eur: 33 },
-  { id: "t26", n: "Warner Bros. Studio Tour – Harry Potter", jp: "ワーナー ブラザース スタジオツアー東京", z: "tokyo", lat: 35.7437, lng: 139.6488, c: "museo", d: "Il backstage dei film di Harry Potter a Toshimaen, con set originali e Diagon Alley.", pren: true, eur: 45 },
+  { id: "t25", n: "teamLab Borderless", jp: "チームラボボーダレス", z: "tokyo", lat: 35.6605, lng: 139.7400, c: "museo", d: "Museo di arte digitale senza confini ad Azabudai Hills. Foto spettacolari.", pren: true, eur: 33.24, eurG: true },
+  { id: "t26", n: "Warner Bros. Studio Tour – Harry Potter", jp: "ワーナー ブラザース スタジオツアー東京", z: "tokyo", lat: 35.7437, lng: 139.6488, c: "museo", d: "Il backstage dei film di Harry Potter a Toshimaen, con set originali e Diagon Alley.", pren: true, eur: 41.83, eurG: true },
   { id: "t27", n: "Harry Potter Stairs & Time Turner", jp: "ハリー・ポッター カフェ（赤坂）", z: "tokyo", lat: 35.6721, lng: 139.7364, c: "esperienza", d: "Scalinata e giratempo a tema Harry Potter ad Akasaka, vicino all'Harry Potter Cafe." },
-  { id: "t28", n: "Shibuya Sky", jp: "渋谷スカイ", z: "tokyo", lat: 35.6584, lng: 139.7022, c: "vista", d: "Terrazza panoramica all'aperto a 360° in cima allo Shibuya Scramble Square. Prenota l'orario del tramonto.", pren: true, eur: 20 },
+  { id: "t28", n: "Shibuya Sky", jp: "渋谷スカイ", z: "tokyo", lat: 35.6584, lng: 139.7022, c: "vista", d: "Terrazza panoramica all'aperto a 360° in cima allo Shibuya Scramble Square. Prenota l'orario del tramonto.", pren: true, eur: 19.48, eurG: true },
   { id: "t29", n: "Golden Gai", jp: "新宿ゴールデン街", z: "tokyo", lat: 35.6939, lng: 139.7046, c: "quartiere", d: "Viuzze strettissime piene di minuscoli bar da 6-8 posti. Alcuni chiedono un coperto." },
   { id: "t30", n: "Roppongi", jp: "六本木", z: "tokyo", lat: 35.6628, lng: 139.7314, c: "quartiere", d: "Vita notturna, ristoranti, arte (Mori Art Museum) e vista dal Roppongi Hills." },
   { id: "t31", n: "Chopsticks Studio Ginza", jp: "箸 工房 銀座", z: "tokyo", lat: 35.6694, lng: 139.7641, c: "esperienza", d: "Laboratorio per creare le proprie bacchette.", dur: "1 h", pren: true, eur: 24 },
   { id: "t32", n: "Capcom Store Tokyo", jp: "カプコンストア東京（渋谷PARCO）", z: "tokyo", lat: 35.6620, lng: 139.6987, c: "shopping", d: "Lo store ufficiale Capcom (Street Fighter, Monster Hunter) dentro Shibuya PARCO." },
-  { id: "t33", n: "Tokyo Tower", jp: "東京タワー", z: "tokyo", lat: 35.6586, lng: 139.7454, c: "vista", d: "L'iconica torre rossa e bianca ispirata alla Tour Eiffel, con osservatori.", pren: true },
+  { id: "t33", n: "Tokyo Tower", jp: "東京タワー", z: "tokyo", lat: 35.6586, lng: 139.7454, c: "vista", d: "L'iconica torre rossa e bianca ispirata alla Tour Eiffel, con osservatori.", pren: true, eur: 8.6, eurG: true },
   { id: "t34", n: "Santuario Kanda Myōjin", jp: "神田明神", z: "tokyo", lat: 35.7020, lng: 139.7679, c: "santuario", d: "Santuario shintoista vermiglio e oro, molto amato dagli appassionati di tecnologia di Akihabara." },
   { id: "t35", n: "Santuario Meiji Jingu", jp: "明治神宮", z: "tokyo", lat: 35.6764, lng: 139.6993, c: "santuario", d: "Grande santuario immerso nella foresta, a due passi da Harajuku." },
   { id: "t36", n: "UNIQLO Tokyo Station Yaesu", jp: "ユニクロ 東京駅八重洲地下街店", z: "tokyo", lat: 35.6802, lng: 139.7695, c: "shopping", d: "Uniqlo nel centro commerciale sotterraneo della stazione di Tokyo." },
@@ -78,8 +79,8 @@ window.LUOGHI = [
   { id: "v1", n: "Santuario Tōshō-gū di Nikko", jp: "日光東照宮", z: "vicino", lat: 36.7580, lng: 139.5989, c: "santuario", d: "Opulento complesso del Seicento dedicato al primo shogun, pieno di intagli e colori (Patrimonio UNESCO).", eur: 10 },
   { id: "v2", n: "Rinnō-ji – Casa del tesoro", jp: "輪王寺 宝物殿", z: "vicino", lat: 36.7550, lng: 139.6000, c: "tempio", d: "Complesso buddhista fondato nel 766, con museo e giardino classico di epoca Edo.", eur: 3 },
   { id: "v3", n: "Lago Chūzenji", jp: "中禅寺湖", z: "vicino", lat: 36.7380, lng: 139.4990, c: "natura", d: "Lago panoramico sopra Nikko, con le cascate Kegon a due passi.", note: "crociera", eur: 10 },
-  { id: "v4", n: "Kōtoku-in (Grande Buddha)", jp: "高徳院（鎌倉大仏）", z: "vicino", lat: 35.3167, lng: 139.5358, c: "tempio", d: "Il Grande Buddha di Kamakura, statua di bronzo all'aperto alta 11 metri.", eur: 2 },
-  { id: "v5", n: "Hase-dera", jp: "長谷寺", z: "vicino", lat: 35.3125, lng: 139.5332, c: "tempio", d: "Tempio dell'VIII secolo a Kamakura con un'enorme Kannon di legno e vista sul mare.", pren: true },
+  { id: "v4", n: "Kōtoku-in (Grande Buddha)", jp: "高徳院（鎌倉大仏）", z: "vicino", lat: 35.3167, lng: 139.5358, c: "tempio", d: "Il Grande Buddha di Kamakura, statua di bronzo all'aperto alta 11 metri.", eur: 1.72, eurG: true },
+  { id: "v5", n: "Hase-dera", jp: "長谷寺", z: "vicino", lat: 35.3125, lng: 139.5332, c: "tempio", d: "Tempio dell'VIII secolo a Kamakura con un'enorme Kannon di legno e vista sul mare.", pren: true, eur: 2.29, eurG: true },
   { id: "v6", n: "Tsurugaoka Hachimangū", jp: "鶴岡八幡宮", z: "vicino", lat: 35.3260, lng: 139.5563, c: "santuario", d: "Il santuario principale di Kamakura, fondato nell'XI secolo." },
   { id: "v7", n: "Komachi-dōri", jp: "小町通り", z: "vicino", lat: 35.3205, lng: 139.5527, c: "cibo", d: "Via pedonale di Kamakura con street food, dolci e negozietti." },
   { id: "v8", n: "Edo Wonderland Nikko Edomura", jp: "江戸ワンダーランド日光江戸村", z: "vicino", lat: 36.7925, lng: 139.6966, c: "divertimento", d: "Parco a tema periodo Edo: staff in costume, ninja, spettacoli e laboratori.", pren: true, chiuso: "mar e mer" },
