@@ -46,7 +46,7 @@
        --full-h la mette lo script qui sotto (solo app dalla Home in verticale). */
     #boot { position: absolute; top: 0; left: 0; right: 0; height: 100vh; height: var(--full-h, 100lvh); z-index: 9999; overflow: hidden; pointer-events: auto;
       background: linear-gradient(180deg, #1b1d4a 0%, #2c2b66 22%, #5e3576 42%, #b04a74 60%, #e9787a 74%, #f9a982 86%, #fcd3a0 100%);
-      transition: opacity .7s cubic-bezier(.32, .72, 0, 1); }
+      transition: opacity .35s ease-out; }
     #boot > * { position: absolute; }
     #boot .bt-stars { inset: 0 0 auto 0; width: 100%; height: 60%; }
     #boot .bt-sun { left: 50%; bottom: 40vw; width: 64vw; height: 64vw; margin-left: -32vw; border-radius: 50%;
@@ -133,7 +133,7 @@
   </div>
   <script>
     /* rete di sicurezza: se app.js non parte, la schermata d'avvio si toglie da sola; un tocco la chiude subito */
-    (() => { const b = document.getElementById("boot"); const go = () => { if (!b.isConnected || b.classList.contains("out")) return; b.classList.add("out"); setTimeout(() => b.remove(), 750); };
+    (() => { const b = document.getElementById("boot"); const go = () => { if (!b.isConnected || b.classList.contains("out")) return; b.classList.add("out"); setTimeout(() => b.remove(), 400); };
       window.__bootOut = go; b.addEventListener("click", go); setTimeout(go, 4000); })();
   </script>
   <div id="rotate" aria-hidden="true"><div><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></svg><b>Ruota il telefono</b><span>L'app è pensata per l'uso in verticale</span></div></div>

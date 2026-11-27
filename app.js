@@ -29,7 +29,7 @@
     }).catch(() => {});
   }
 
-  const APP_VERSION = 224;   // aggiornare insieme a VERSION in sw.js
+  const APP_VERSION = 225;   // aggiornare insieme a VERSION in sw.js
   const T = window.TRIP;
   const FOTO = window.FOTO || {};
   const isPhotoUrl = u => typeof u === "string" && /^https:\/\/(lh3\.googleusercontent\.com|(thumb|upload)\.wikimedia\.org)\/[^"'()\s\\]+$/.test(u);
@@ -5214,8 +5214,18 @@
   // tieni premuto: menu Copia sul testo da leggere; niente menu/anteprima su pulsanti, link, foto e schede toccabili
   document.addEventListener("contextmenu", e => { if (e.target.closest("a, img, button, label, .tabs, .place, .tl li, .ph, .cover, .viewer") && !e.target.closest("input, textarea, .copiabile")) e.preventDefault(); });
   if (!maybeImport()) render();
-  // schermata d'avvio: resta il tempo di vederla (anche quando l'app si apre in un lampo), poi sfuma
-  setTimeout(() => window.__bootOut?.(), Math.max(700, 1500 - performance.now()));
+  // schermata d'avvio: sfuma appena la prima schermata è disegnata (prima restava almeno 1,5 s anche con l'app già pronta).
+  // iPhone, app dalla Home: iOS apre la finestra più corta (812 invece di 874 punti) e la allarga dopo ~250 ms (al primo
+  // avvio va anche avanti e indietro), spostando la barra delle schede: si aspetta la finestra piena e almeno 300 ms,
+  // così il salto resta coperto; al massimo 900 ms, poi sfuma comunque
+  (() => {
+    const out = () => requestAnimationFrame(() => requestAnimationFrame(() => window.__bootOut?.()));
+    const iphoneHome = () => navigator.standalone && innerHeight > innerWidth && innerWidth === Math.min(screen.width, screen.height);
+    if (!iphoneHome()) return out();
+    const full = () => !iphoneHome() || innerHeight >= Math.max(screen.width, screen.height);
+    const check = () => { if (performance.now() >= 900 || (performance.now() >= 300 && full())) out(); else setTimeout(check, 50); };
+    check();
+  })();
   // la sincronizzazione (Firebase, ~525 KB) parte dopo la prima schermata: l'app compare subito con i dati del telefono
   (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => startSync(), { timeout: 800 });
   setTimeout(() => { if (navigator.onLine) OfflineMap.warmup?.().catch(() => {}); }, 5000);
